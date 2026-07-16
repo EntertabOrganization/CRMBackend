@@ -1,0 +1,9 @@
+services:
+  backend:
+    image: ${DOCKER_USERNAME}/trueform-backend:prod
+    container_name: trueform_api.prod
+    restart: unless-stopped
+    ports:
+      - "8012:3000"
+    env_file:
+      - .env
