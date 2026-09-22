@@ -1,0 +1,26 @@
+{
+  "pack": "TrueAgent Auth Module Codex Pack",
+  "version": "1.0",
+  "goal_examples": [
+    "Complete Authentication",
+    "Complete Workspace",
+    "Complete Department",
+    "Complete Authorization",
+    "Complete Partner",
+    "Complete Audit",
+    "Complete the whole Auth Module"
+  ],
+  "specifications": [
+    "Authentication/authentication.md",
+    "User/user.md",
+    "Workspace/workspace.md",
+    "Department/department.md",
+    "Department/sub-department.md",
+    "Department/department-members.md",
+    "Authorization/role-permission.md",
+    "Partner/partner.md",
+    "Audit/audit-log.md"
+  ],
+  "test_contract_root": "Testing",
+  "entrypoint": "Agent.md"
+}
