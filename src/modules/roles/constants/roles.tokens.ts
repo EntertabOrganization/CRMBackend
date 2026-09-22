@@ -1,1 +1,0 @@
-export const ROLES_REPOSITORY = Symbol('ROLES_REPOSITORY');

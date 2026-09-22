@@ -1,1 +1,0 @@
-export const USERS_REPOSITORY = Symbol('USERS_REPOSITORY');
