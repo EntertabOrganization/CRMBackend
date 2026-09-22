@@ -2,7 +2,7 @@
 
 ## Goal
 
-Implement the complete TrueAgent authentication lifecycle for local email/password and Google authentication, including email verification, access/refresh sessions, logout, password reset and current-user/session retrieval.
+Implement the complete EntertabCRM authentication lifecycle for local email/password and Google authentication, including email verification, access/refresh sessions, logout, password reset and current-user/session retrieval.
 
 This module authenticates the global User identity. Workspace authorization is a separate step.
 
@@ -178,7 +178,7 @@ It is acceptable to internally converge both endpoints into one provider flow if
 Rules:
 - Verify Google credential/token server-side through a GoogleAuthProvider abstraction.
 - Require verified Google email.
-- Do not send a second TrueAgent email verification.
+- Do not send a second EntertabCRM email verification.
 - If no User exists:
   - create User ACTIVE
   - create GOOGLE AuthIdentity

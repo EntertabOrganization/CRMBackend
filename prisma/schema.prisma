@@ -1,0 +1,348 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  PENDING_VERIFICATION
+  ACTIVE
+  SUSPENDED
+}
+
+enum AuthProvider {
+  LOCAL
+  GOOGLE
+}
+
+enum MembershipStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  REVOKED
+  EXPIRED
+}
+
+enum PermissionScope {
+  OWN
+  DEPARTMENT
+  DEPARTMENT_TREE
+  WORKSPACE
+}
+
+enum PartnerApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum PartnerStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+model User {
+  id              String    @id @default(uuid()) @db.Uuid
+  firstName       String    @map("first_name")
+  lastName        String    @map("last_name")
+  email           String    @unique
+  settings        Json      @default("{}")
+  meta            Json?
+  status          UserStatus
+  emailVerifiedAt DateTime? @map("email_verified_at")
+  isDeleted       Boolean   @default(false) @map("is_deleted")
+
+  authIdentities          AuthIdentity[]
+  refreshSessions         RefreshSession[]
+  emailVerificationTokens EmailVerificationToken[]
+  passwordResetTokens     PasswordResetToken[]
+  workspaceMemberships    WorkspaceMembership[]
+  ownedWorkspaces         Workspace[]              @relation("WorkspaceOwner")
+  departmentMemberships   DepartmentMember[]
+  managedDepartments      Department[]             @relation("DepartmentManager")
+  auditLogs               AuditLog[]               @relation("AuditActor")
+  sentInvitations         WorkspaceInvitation[]    @relation("InvitationInviter")
+  partnerMemberships      PartnerMembership[]
+  partnerApplications     PartnerApplication[]
+
+  @@map("users")
+}
+
+model AuthIdentity {
+  id             String       @id @default(uuid()) @db.Uuid
+  userId         String       @map("user_id") @db.Uuid
+  provider       AuthProvider
+  providerUserId String?      @map("provider_user_id")
+  passwordHash   String?      @map("password_hash")
+  isDeleted      Boolean      @default(false) @map("is_deleted")
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@unique([userId, provider])
+  @@map("auth_identities")
+}
+
+model RefreshSession {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  isDeleted Boolean   @default(false) @map("is_deleted")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_sessions")
+}
+
+model EmailVerificationToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  tokenHash  String    @map("token_hash")
+  expiresAt  DateTime  @map("expires_at")
+  consumedAt DateTime? @map("consumed_at")
+  isDeleted  Boolean   @default(false) @map("is_deleted")
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("email_verification_tokens")
+}
+
+model PasswordResetToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  tokenHash  String    @map("token_hash")
+  expiresAt  DateTime  @map("expires_at")
+  consumedAt DateTime? @map("consumed_at")
+  isDeleted  Boolean   @default(false) @map("is_deleted")
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("password_reset_tokens")
+}
+
+model Workspace {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String
+  slug        String    @unique
+  description String?
+  settings    Json      @default("{}")
+  meta        Json?
+  ownerUserId String    @map("owner_user_id") @db.Uuid
+  isDeleted   Boolean   @default(false) @map("is_deleted")
+  owner       User      @relation("WorkspaceOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+  memberships WorkspaceMembership[]
+  roles       Role[]
+  departments Department[]
+  invitations WorkspaceInvitation[]
+  auditLogs   AuditLog[]
+  partnerRelations PartnerWorkspaceRelation[]
+
+  @@map("workspaces")
+}
+
+model WorkspaceMembership {
+  id          String           @id @default(uuid()) @db.Uuid
+  workspaceId String           @map("workspace_id") @db.Uuid
+  userId      String           @map("user_id") @db.Uuid
+  roleId      String           @map("role_id") @db.Uuid
+  status      MembershipStatus @default(ACTIVE)
+  isDeleted   Boolean          @default(false) @map("is_deleted")
+  workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role        Role             @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@unique([workspaceId, userId])
+  @@map("workspace_memberships")
+}
+
+model WorkspaceInvitation {
+  id          String           @id @default(uuid()) @db.Uuid
+  workspaceId String           @map("workspace_id") @db.Uuid
+  email       String
+  roleId      String           @map("role_id") @db.Uuid
+  tokenHash   String           @map("token_hash")
+  status      InvitationStatus @default(PENDING)
+  expiresAt   DateTime         @map("expires_at")
+  acceptedAt  DateTime?        @map("accepted_at")
+  invitedById String?          @map("invited_by_id") @db.Uuid
+  isDeleted   Boolean          @default(false) @map("is_deleted")
+  workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  role        Role             @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  invitedBy   User?            @relation("InvitationInviter", fields: [invitedById], references: [id], onDelete: SetNull)
+
+  @@map("workspace_invitations")
+}
+
+model Permission {
+  id          String  @id @default(uuid()) @db.Uuid
+  key         String  @unique
+  name        String
+  description String?
+  module      String
+  resource    String
+  action      String
+  isDeleted   Boolean @default(false) @map("is_deleted")
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model Role {
+  id          String  @id @default(uuid()) @db.Uuid
+  workspaceId String  @map("workspace_id") @db.Uuid
+  name        String
+  description String?
+  isSystem    Boolean @default(false) @map("is_system")
+  isOwnerRole Boolean @default(false) @map("is_owner_role")
+  isDeleted   Boolean @default(false) @map("is_deleted")
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  memberships WorkspaceMembership[]
+  rolePermissions RolePermission[]
+  invitations WorkspaceInvitation[]
+
+  @@map("roles")
+}
+
+model RolePermission {
+  id           String          @id @default(uuid()) @db.Uuid
+  roleId       String          @map("role_id") @db.Uuid
+  permissionId String          @map("permission_id") @db.Uuid
+  scope        PermissionScope
+  isDeleted    Boolean         @default(false) @map("is_deleted")
+  role         Role            @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission      @relation(fields: [permissionId], references: [id], onDelete: Restrict)
+
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model Department {
+  id                 String       @id @default(uuid()) @db.Uuid
+  workspaceId        String       @map("workspace_id") @db.Uuid
+  parentDepartmentId String?      @map("parent_department_id") @db.Uuid
+  name               String
+  description        String?
+  managerId          String?      @map("manager_id") @db.Uuid
+  isDeleted          Boolean      @default(false) @map("is_deleted")
+  workspace          Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  parent             Department?  @relation("DepartmentTree", fields: [parentDepartmentId], references: [id], onDelete: Restrict)
+  children           Department[] @relation("DepartmentTree")
+  manager            User?        @relation("DepartmentManager", fields: [managerId], references: [id], onDelete: SetNull)
+  members            DepartmentMember[]
+
+  @@map("departments")
+}
+
+model DepartmentMember {
+  id           String     @id @default(uuid()) @db.Uuid
+  workspaceId  String     @map("workspace_id") @db.Uuid
+  departmentId String     @map("department_id") @db.Uuid
+  userId       String     @map("user_id") @db.Uuid
+  isDeleted    Boolean    @default(false) @map("is_deleted")
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([departmentId, userId])
+  @@map("department_members")
+}
+
+model PartnerApplication {
+  id                  String                   @id @default(uuid()) @db.Uuid
+  userId              String                   @map("user_id") @db.Uuid
+  firstName           String                   @map("first_name")
+  lastName            String                   @map("last_name")
+  email               String
+  phone               String
+  partnerName         String                   @map("partner_name")
+  country             String
+  website             String?
+  businessDescription String                   @map("business_description")
+  status              PartnerApplicationStatus @default(PENDING)
+  isDeleted           Boolean                  @default(false) @map("is_deleted")
+  user                User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("partner_applications")
+}
+
+model Partner {
+  id                  String        @id @default(uuid()) @db.Uuid
+  name                String
+  country             String
+  website             String?
+  businessDescription String?       @map("business_description")
+  status              PartnerStatus @default(ACTIVE)
+  defaultDiscount     Int           @default(10) @map("default_discount")
+  settings            Json          @default("{}")
+  meta                Json?
+  isDeleted           Boolean       @default(false) @map("is_deleted")
+  memberships         PartnerMembership[]
+  relations           PartnerWorkspaceRelation[]
+  auditLogs           AuditLog[]
+
+  @@map("partners")
+}
+
+model PartnerRole {
+  id          String  @id @default(uuid()) @db.Uuid
+  name        String
+  isOwnerRole Boolean @default(false) @map("is_owner_role")
+  isDeleted   Boolean @default(false) @map("is_deleted")
+  memberships PartnerMembership[]
+
+  @@map("partner_roles")
+}
+
+model PartnerMembership {
+  id            String           @id @default(uuid()) @db.Uuid
+  partnerId     String           @map("partner_id") @db.Uuid
+  userId        String           @map("user_id") @db.Uuid
+  partnerRoleId String           @map("partner_role_id") @db.Uuid
+  status        MembershipStatus @default(ACTIVE)
+  isDeleted     Boolean          @default(false) @map("is_deleted")
+  partner       Partner          @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  partnerRole   PartnerRole      @relation(fields: [partnerRoleId], references: [id], onDelete: Restrict)
+
+  @@unique([partnerId, userId])
+  @@map("partner_memberships")
+}
+
+model PartnerWorkspaceRelation {
+  id          String    @id @default(uuid()) @db.Uuid
+  partnerId   String    @map("partner_id") @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  isDeleted   Boolean   @default(false) @map("is_deleted")
+  partner     Partner   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, isDeleted])
+  @@map("partner_workspace_relations")
+}
+
+model AuditLog {
+  id            String    @id @default(uuid()) @db.Uuid
+  workspaceId   String?   @map("workspace_id") @db.Uuid
+  partnerId     String?   @map("partner_id") @db.Uuid
+  actorUserId   String?   @map("actor_user_id") @db.Uuid
+  action        String
+  entityType    String    @map("entity_type")
+  entityId      String?   @map("entity_id")
+  beforeData    Json?     @map("before_data")
+  afterData     Json?     @map("after_data")
+  metadata      Json?
+  ipAddress     String?   @map("ip_address")
+  userAgent     String?   @map("user_agent")
+  requestId     String?   @map("request_id")
+  occurredAt    DateTime  @default(now()) @map("occurred_at")
+  workspace     Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  partner       Partner?   @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+  actor         User?      @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@map("audit_logs")
+}

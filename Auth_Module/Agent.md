@@ -1,8 +1,8 @@
-# TrueAgent Auth Module — Agent Execution Contract
+# EntertabCRM Auth Module — Agent Execution Contract
 
 ## Purpose
 
-This file is the operating contract for any AI coding agent working on the TrueAgent Auth/Identity capability.
+This file is the operating contract for any AI coding agent working on the EntertabCRM Auth/Identity capability.
 
 The human partner should be able to give a goal such as:
 

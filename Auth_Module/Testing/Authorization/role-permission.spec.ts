@@ -1,5 +1,5 @@
 /**
- * TrueAgent executable contract test.
+ * EntertabCRM executable contract test.
  *
  * This file MUST be wired to the real repository implementation by the coding agent.
  * Do not skip/delete required scenarios. Replace `contract()` with real setup/assertions.

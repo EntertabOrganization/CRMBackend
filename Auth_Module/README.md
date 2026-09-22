@@ -1,4 +1,4 @@
-# TrueAgent Auth Module — Codex Pack
+# EntertabCRM Auth Module — Codex Pack
 
 This pack is designed to be copied into the repository and used directly by Codex or another coding agent.
 

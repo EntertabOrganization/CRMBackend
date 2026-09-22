@@ -2,7 +2,7 @@
 
 ## Goal
 
-Implement Workspace as the TrueAgent tenant boundary.
+Implement Workspace as the EntertabCRM tenant boundary.
 
 A User may belong to multiple Workspaces. Each Workspace has exactly one owner. Every WorkspaceMembership has exactly one Role.
 
