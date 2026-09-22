@@ -29,13 +29,18 @@
     ]
   },
   "include": [
-    "**/*.ts",
-    "**/*.tsx",
+    "app/**/*.ts",
+    "src/server/**/*.ts",
+    "tests/**/*.ts",
     "next-env.d.ts",
     ".next/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",
-    "Auth_Module"
+    "Auth_Module",
+    "CRM_Core_Pipelines",
+    "src/modules",
+    "tests/auth-api.e2e-spec.ts",
+    "tests/auth-module.spec.ts"
   ]
 }

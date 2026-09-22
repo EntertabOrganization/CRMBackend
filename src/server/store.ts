@@ -1,8 +1,28 @@
 import type {
   AuditLog,
   AuthIdentity,
+  CrmDeal,
+  CrmCompany,
+  CrmCompanyCommunication,
+  CrmContact,
+  CrmContactCommunication,
+  CrmContactCompany,
+  CrmDealContact,
+  CrmLead,
+  CrmLeadCommunication,
+  CrmLeadContact,
+  CrmLeadConversion,
+  CrmLostReason,
+  CrmPipeline,
+  CrmRecordObserver,
+  CrmRoleStagePermission,
+  CrmStage,
+  CrmStageHistory,
+  CrmStageTransition,
+  CrmSource,
   Department,
   DepartmentMember,
+  IdempotencyRecord,
   OneTimeToken,
   Partner,
   PartnerApplication,
@@ -13,6 +33,7 @@ import type {
   RefreshSession,
   Role,
   RolePermission,
+  OutboxEvent,
   User,
   Workspace,
   WorkspaceInvitation,
@@ -40,6 +61,27 @@ export type DbState = {
   partnerMemberships: PartnerMembership[];
   partnerWorkspaceRelations: PartnerWorkspaceRelation[];
   auditLogs: AuditLog[];
+  crmPipelines: CrmPipeline[];
+  crmStages: CrmStage[];
+  crmStageTransitions: CrmStageTransition[];
+  crmRoleStagePermissions: CrmRoleStagePermission[];
+  crmLostReasons: CrmLostReason[];
+  crmContacts: CrmContact[];
+  crmCompanies: CrmCompany[];
+  crmSources: CrmSource[];
+  crmLeadCommunications: CrmLeadCommunication[];
+  crmContactCommunications: CrmContactCommunication[];
+  crmCompanyCommunications: CrmCompanyCommunication[];
+  crmLeadContacts: CrmLeadContact[];
+  crmContactCompanies: CrmContactCompany[];
+  crmLeads: CrmLead[];
+  crmDeals: CrmDeal[];
+  crmDealContacts: CrmDealContact[];
+  crmLeadConversions: CrmLeadConversion[];
+  crmRecordObservers: CrmRecordObserver[];
+  crmStageHistory: CrmStageHistory[];
+  outboxEvents: OutboxEvent[];
+  idempotencyRecords: IdempotencyRecord[];
 };
 
 export class InMemoryStore {
@@ -66,6 +108,27 @@ export class InMemoryStore {
       partnerMemberships: [],
       partnerWorkspaceRelations: [],
       auditLogs: [],
+      crmPipelines: [],
+      crmStages: [],
+      crmStageTransitions: [],
+      crmRoleStagePermissions: [],
+      crmLostReasons: [],
+      crmContacts: [],
+      crmCompanies: [],
+      crmSources: [],
+      crmLeadCommunications: [],
+      crmContactCommunications: [],
+      crmCompanyCommunications: [],
+      crmLeadContacts: [],
+      crmContactCompanies: [],
+      crmLeads: [],
+      crmDeals: [],
+      crmDealContacts: [],
+      crmLeadConversions: [],
+      crmRecordObservers: [],
+      crmStageHistory: [],
+      outboxEvents: [],
+      idempotencyRecords: [],
       ...seed,
     };
   }

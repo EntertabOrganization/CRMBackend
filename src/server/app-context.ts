@@ -1,5 +1,7 @@
 import { AuthService } from './auth-service';
 import { AuditService } from './audit-service';
+import { CrmCoreService } from './crm-core-service';
+import { CrmPipelineService } from './crm-pipeline-service';
 import { DepartmentService } from './department-service';
 import { PartnerService } from './partner-service';
 import { FakeGoogleAuthProvider, MemoryMailService } from './providers';
@@ -23,6 +25,8 @@ function createAppContext() {
     roles: new RoleService(store),
     departments: new DepartmentService(store),
     partners: new PartnerService(store),
+    crmCore: new CrmCoreService(store),
+    crm: new CrmPipelineService(store),
   };
 }
 

@@ -49,16 +49,58 @@ enum PartnerStatus {
   SUSPENDED
 }
 
+enum CrmPipelineEntityType {
+  LEAD
+  DEAL
+}
+
+enum CrmRecordEntityType {
+  LEAD
+  DEAL
+  CONTACT
+  COMPANY
+}
+
+enum CrmStageSemanticType {
+  PROGRESS
+  SUCCESS
+  FAILURE
+}
+
+enum CrmLeadStatus {
+  ACTIVE
+  QUALIFIED
+  DISQUALIFIED
+}
+
+enum CrmLeadConversionStatus {
+  NOT_CONVERTED
+  CONVERTED
+}
+
+enum CrmDealStatus {
+  OPEN
+  WON
+  LOST
+}
+
+enum CrmCommunicationType {
+  PHONE
+  EMAIL
+  WEB
+  IM
+}
+
 model User {
-  id              String    @id @default(uuid()) @db.Uuid
-  firstName       String    @map("first_name")
-  lastName        String    @map("last_name")
-  email           String    @unique
-  settings        Json      @default("{}")
+  id              String     @id @default(uuid()) @db.Uuid
+  firstName       String     @map("first_name")
+  lastName        String     @map("last_name")
+  email           String     @unique
+  settings        Json       @default("{}")
   meta            Json?
   status          UserStatus
-  emailVerifiedAt DateTime? @map("email_verified_at")
-  isDeleted       Boolean   @default(false) @map("is_deleted")
+  emailVerifiedAt DateTime?  @map("email_verified_at")
+  isDeleted       Boolean    @default(false) @map("is_deleted")
 
   authIdentities          AuthIdentity[]
   refreshSessions         RefreshSession[]
@@ -127,20 +169,20 @@ model PasswordResetToken {
 }
 
 model Workspace {
-  id          String    @id @default(uuid()) @db.Uuid
-  name        String
-  slug        String    @unique
-  description String?
-  settings    Json      @default("{}")
-  meta        Json?
-  ownerUserId String    @map("owner_user_id") @db.Uuid
-  isDeleted   Boolean   @default(false) @map("is_deleted")
-  owner       User      @relation("WorkspaceOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
-  memberships WorkspaceMembership[]
-  roles       Role[]
-  departments Department[]
-  invitations WorkspaceInvitation[]
-  auditLogs   AuditLog[]
+  id               String                     @id @default(uuid()) @db.Uuid
+  name             String
+  slug             String                     @unique
+  description      String?
+  settings         Json                       @default("{}")
+  meta             Json?
+  ownerUserId      String                     @map("owner_user_id") @db.Uuid
+  isDeleted        Boolean                    @default(false) @map("is_deleted")
+  owner            User                       @relation("WorkspaceOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+  memberships      WorkspaceMembership[]
+  roles            Role[]
+  departments      Department[]
+  invitations      WorkspaceInvitation[]
+  auditLogs        AuditLog[]
   partnerRelations PartnerWorkspaceRelation[]
 
   @@map("workspaces")
@@ -180,31 +222,31 @@ model WorkspaceInvitation {
 }
 
 model Permission {
-  id          String  @id @default(uuid()) @db.Uuid
-  key         String  @unique
-  name        String
-  description String?
-  module      String
-  resource    String
-  action      String
-  isDeleted   Boolean @default(false) @map("is_deleted")
+  id              String           @id @default(uuid()) @db.Uuid
+  key             String           @unique
+  name            String
+  description     String?
+  module          String
+  resource        String
+  action          String
+  isDeleted       Boolean          @default(false) @map("is_deleted")
   rolePermissions RolePermission[]
 
   @@map("permissions")
 }
 
 model Role {
-  id          String  @id @default(uuid()) @db.Uuid
-  workspaceId String  @map("workspace_id") @db.Uuid
-  name        String
-  description String?
-  isSystem    Boolean @default(false) @map("is_system")
-  isOwnerRole Boolean @default(false) @map("is_owner_role")
-  isDeleted   Boolean @default(false) @map("is_deleted")
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  memberships WorkspaceMembership[]
+  id              String                @id @default(uuid()) @db.Uuid
+  workspaceId     String                @map("workspace_id") @db.Uuid
+  name            String
+  description     String?
+  isSystem        Boolean               @default(false) @map("is_system")
+  isOwnerRole     Boolean               @default(false) @map("is_owner_role")
+  isDeleted       Boolean               @default(false) @map("is_deleted")
+  workspace       Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  memberships     WorkspaceMembership[]
   rolePermissions RolePermission[]
-  invitations WorkspaceInvitation[]
+  invitations     WorkspaceInvitation[]
 
   @@map("roles")
 }
@@ -223,17 +265,17 @@ model RolePermission {
 }
 
 model Department {
-  id                 String       @id @default(uuid()) @db.Uuid
-  workspaceId        String       @map("workspace_id") @db.Uuid
-  parentDepartmentId String?      @map("parent_department_id") @db.Uuid
+  id                 String             @id @default(uuid()) @db.Uuid
+  workspaceId        String             @map("workspace_id") @db.Uuid
+  parentDepartmentId String?            @map("parent_department_id") @db.Uuid
   name               String
   description        String?
-  managerId          String?      @map("manager_id") @db.Uuid
-  isDeleted          Boolean      @default(false) @map("is_deleted")
-  workspace          Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  parent             Department?  @relation("DepartmentTree", fields: [parentDepartmentId], references: [id], onDelete: Restrict)
-  children           Department[] @relation("DepartmentTree")
-  manager            User?        @relation("DepartmentManager", fields: [managerId], references: [id], onDelete: SetNull)
+  managerId          String?            @map("manager_id") @db.Uuid
+  isDeleted          Boolean            @default(false) @map("is_deleted")
+  workspace          Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  parent             Department?        @relation("DepartmentTree", fields: [parentDepartmentId], references: [id], onDelete: Restrict)
+  children           Department[]       @relation("DepartmentTree")
+  manager            User?              @relation("DepartmentManager", fields: [managerId], references: [id], onDelete: SetNull)
   members            DepartmentMember[]
 
   @@map("departments")
@@ -271,16 +313,16 @@ model PartnerApplication {
 }
 
 model Partner {
-  id                  String        @id @default(uuid()) @db.Uuid
+  id                  String                     @id @default(uuid()) @db.Uuid
   name                String
   country             String
   website             String?
-  businessDescription String?       @map("business_description")
-  status              PartnerStatus @default(ACTIVE)
-  defaultDiscount     Int           @default(10) @map("default_discount")
-  settings            Json          @default("{}")
+  businessDescription String?                    @map("business_description")
+  status              PartnerStatus              @default(ACTIVE)
+  defaultDiscount     Int                        @default(10) @map("default_discount")
+  settings            Json                       @default("{}")
   meta                Json?
-  isDeleted           Boolean       @default(false) @map("is_deleted")
+  isDeleted           Boolean                    @default(false) @map("is_deleted")
   memberships         PartnerMembership[]
   relations           PartnerWorkspaceRelation[]
   auditLogs           AuditLog[]
@@ -289,10 +331,10 @@ model Partner {
 }
 
 model PartnerRole {
-  id          String  @id @default(uuid()) @db.Uuid
+  id          String              @id @default(uuid()) @db.Uuid
   name        String
-  isOwnerRole Boolean @default(false) @map("is_owner_role")
-  isDeleted   Boolean @default(false) @map("is_deleted")
+  isOwnerRole Boolean             @default(false) @map("is_owner_role")
+  isDeleted   Boolean             @default(false) @map("is_deleted")
   memberships PartnerMembership[]
 
   @@map("partner_roles")
@@ -326,23 +368,437 @@ model PartnerWorkspaceRelation {
 }
 
 model AuditLog {
-  id            String    @id @default(uuid()) @db.Uuid
-  workspaceId   String?   @map("workspace_id") @db.Uuid
-  partnerId     String?   @map("partner_id") @db.Uuid
-  actorUserId   String?   @map("actor_user_id") @db.Uuid
-  action        String
-  entityType    String    @map("entity_type")
-  entityId      String?   @map("entity_id")
-  beforeData    Json?     @map("before_data")
-  afterData     Json?     @map("after_data")
-  metadata      Json?
-  ipAddress     String?   @map("ip_address")
-  userAgent     String?   @map("user_agent")
-  requestId     String?   @map("request_id")
-  occurredAt    DateTime  @default(now()) @map("occurred_at")
-  workspace     Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
-  partner       Partner?   @relation(fields: [partnerId], references: [id], onDelete: SetNull)
-  actor         User?      @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  id          String     @id @default(uuid()) @db.Uuid
+  workspaceId String?    @map("workspace_id") @db.Uuid
+  partnerId   String?    @map("partner_id") @db.Uuid
+  actorUserId String?    @map("actor_user_id") @db.Uuid
+  action      String
+  entityType  String     @map("entity_type")
+  entityId    String?    @map("entity_id")
+  beforeData  Json?      @map("before_data")
+  afterData   Json?      @map("after_data")
+  metadata    Json?
+  ipAddress   String?    @map("ip_address")
+  userAgent   String?    @map("user_agent")
+  requestId   String?    @map("request_id")
+  occurredAt  DateTime   @default(now()) @map("occurred_at")
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  partner     Partner?   @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+  actor       User?      @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
 
   @@map("audit_logs")
+}
+
+model CrmPipeline {
+  id                     String                @id @default(uuid()) @db.Uuid
+  workspaceId            String                @map("workspace_id") @db.Uuid
+  entityType             CrmPipelineEntityType @map("entity_type")
+  name                   String
+  normalizedName         String                @map("normalized_name")
+  isDefault              Boolean               @default(false) @map("is_default")
+  isActive               Boolean               @default(true) @map("is_active")
+  transitionRulesEnabled Boolean               @default(false) @map("transition_rules_enabled")
+  createdAt              DateTime              @default(now()) @map("created_at")
+  updatedAt              DateTime              @updatedAt @map("updated_at")
+  version                Int                   @default(1)
+
+  @@unique([workspaceId, entityType, normalizedName, isActive])
+  @@index([workspaceId, entityType, isActive])
+  @@index([workspaceId, entityType, isDefault])
+  @@map("crm_pipelines")
+}
+
+model CrmStage {
+  id           String               @id @default(uuid()) @db.Uuid
+  workspaceId  String               @map("workspace_id") @db.Uuid
+  pipelineId   String               @map("pipeline_id") @db.Uuid
+  name         String
+  position     Int
+  semanticType CrmStageSemanticType @map("semantic_type")
+  isDefault    Boolean              @default(false) @map("is_default")
+  isActive     Boolean              @default(true) @map("is_active")
+  createdAt    DateTime             @default(now()) @map("created_at")
+  updatedAt    DateTime             @updatedAt @map("updated_at")
+  version      Int                  @default(1)
+
+  @@unique([pipelineId, name, isActive])
+  @@index([workspaceId, pipelineId, isActive])
+  @@index([pipelineId, isDefault])
+  @@map("crm_stages")
+}
+
+model CrmStageTransition {
+  id          String  @id @default(uuid()) @db.Uuid
+  workspaceId String  @map("workspace_id") @db.Uuid
+  pipelineId  String  @map("pipeline_id") @db.Uuid
+  fromStageId String  @map("from_stage_id") @db.Uuid
+  toStageId   String  @map("to_stage_id") @db.Uuid
+  isActive    Boolean @default(true) @map("is_active")
+
+  @@unique([pipelineId, fromStageId, toStageId, isActive])
+  @@index([workspaceId, pipelineId])
+  @@map("crm_stage_transitions")
+}
+
+model CrmRoleStagePermission {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  roleId      String   @map("role_id") @db.Uuid
+  stageId     String   @map("stage_id") @db.Uuid
+  canView     Boolean  @default(true) @map("can_view")
+  canEnter    Boolean  @default(true) @map("can_enter")
+  canLeave    Boolean  @default(true) @map("can_leave")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([roleId, stageId])
+  @@index([workspaceId, roleId])
+  @@index([workspaceId, stageId])
+  @@map("crm_role_stage_permissions")
+}
+
+model CrmLostReason {
+  id          String  @id @default(uuid()) @db.Uuid
+  workspaceId String  @map("workspace_id") @db.Uuid
+  name        String
+  isActive    Boolean @default(true) @map("is_active")
+  isSystem    Boolean @default(false) @map("is_system")
+
+  @@unique([workspaceId, name, isActive])
+  @@map("crm_lost_reasons")
+}
+
+model CrmLead {
+  id                String                  @id @default(uuid()) @db.Uuid
+  workspaceId       String                  @map("workspace_id") @db.Uuid
+  title             String
+  firstName         String?                 @map("first_name")
+  lastName          String?                 @map("last_name")
+  companyName       String?                 @map("company_name")
+  responsibleUserId String                  @map("responsible_user_id") @db.Uuid
+  companyId         String?                 @map("company_id") @db.Uuid
+  pipelineId        String                  @map("pipeline_id") @db.Uuid
+  stageId           String                  @map("stage_id") @db.Uuid
+  status            CrmLeadStatus
+  conversionStatus  CrmLeadConversionStatus @default(NOT_CONVERTED) @map("conversion_status")
+  convertedAt       DateTime?               @map("converted_at")
+  convertedByUserId String?                 @map("converted_by_user_id") @db.Uuid
+  sourceId          String?                 @map("source_id") @db.Uuid
+  sourceDescription String?                 @map("source_description")
+  estimatedAmount   Float?                  @map("estimated_amount")
+  currencyCode      String?                 @map("currency_code")
+  addressLine1      String?                 @map("address_line_1")
+  addressLine2      String?                 @map("address_line_2")
+  city              String?
+  stateOrProvince   String?                 @map("state_or_province")
+  postalCode        String?                 @map("postal_code")
+  countryCode       String?                 @map("country_code")
+  utmSource         String?                 @map("utm_source")
+  utmMedium         String?                 @map("utm_medium")
+  utmCampaign       String?                 @map("utm_campaign")
+  utmContent        String?                 @map("utm_content")
+  utmTerm           String?                 @map("utm_term")
+  originSystem      String?                 @map("origin_system")
+  originExternalId  String?                 @map("origin_external_id")
+  originVersion     String?                 @map("origin_version")
+  lostReasonId      String?                 @map("lost_reason_id") @db.Uuid
+  lostReasonComment String?                 @map("lost_reason_comment")
+  isArchived        Boolean                 @default(false) @map("is_archived")
+  archivedAt        DateTime?               @map("archived_at")
+  archivedByUserId  String?                 @map("archived_by_user_id") @db.Uuid
+  isDeleted         Boolean                 @default(false) @map("is_deleted")
+  deletedAt         DateTime?               @map("deleted_at")
+  deletedByUserId   String?                 @map("deleted_by_user_id") @db.Uuid
+  createdAt         DateTime                @default(now()) @map("created_at")
+  updatedAt         DateTime                @updatedAt @map("updated_at")
+  version           Int                     @default(1)
+
+  @@index([workspaceId, responsibleUserId])
+  @@index([workspaceId, pipelineId, stageId])
+  @@map("crm_leads")
+}
+
+model CrmLeadCommunication {
+  id              String               @id @default(uuid()) @db.Uuid
+  workspaceId     String               @map("workspace_id") @db.Uuid
+  leadId          String               @map("lead_id") @db.Uuid
+  type            CrmCommunicationType
+  value           String
+  normalizedValue String               @map("normalized_value")
+  label           String?
+  isPrimary       Boolean              @default(false) @map("is_primary")
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+
+  @@index([workspaceId, type, normalizedValue])
+  @@index([leadId, type, isPrimary])
+  @@map("crm_lead_communications")
+}
+
+model CrmLeadContact {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  leadId      String   @map("lead_id") @db.Uuid
+  contactId   String   @map("contact_id") @db.Uuid
+  isPrimary   Boolean  @default(false) @map("is_primary")
+  sortOrder   Int      @default(1) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([leadId, contactId])
+  @@index([workspaceId, contactId])
+  @@index([leadId, isPrimary])
+  @@map("crm_lead_contacts")
+}
+
+model CrmSource {
+  id          String  @id @default(uuid()) @db.Uuid
+  workspaceId String  @map("workspace_id") @db.Uuid
+  name        String
+  code        String
+  sortOrder   Int     @default(1) @map("sort_order")
+  isActive    Boolean @default(true) @map("is_active")
+  isSystem    Boolean @default(false) @map("is_system")
+
+  @@unique([workspaceId, code])
+  @@map("crm_sources")
+}
+
+model CrmLeadConversion {
+  id                String   @id @default(uuid()) @db.Uuid
+  workspaceId       String   @map("workspace_id") @db.Uuid
+  leadId            String   @map("lead_id") @db.Uuid
+  contactId         String?  @map("contact_id") @db.Uuid
+  companyId         String?  @map("company_id") @db.Uuid
+  dealId            String?  @map("deal_id") @db.Uuid
+  convertedByUserId String   @map("converted_by_user_id") @db.Uuid
+  convertedAt       DateTime @default(now()) @map("converted_at")
+
+  @@unique([leadId])
+  @@index([workspaceId, convertedAt])
+  @@map("crm_lead_conversions")
+}
+
+model CrmRecordObserver {
+  id              String              @id @default(uuid()) @db.Uuid
+  workspaceId     String              @map("workspace_id") @db.Uuid
+  entityType      CrmRecordEntityType @map("entity_type")
+  recordId        String              @map("record_id") @db.Uuid
+  userId          String              @map("user_id") @db.Uuid
+  createdByUserId String              @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime            @default(now()) @map("created_at")
+
+  @@unique([workspaceId, entityType, recordId, userId])
+  @@index([workspaceId, userId])
+  @@index([workspaceId, entityType, recordId])
+  @@map("crm_record_observers")
+}
+
+model CrmDeal {
+  id                String        @id @default(uuid()) @db.Uuid
+  workspaceId       String        @map("workspace_id") @db.Uuid
+  title             String
+  responsibleUserId String        @map("responsible_user_id") @db.Uuid
+  companyId         String?       @map("company_id") @db.Uuid
+  pipelineId        String        @map("pipeline_id") @db.Uuid
+  stageId           String        @map("stage_id") @db.Uuid
+  status            CrmDealStatus
+  amount            Float?
+  currencyCode      String?       @map("currency_code")
+  sourceId          String?       @map("source_id") @db.Uuid
+  sourceDescription String?       @map("source_description")
+  utmSource         String?       @map("utm_source")
+  utmMedium         String?       @map("utm_medium")
+  utmCampaign       String?       @map("utm_campaign")
+  utmContent        String?       @map("utm_content")
+  utmTerm           String?       @map("utm_term")
+  originSystem      String?       @map("origin_system")
+  originExternalId  String?       @map("origin_external_id")
+  originVersion     String?       @map("origin_version")
+  lostReasonId      String?       @map("lost_reason_id") @db.Uuid
+  lostReasonComment String?       @map("lost_reason_comment")
+  isArchived        Boolean       @default(false) @map("is_archived")
+  archivedAt        DateTime?     @map("archived_at")
+  archivedByUserId  String?       @map("archived_by_user_id") @db.Uuid
+  isDeleted         Boolean       @default(false) @map("is_deleted")
+  deletedAt         DateTime?     @map("deleted_at")
+  deletedByUserId   String?       @map("deleted_by_user_id") @db.Uuid
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+  version           Int           @default(1)
+
+  @@index([workspaceId, responsibleUserId])
+  @@index([workspaceId, pipelineId, stageId])
+  @@index([workspaceId, sourceId])
+  @@map("crm_deals")
+}
+
+model CrmContact {
+  id                String    @id @default(uuid()) @db.Uuid
+  workspaceId       String    @map("workspace_id") @db.Uuid
+  firstName         String    @map("first_name")
+  lastName          String    @map("last_name")
+  displayName       String    @map("display_name")
+  responsibleUserId String    @map("responsible_user_id") @db.Uuid
+  addressLine1      String?   @map("address_line_1")
+  addressLine2      String?   @map("address_line_2")
+  city              String?
+  stateOrProvince   String?   @map("state_or_province")
+  postalCode        String?   @map("postal_code")
+  countryCode       String?   @map("country_code")
+  isArchived        Boolean   @default(false) @map("is_archived")
+  archivedAt        DateTime? @map("archived_at")
+  archivedByUserId  String?   @map("archived_by_user_id") @db.Uuid
+  isDeleted         Boolean   @default(false) @map("is_deleted")
+  deletedAt         DateTime? @map("deleted_at")
+  deletedByUserId   String?   @map("deleted_by_user_id") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  version           Int       @default(1)
+
+  @@index([workspaceId, responsibleUserId])
+  @@index([workspaceId, displayName])
+  @@map("crm_contacts")
+}
+
+model CrmCompany {
+  id                String    @id @default(uuid()) @db.Uuid
+  workspaceId       String    @map("workspace_id") @db.Uuid
+  name              String
+  responsibleUserId String    @map("responsible_user_id") @db.Uuid
+  addressLine1      String?   @map("address_line_1")
+  addressLine2      String?   @map("address_line_2")
+  city              String?
+  stateOrProvince   String?   @map("state_or_province")
+  postalCode        String?   @map("postal_code")
+  countryCode       String?   @map("country_code")
+  isArchived        Boolean   @default(false) @map("is_archived")
+  archivedAt        DateTime? @map("archived_at")
+  archivedByUserId  String?   @map("archived_by_user_id") @db.Uuid
+  isDeleted         Boolean   @default(false) @map("is_deleted")
+  deletedAt         DateTime? @map("deleted_at")
+  deletedByUserId   String?   @map("deleted_by_user_id") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  version           Int       @default(1)
+
+  @@index([workspaceId, responsibleUserId])
+  @@index([workspaceId, name])
+  @@map("crm_companies")
+}
+
+model CrmContactCommunication {
+  id              String               @id @default(uuid()) @db.Uuid
+  workspaceId     String               @map("workspace_id") @db.Uuid
+  contactId       String               @map("contact_id") @db.Uuid
+  type            CrmCommunicationType
+  value           String
+  normalizedValue String               @map("normalized_value")
+  label           String?
+  isPrimary       Boolean              @default(false) @map("is_primary")
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+
+  @@index([workspaceId, type, normalizedValue])
+  @@index([contactId, type, isPrimary])
+  @@map("crm_contact_communications")
+}
+
+model CrmCompanyCommunication {
+  id              String               @id @default(uuid()) @db.Uuid
+  workspaceId     String               @map("workspace_id") @db.Uuid
+  companyId       String               @map("company_id") @db.Uuid
+  type            CrmCommunicationType
+  value           String
+  normalizedValue String               @map("normalized_value")
+  label           String?
+  isPrimary       Boolean              @default(false) @map("is_primary")
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+
+  @@index([workspaceId, type, normalizedValue])
+  @@index([companyId, type, isPrimary])
+  @@map("crm_company_communications")
+}
+
+model CrmContactCompany {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  contactId   String   @map("contact_id") @db.Uuid
+  companyId   String   @map("company_id") @db.Uuid
+  jobTitle    String?  @map("job_title")
+  department  String?
+  isPrimary   Boolean  @default(false) @map("is_primary")
+  sortOrder   Int      @default(1) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([contactId, companyId])
+  @@index([workspaceId, companyId])
+  @@index([contactId, isPrimary])
+  @@map("crm_contact_companies")
+}
+
+model CrmDealContact {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  dealId      String   @map("deal_id") @db.Uuid
+  contactId   String   @map("contact_id") @db.Uuid
+  role        String?
+  isPrimary   Boolean  @default(false) @map("is_primary")
+  sortOrder   Int      @default(1) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([dealId, contactId])
+  @@index([workspaceId, contactId])
+  @@index([dealId, isPrimary])
+  @@map("crm_deal_contacts")
+}
+
+model CrmStageHistory {
+  id             String                @id @default(uuid()) @db.Uuid
+  workspaceId    String                @map("workspace_id") @db.Uuid
+  entityType     CrmPipelineEntityType @map("entity_type")
+  recordId       String                @map("record_id") @db.Uuid
+  fromPipelineId String?               @map("from_pipeline_id") @db.Uuid
+  fromStageId    String?               @map("from_stage_id") @db.Uuid
+  toPipelineId   String                @map("to_pipeline_id") @db.Uuid
+  toStageId      String                @map("to_stage_id") @db.Uuid
+  movedByUserId  String                @map("moved_by_user_id") @db.Uuid
+  movedAt        DateTime              @default(now()) @map("moved_at")
+  correlationId  String?               @map("correlation_id")
+
+  @@index([workspaceId, entityType, recordId, movedAt])
+  @@map("crm_stage_history")
+}
+
+model OutboxEvent {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  eventType   String   @map("event_type")
+  entityType  String   @map("entity_type")
+  entityId    String   @map("entity_id") @db.Uuid
+  actorUserId String?  @map("actor_user_id") @db.Uuid
+  occurredAt  DateTime @default(now()) @map("occurred_at")
+  payload     Json
+
+  @@index([workspaceId, eventType, occurredAt])
+  @@map("outbox_events")
+}
+
+model IdempotencyRecord {
+  id             String   @id @default(uuid()) @db.Uuid
+  workspaceId    String   @map("workspace_id") @db.Uuid
+  actorUserId    String   @map("actor_user_id") @db.Uuid
+  operation      String
+  idempotencyKey String   @map("idempotency_key")
+  requestHash    String   @map("request_hash")
+  response       Json
+  expiresAt      DateTime @map("expires_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@unique([workspaceId, actorUserId, operation, idempotencyKey])
+  @@index([expiresAt])
+  @@map("idempotency_records")
 }

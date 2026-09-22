@@ -1,0 +1,40 @@
+{
+  "pack": "TrueCRM CRM Core + Pipelines Codex Pack",
+  "version": "1.0",
+  "modules": [
+    "03 - CRM Core Records",
+    "04 - Pipelines & Stages"
+  ],
+  "goal_examples": [
+    "Complete CRM Core",
+    "Complete Leads",
+    "Complete Contacts",
+    "Complete CRM Companies",
+    "Complete Deals",
+    "Complete Lead Conversion",
+    "Complete Pipelines",
+    "Complete Stages",
+    "Complete CRM Core + Pipelines"
+  ],
+  "specifications": [
+    "CRM-Core/lead.md",
+    "CRM-Core/contact.md",
+    "CRM-Core/crm-company.md",
+    "CRM-Core/deal.md",
+    "CRM-Core/communications.md",
+    "CRM-Core/relationships.md",
+    "CRM-Core/lead-conversion.md",
+    "CRM-Core/crm-source.md",
+    "CRM-Core/crm-lifecycle.md",
+    "Pipelines/pipeline.md",
+    "Pipelines/stage.md",
+    "Pipelines/transition.md",
+    "Pipelines/stage-history.md",
+    "Pipelines/lost-reason.md",
+    "Pipelines/pipeline-migration.md"
+  ],
+  "test_contract_root": "Testing",
+  "entrypoint": "Agent.md",
+  "pagination_contract": "cursor",
+  "authority_note": "For Modules 03 and 04, locked decisions in this pack override older product documents where they intentionally differ. Bitrix24 is reference-only."
+}

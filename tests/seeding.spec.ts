@@ -33,8 +33,13 @@ describe('database seed configuration', () => {
         'audit.read',
         'partner.company.create',
         'partner.billing.manage',
+        'crm.lead.create',
+        'crm.lead.convert',
+        'crm.deal.transition',
+        'crm.pipeline.manage',
+        'crm.pipeline.transition.override',
       ]),
     );
-    expect(seedConfig.PERMISSIONS).toHaveLength(19);
+    expect(seedConfig.PERMISSIONS).toHaveLength(45);
   });
 });

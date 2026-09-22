@@ -3,6 +3,7 @@ import { conflict, forbidden, notFound } from './errors';
 import { PERMISSION_CATALOG } from './permissions';
 import type { InMemoryStore } from './store';
 import { AuditService } from './audit-service';
+import { CrmPipelineService } from './crm-pipeline-service';
 import { safeUser } from './sanitize';
 
 function slugify(value: string) {
@@ -70,6 +71,7 @@ export class WorkspaceService {
     this.store.state.workspaces.push(workspace);
     this.store.state.roles.push(role);
     this.store.state.workspaceMemberships.push(membership);
+    new CrmPipelineService(this.store).bootstrapDefaults(workspace.id);
     new AuditService(this.store).write({
       workspaceId: workspace.id,
       actorUserId: user.id,

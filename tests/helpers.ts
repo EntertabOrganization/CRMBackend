@@ -7,6 +7,8 @@ import { UserService } from '@/src/server/user-service';
 import { WorkspaceService } from '@/src/server/workspace-service';
 import { PartnerService } from '@/src/server/partner-service';
 import { AuditService } from '@/src/server/audit-service';
+import { CrmCoreService } from '@/src/server/crm-core-service';
+import { CrmPipelineService } from '@/src/server/crm-pipeline-service';
 
 export function testApp() {
   const store = new InMemoryStore();
@@ -23,6 +25,8 @@ export function testApp() {
     roles: new RoleService(store),
     departments: new DepartmentService(store),
     partners: new PartnerService(store),
+    crmCore: new CrmCoreService(store),
+    crm: new CrmPipelineService(store),
   };
 }
 

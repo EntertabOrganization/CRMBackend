@@ -44,3 +44,16 @@ export async function route<T>(handler: () => Promise<T>, meta: PageMeta | null 
     await persistState(prisma, snapshot, appContext.store.state);
   }
 }
+
+export async function routeWithMeta<T>(handler: () => Promise<{ data: T; meta: PageMeta | Record<string, unknown> | null }>) {
+  const snapshot = await hydrateState(prisma);
+  appContext.store.state = structuredClone(snapshot);
+  try {
+    const result = await handler();
+    return ok(result.data, result.meta as PageMeta | null);
+  } catch (error) {
+    return fail(error);
+  } finally {
+    await persistState(prisma, snapshot, appContext.store.state);
+  }
+}
