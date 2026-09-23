@@ -97,6 +97,7 @@ export class DepartmentService {
     const { role } = new WorkspaceService(this.store).assertMembership(user.id, workspaceId);
     if (!role.isOwnerRole) throw forbidden();
     this.getDepartment(workspaceId, departmentId);
+    if (!Array.isArray(userIds) || userIds.length === 0) throw badRequest('VALIDATION_ERROR', 'userIds must be a non-empty array.');
     userIds.forEach((userId) => this.assertWorkspaceMember(userId, workspaceId));
     if (userIds.some((userId) => this.store.state.departmentMembers.some((item) => item.departmentId === departmentId && item.userId === userId && !item.isDeleted))) {
       throw conflict('DEPARTMENT_MEMBER_EXISTS', 'Duplicate department membership is not allowed.');

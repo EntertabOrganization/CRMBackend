@@ -1,11 +1,17 @@
 import { NextRequest } from 'next/server';
 import type { User } from './domain';
-import { unauthorized } from './errors';
+import { badRequest, unauthorized } from './errors';
 import { verifyAccessToken } from './security';
 import type { InMemoryStore } from './store';
 
 export async function readJson<T>(request: NextRequest): Promise<T> {
-  return request.json() as Promise<T>;
+  const text = await request.text();
+  if (!text.trim()) return {} as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw badRequest('INVALID_JSON', 'Request body must be valid JSON.');
+  }
 }
 
 export async function requireUser(request: NextRequest, store: InMemoryStore): Promise<User> {

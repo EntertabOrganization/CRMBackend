@@ -130,8 +130,61 @@ async function seedAdmin(prisma = new PrismaClient()) {
       },
     });
 
+    await seedDefaultPipelines(tx, workspace.id);
+
     return { user, workspace, role: adminRole };
   });
+}
+
+const DEFAULT_PIPELINES = [
+  {
+    entityType: 'LEAD',
+    name: 'Default Lead Pipeline',
+    stages: [
+      { name: 'New', semanticType: 'PROGRESS', isDefault: true, position: 10 },
+      { name: 'Qualified', semanticType: 'SUCCESS', position: 20 },
+      { name: 'Disqualified', semanticType: 'FAILURE', position: 30 },
+    ],
+  },
+  {
+    entityType: 'DEAL',
+    name: 'Default Deal Pipeline',
+    stages: [
+      { name: 'New', semanticType: 'PROGRESS', isDefault: true, position: 10 },
+      { name: 'Won', semanticType: 'SUCCESS', position: 20 },
+      { name: 'Lost', semanticType: 'FAILURE', position: 30 },
+    ],
+  },
+];
+
+// Mirrors CrmPipelineService.bootstrapDefaults so the seeded workspace can create Leads and Deals.
+async function seedDefaultPipelines(tx, workspaceId) {
+  for (const definition of DEFAULT_PIPELINES) {
+    const existing = await tx.crmPipeline.findFirst({
+      where: { workspaceId, entityType: definition.entityType, isDefault: true, isActive: true },
+    });
+    if (existing) continue;
+
+    const pipeline = await tx.crmPipeline.create({
+      data: {
+        workspaceId,
+        entityType: definition.entityType,
+        name: definition.name,
+        normalizedName: definition.name.toLowerCase(),
+        isDefault: true,
+      },
+    });
+    await tx.crmStage.createMany({
+      data: definition.stages.map((stage) => ({
+        workspaceId,
+        pipelineId: pipeline.id,
+        name: stage.name,
+        position: stage.position,
+        semanticType: stage.semanticType,
+        isDefault: Boolean(stage.isDefault),
+      })),
+    });
+  }
 }
 
 async function main() {

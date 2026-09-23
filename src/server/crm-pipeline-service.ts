@@ -339,7 +339,9 @@ export class CrmPipelineService {
     }
   }
 
-  deactivatePipeline(actor: User, workspaceId: string, pipelineId: string, input?: PipelineMigrationInput) {
+  deactivatePipeline(actor: User, workspaceId: string, pipelineId: string, migration?: PipelineMigrationInput) {
+    // An empty body means no migration mapping was supplied.
+    const input = migration?.targetPipelineId ? migration : undefined;
     this.assertPipelineManager(actor.id, workspaceId);
     const snapshot = this.store.cloneState();
     try {

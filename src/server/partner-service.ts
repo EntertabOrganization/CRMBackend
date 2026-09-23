@@ -1,12 +1,17 @@
 import type { User } from './domain';
 import { AuditService } from './audit-service';
-import { forbidden, notFound } from './errors';
+import { badRequest, forbidden, notFound } from './errors';
 import type { InMemoryStore } from './store';
 
 export class PartnerService {
   constructor(private readonly store: InMemoryStore) {}
 
   submitApplication(user: User, input: { phone: string; partnerName: string; country: string; website?: string | null; businessDescription: string }) {
+    for (const field of ['phone', 'partnerName', 'country', 'businessDescription'] as const) {
+      if (typeof input?.[field] !== 'string' || !input[field].trim()) {
+        throw badRequest('VALIDATION_ERROR', `${field} is required.`);
+      }
+    }
     const application = {
       id: this.store.id(),
       userId: user.id,
