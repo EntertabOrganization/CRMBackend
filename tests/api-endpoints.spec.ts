@@ -763,45 +763,48 @@ describe('CRM deals', () => {
 });
 
 describe('Cross-cutting behaviour', () => {
-  const protectedEndpoints: Array<[string, string, Record<string, string>]> = [
-    ['GET', '/api/v1/audit-logs', {}],
-    ['GET', '/api/v1/audit-logs/[id]', { id: MISSING_ID }],
-    ['GET', '/api/v1/auth/me', {}],
-    ['POST', '/api/v1/auth/logout-all', {}],
-    ['GET', '/api/v1/permissions', {}],
-    ['GET', '/api/v1/roles', {}],
-    ['POST', '/api/v1/roles', {}],
-    ['DELETE', '/api/v1/roles/[id]', { id: MISSING_ID }],
-    ['PUT', '/api/v1/roles/[id]/permissions', { id: MISSING_ID }],
-    ['GET', '/api/v1/users', {}],
-    ['POST', '/api/v1/users', {}],
-    ['GET', '/api/v1/users/[id]', { id: MISSING_ID }],
-    ['PATCH', '/api/v1/users/[id]', { id: MISSING_ID }],
-    ['DELETE', '/api/v1/users/[id]', { id: MISSING_ID }],
-    ['GET', '/api/v1/workspaces', {}],
-    ['POST', '/api/v1/workspaces', {}],
-    ['GET', '/api/v1/workspaces/[id]', { id: MISSING_ID }],
-    ['POST', '/api/v1/workspaces/[id]/switch', { id: MISSING_ID }],
-    ['GET', '/api/v1/departments', {}],
-    ['POST', '/api/v1/department-members', {}],
-    ['POST', '/api/v1/partners/applications', {}],
-    ['GET', '/api/v1/crm/leads', {}],
-    ['POST', '/api/v1/crm/leads', {}],
-    ['POST', '/api/v1/crm/leads/[id]/transition', { id: MISSING_ID }],
-    ['GET', '/api/v1/crm/contacts', {}],
-    ['GET', '/api/v1/crm/companies', {}],
-    ['GET', '/api/v1/crm/deals', {}],
-    ['POST', '/api/v1/crm/deals/[id]/transition', { id: MISSING_ID }],
-    ['GET', '/api/v1/crm/pipelines', {}],
-    ['POST', '/api/v1/crm/pipelines', {}],
-    ['GET', '/api/v1/crm/sources', {}],
-  ];
+  // Everything under app/ is locked behind a bearer token unless it is listed here. A newly added
+  // route therefore fails this test until it either checks the token or is consciously allow-listed.
+  const PUBLIC_ENDPOINTS = new Set([
+    'GET /',
+    'GET /swagger',
+    'GET /api/docs',
+    'POST /api/v1/auth/signup',
+    'POST /api/v1/auth/signin',
+    'POST /api/v1/auth/google/signup',
+    'POST /api/v1/auth/google/signin',
+    'POST /api/v1/auth/verify-email',
+    'POST /api/v1/auth/resend-verification',
+    'POST /api/v1/auth/forgot-password',
+    'POST /api/v1/auth/reset-password',
+    // Authenticated by the refresh token in the body, so an expired access token still works.
+    'POST /api/v1/auth/refresh',
+    'POST /api/v1/auth/logout',
+  ]);
 
-  it.each(protectedEndpoints)('%s %s returns 401 without a token', async (method, template, params) => {
-    const res = await api(method as any, template, { params });
-    expectError(res, 401, 'UNAUTHENTICATED');
+  it('only the allow-listed public endpoints exist without a bearer token', async () => {
+    const all = await discoverEndpoints();
+    for (const endpoint of PUBLIC_ENDPOINTS) expect(all).toContain(endpoint);
+
+    const leaks: string[] = [];
+    for (const endpoint of all.filter((item) => !PUBLIC_ENDPOINTS.has(item))) {
+      const [method, template] = endpoint.split(' ');
+      const params = Object.fromEntries([...template.matchAll(/\[(\w+)\]/g)].map((match) => [match[1], MISSING_ID]));
+      for (const token of [undefined, 'garbage']) {
+        const res = await api(method as any, template, { params, token, workspaceId: ws.owner.workspaceId });
+        if (res.status !== 401 || res.body?.error?.code !== 'UNAUTHENTICATED') {
+          leaks.push(`  -> ${res.status}`);
+        }
+      }
+    }
+    expect(leaks).toEqual([]);
   });
 
+  it('rejects a valid token that belongs to a deleted user', async () => {
+    const user = await register('deleted-token');
+    expectOk(await api('DELETE', '/api/v1/users/[id]', { token: user.token, params: { id: user.userId } }));
+    expectError(await api('GET', '/api/v1/auth/me', { token: user.token }), 401, 'UNAUTHENTICATED');
+  });
   it('isolates CRM data between workspaces', async () => {
     const other = await api('POST', '/api/v1/workspaces', { token: ws.owner.token, body: { name: `Isolated ${RUN}` } });
     expectOk(other);
