@@ -7,7 +7,7 @@ export function normalizeEmail(email: string) {
 }
 
 export function assertPasswordPolicy(password: string) {
-  if (password.length < 8 || password.length > 128) {
+  if (typeof password !== 'string' || password.length < 8 || password.length > 128) {
     throw badRequest('WEAK_PASSWORD', 'Password must be between 8 and 128 characters.');
   }
   if (!/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/[0-9]/.test(password)) {

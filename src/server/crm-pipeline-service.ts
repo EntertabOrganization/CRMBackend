@@ -13,6 +13,7 @@ import type {
   User,
 } from './domain';
 import { badRequest, conflict, forbidden, notFound } from './errors';
+import { requireText } from './validation';
 import type { InMemoryStore } from './store';
 
 type StageInput = {
@@ -452,6 +453,7 @@ export class CrmPipelineService {
     const idempotent = this.findIdempotentReplay(workspaceId, actor.id, 'crm.lead.create', input, idempotencyKey);
     if (idempotent) return idempotent as CrmLead;
     this.assertMembership(actor.id, workspaceId);
+    requireText(input.title, 'title');
     this.assertLeadCustomerLinks(workspaceId, input.companyId ?? null, input.contactIds ?? []);
     this.assertActiveSource(workspaceId, input.sourceId ?? null);
     this.assertNoDuplicateLeadCommunications(workspaceId, input.communications ?? [], Boolean(input.forceCreate));
@@ -569,6 +571,7 @@ export class CrmPipelineService {
     const idempotent = this.findIdempotentReplay(workspaceId, actor.id, 'crm.deal.create', input, idempotencyKey);
     if (idempotent) return idempotent as CrmDeal;
     this.assertMembership(actor.id, workspaceId);
+    requireText(input.title, 'title');
     this.assertActiveWorkspaceMember(workspaceId, input.responsibleUserId ?? actor.id);
     this.assertActiveSource(workspaceId, input.sourceId ?? null);
     const contactIds = Array.from(new Set(input.contactIds ?? []));

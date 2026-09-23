@@ -18,6 +18,7 @@ import type {
 import { badRequest, conflict, forbidden, notFound } from './errors';
 import { CrmPipelineService } from './crm-pipeline-service';
 import { applyCursorQuery, parseCursorQuery } from './query';
+import { requireText } from './validation';
 import type { InMemoryStore } from './store';
 
 type AddressInput = Partial<Pick<CrmContact, 'addressLine1' | 'addressLine2' | 'city' | 'stateOrProvince' | 'postalCode' | 'countryCode'>>;
@@ -121,6 +122,7 @@ export class CrmCoreService {
   }
 
   listLeads(actor: User, workspaceId: string, searchParams: URLSearchParams) {
+    this.assertMembership(actor.id, workspaceId);
     const rows = this.store.state.crmLeads
       .filter((lead) => lead.workspaceId === workspaceId && !lead.isDeleted)
       .filter((lead) => this.canReadRecord(actor, workspaceId, 'LEAD', lead.id));
@@ -133,6 +135,7 @@ export class CrmCoreService {
   }
 
   listDeals(actor: User, workspaceId: string, searchParams: URLSearchParams) {
+    this.assertMembership(actor.id, workspaceId);
     const rows = this.store.state.crmDeals
       .filter((deal) => deal.workspaceId === workspaceId && !deal.isDeleted)
       .filter((deal) => this.canReadRecord(actor, workspaceId, 'DEAL', deal.id));
@@ -182,6 +185,7 @@ export class CrmCoreService {
   }
 
   listContacts(actor: User, workspaceId: string, searchParams: URLSearchParams) {
+    this.assertMembership(actor.id, workspaceId);
     const rows = this.store.state.crmContacts
       .filter((contact) => contact.workspaceId === workspaceId && !contact.isDeleted)
       .filter((contact) => this.canReadRecord(actor, workspaceId, 'CONTACT', contact.id));
@@ -194,6 +198,7 @@ export class CrmCoreService {
   }
 
   listCompanies(actor: User, workspaceId: string, searchParams: URLSearchParams) {
+    this.assertMembership(actor.id, workspaceId);
     const rows = this.store.state.crmCompanies
       .filter((company) => company.workspaceId === workspaceId && !company.isDeleted)
       .filter((company) => this.canReadRecord(actor, workspaceId, 'COMPANY', company.id));
@@ -226,6 +231,8 @@ export class CrmCoreService {
     },
   ) {
     this.assertMembership(actor.id, workspaceId);
+    requireText(input.firstName, 'firstName');
+    requireText(input.lastName, 'lastName');
     const communications = input.communications ?? [];
     this.assertNoDuplicateContactCommunications(workspaceId, communications, Boolean(input.forceCreate));
     const contact: CrmContact = {
@@ -270,6 +277,7 @@ export class CrmCoreService {
     },
   ) {
     this.assertMembership(actor.id, workspaceId);
+    requireText(input.name, 'name');
     const communications = input.communications ?? [];
     this.assertNoDuplicateCompanyCommunications(workspaceId, communications, Boolean(input.forceCreate));
     const company: CrmCompany = {

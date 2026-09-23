@@ -10,8 +10,20 @@ import { WorkspaceService } from './workspace-service';
 export class UserService {
   constructor(private readonly store: InMemoryStore, private readonly mailer: MailService) {}
 
-  list() {
-    return this.store.state.users.filter((user) => !user.isDeleted).map(safeUser);
+  // Only the caller and users who share an active workspace with them are visible.
+  list(requester: User) {
+    const workspaceIds = new Set(
+      this.store.state.workspaceMemberships
+        .filter((membership) => membership.userId === requester.id && !membership.isDeleted)
+        .map((membership) => membership.workspaceId),
+    );
+    const visibleUserIds = new Set([
+      requester.id,
+      ...this.store.state.workspaceMemberships
+        .filter((membership) => workspaceIds.has(membership.workspaceId) && !membership.isDeleted)
+        .map((membership) => membership.userId),
+    ]);
+    return this.store.state.users.filter((user) => !user.isDeleted && visibleUserIds.has(user.id)).map(safeUser);
   }
 
   get(requester: User, id: string, workspaceId?: string) {

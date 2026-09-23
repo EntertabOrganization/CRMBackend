@@ -14,6 +14,7 @@ import {
   verifyHash,
 } from './security';
 import type { InMemoryStore } from './store';
+import { requireEmail, requireText } from './validation';
 import { WorkspaceService } from './workspace-service';
 
 type AuthResult = SessionContext & {
@@ -29,6 +30,9 @@ export class AuthService {
   ) {}
 
   async signup(input: { firstName: string; lastName: string; email: string; password: string }) {
+    requireText(input.firstName, 'firstName');
+    requireText(input.lastName, 'lastName');
+    requireEmail(input.email);
     assertPasswordPolicy(input.password);
     const email = normalizeEmail(input.email);
     if (this.store.state.users.some((user) => user.email === email)) {
