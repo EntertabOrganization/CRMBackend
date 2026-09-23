@@ -92,6 +92,22 @@ describe('CRM pipeline engine', () => {
     expect(() => app.crm.updateStage(user, workspace.id, successStage.id, { semanticType: 'PROGRESS' })).toThrow('exactly one SUCCESS');
   });
 
+  it('keeps stage identity stable across rename and preserves historical stage references', async () => {
+    const { app, user, workspace } = await verifiedUser();
+    const leadPipeline = app.store.state.crmPipelines.find((pipeline) => pipeline.workspaceId === workspace.id && pipeline.entityType === 'LEAD' && pipeline.isDefault)!;
+    const originalDefault = stageByName(app, leadPipeline.id, 'New');
+    const lead = app.crm.createLead(user, workspace.id, { title: 'Stable stage identity' });
+    const initialHistory = app.store.state.crmStageHistory.find((history) => history.recordId === lead.id)!;
+
+    const updated = app.crm.updateStage(user, workspace.id, originalDefault.id, { name: 'Intake', position: 99 });
+
+    expect(updated.id).toBe(originalDefault.id);
+    expect(updated.name).toBe('Intake');
+    expect(updated.position).toBe(99);
+    expect(initialHistory.toStageId).toBe(originalDefault.id);
+    expect(app.store.state.crmStages.some((stage) => stage.id === originalDefault.id && stage.name === 'Intake')).toBe(true);
+  });
+
   it('creates records in default stages and performs valid transitions with history audit and outbox side effects', async () => {
     const { app, user, workspace } = await verifiedUser();
     const leadPipeline = app.store.state.crmPipelines.find((pipeline) => pipeline.workspaceId === workspace.id && pipeline.entityType === 'LEAD' && pipeline.isDefault)!;
@@ -109,6 +125,30 @@ describe('CRM pipeline engine', () => {
     expect(app.store.state.crmStageHistory.filter((history) => history.recordId === lead.id)).toHaveLength(2);
     expect(app.store.state.auditLogs.some((log) => log.action === 'CRM.LEAD.STAGE_CHANGED' && log.entityId === lead.id)).toBe(true);
     expect(app.store.state.outboxEvents.some((event) => event.eventType === 'CRM.LEAD.STAGE_CHANGED' && event.entityId === lead.id)).toBe(true);
+  });
+
+  it('keeps sensitive pipeline, stage and responsibility changes behind dedicated command methods', async () => {
+    const { app, user, workspace } = await verifiedUser();
+    const lead = app.crm.createLead(user, workspace.id, { title: 'Sensitive boundary' });
+    const pipeline = app.store.state.crmPipelines.find((item) => item.workspaceId === workspace.id && item.entityType === 'LEAD' && item.isDefault)!;
+    const success = stageByName(app, pipeline.id, 'Qualified');
+
+    expect(typeof (app.crm as unknown as { updateLead?: unknown }).updateLead).toBe('undefined');
+    expect(typeof (app.crmCore as unknown as { updateLead?: unknown }).updateLead).toBe('undefined');
+
+    const staleVersion = lead.version;
+    const moved = app.crm.transitionLead(user, workspace.id, lead.id, {
+      expectedVersion: staleVersion,
+      targetStageId: success.id,
+    });
+
+    expect(moved.stageId).toBe(success.id);
+    expect(() =>
+      app.crm.transitionLead(user, workspace.id, lead.id, {
+        expectedVersion: staleVersion,
+        targetStageId: lead.stageId,
+      }),
+    ).toThrow('CRM record version is stale.');
   });
 
   it('requires explicit valid cross-pipeline targets and prevents entity type or wrong-stage moves', async () => {
@@ -194,5 +234,76 @@ describe('CRM pipeline engine', () => {
     });
     expect(lostDeal.status).toBe('LOST');
     expect(lostDeal.lostReasonId).toBe('too-expensive');
+  });
+
+  it('rejects inactive lost reasons, retains historical failure movement and clears current reason on reopen', async () => {
+    const { app, user, workspace } = await verifiedUser();
+    const company = app.crmCore.createCompany(user, workspace.id, { name: 'Lost Reason Co' });
+    const deal = app.crm.createDeal(user, workspace.id, { title: 'Lost and reopened', companyId: company.id });
+    const dealPipeline = app.store.state.crmPipelines.find((pipeline) => pipeline.workspaceId === workspace.id && pipeline.entityType === 'DEAL' && pipeline.isDefault)!;
+    const newStage = stageByName(app, dealPipeline.id, 'New');
+    const lostStage = stageByName(app, dealPipeline.id, 'Lost');
+    app.store.state.crmLostReasons.push(
+      { id: 'inactive-reason', workspaceId: workspace.id, name: 'Inactive', isActive: false, isSystem: false },
+      { id: 'active-reason', workspaceId: workspace.id, name: 'Active', isActive: true, isSystem: false },
+    );
+
+    expect(() =>
+      app.crm.transitionDeal(user, workspace.id, deal.id, {
+        expectedVersion: deal.version,
+        targetStageId: lostStage.id,
+        lostReasonId: 'inactive-reason',
+      }),
+    ).toThrow('lost reason is required');
+
+    app.crm.transitionDeal(user, workspace.id, deal.id, {
+      expectedVersion: deal.version,
+      targetStageId: lostStage.id,
+      lostReasonId: 'active-reason',
+      lostReasonComment: 'Budget stopped',
+    });
+    const failureHistory = app.store.state.crmStageHistory.at(-1)!;
+
+    expect(deal.status).toBe('LOST');
+    expect(deal.lostReasonId).toBe('active-reason');
+    expect(deal.lostReasonComment).toBe('Budget stopped');
+
+    app.store.state.crmLostReasons.find((reason) => reason.id === 'active-reason')!.isActive = false;
+    app.crm.transitionDeal(user, workspace.id, deal.id, {
+      expectedVersion: deal.version,
+      targetStageId: newStage.id,
+    });
+
+    expect(failureHistory.toStageId).toBe(lostStage.id);
+    expect(deal.status).toBe('OPEN');
+    expect(deal.lostReasonId).toBeNull();
+    expect(deal.lostReasonComment).toBeNull();
+  });
+
+  it('uses the required-field boundary before entering a target stage', async () => {
+    const { app, user, workspace } = await verifiedUser();
+    const lead = app.crm.createLead(user, workspace.id, { title: 'Required field lead' });
+    const leadPipeline = app.store.state.crmPipelines.find((pipeline) => pipeline.workspaceId === workspace.id && pipeline.entityType === 'LEAD' && pipeline.isDefault)!;
+    const qualified = stageByName(app, leadPipeline.id, 'Qualified');
+
+    app.crm.setRequiredFieldResolver({
+      requiredFieldsForStage: ({ stageId }) => (stageId === qualified.id ? [{ field: 'estimatedAmount', label: 'Estimated amount' }] : []),
+    });
+
+    expect(() =>
+      app.crm.transitionLead(user, workspace.id, lead.id, {
+        expectedVersion: lead.version,
+        targetStageId: qualified.id,
+      }),
+    ).toThrow('Required fields are missing for the target stage.');
+
+    const moved = app.crm.transitionLead(user, workspace.id, lead.id, {
+      expectedVersion: lead.version,
+      targetStageId: qualified.id,
+      fieldValues: { estimatedAmount: 5000 },
+    });
+
+    expect(moved.stageId).toBe(qualified.id);
+    expect(moved.estimatedAmount).toBe(5000);
   });
 });

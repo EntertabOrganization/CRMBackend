@@ -119,4 +119,27 @@ describe('CRM lifecycle, sources and explicit relationships', () => {
     expect(() => app.crmCore.linkDealContact(user, workspace.id, { dealId: deal.id, contactId: second.id })).toThrow('already linked to this deal');
     expect(app.store.state.auditLogs.some((log) => log.action === 'CRM.DEAL.CONTACT_LINKED' && log.entityId === deal.id)).toBe(true);
   });
+
+  it('blocks deleting a user who owns CRM records unless a valid replacement responsible user is supplied', async () => {
+    const { app, user, workspace } = await verifiedUser();
+    const role = app.roles.create(user, workspace.id, { name: 'Replacement owner' });
+    app.roles.replacePermissions(user, workspace.id, role.id, [{ permissionId: 'crm.lead.read', scope: 'WORKSPACE' }]);
+    const invitation = await app.users.invite(user, { workspaceId: workspace.id, email: 'crm-replacement@example.com', roleId: role.id });
+    const signup = await app.auth.signup({ firstName: 'CRM', lastName: 'Replacement', email: 'crm-replacement@example.com', password: 'Password1' });
+    await app.auth.verifyEmail(signup.verificationToken);
+    const replacement = app.store.state.users.find((candidate) => candidate.email === 'crm-replacement@example.com')!;
+    app.users.acceptInvitation(replacement, invitation.invitationToken);
+    const lead = app.crm.createLead(user, workspace.id, { title: 'Owned lead' });
+    const contact = app.crmCore.createContact(user, workspace.id, { firstName: 'Owned', lastName: 'Contact' });
+
+    expect(() => app.users.softDelete(user, user.id)).toThrow('CRM records must be reassigned');
+
+    app.users.softDelete(user, user.id, { replacementResponsibleUserId: replacement.id });
+
+    expect(user.isDeleted).toBe(true);
+    expect(lead.responsibleUserId).toBe(replacement.id);
+    expect(contact.responsibleUserId).toBe(replacement.id);
+    expect(app.store.state.auditLogs.filter((log) => log.action === 'CRM.LEAD.ASSIGNED' && log.entityId === lead.id)).toHaveLength(1);
+    expect(app.store.state.auditLogs.filter((log) => log.action === 'CRM.CONTACT.ASSIGNED' && log.entityId === contact.id)).toHaveLength(1);
+  });
 });

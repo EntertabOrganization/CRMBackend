@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "typecheck": "tsc --noEmit",
-    "test": "jest --runInBand",
+    "test": "jest --config jest.config.ts --runInBand",
     "prisma:generate": "prisma generate",
     "prisma:validate": "prisma validate",
     "prisma:format": "prisma format",
@@ -16,8 +16,10 @@
   },
   "dependencies": {
     "@prisma/client": "^6.16.2",
+    "@types/jsonwebtoken": "^9.0.10",
     "argon2": "^0.44.0",
     "jose": "^6.1.0",
+    "jsonwebtoken": "^9.0.3",
     "next": "^15.5.4",
     "zod": "^4.1.11"
   },

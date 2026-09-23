@@ -10,6 +10,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const workspaceId = workspaceHeader(request);
     if (!workspaceId) throw badRequest('WORKSPACE_REQUIRED', 'X-Workspace-Id is required.');
     const { id } = await params;
-    return appContext.crmCore.assignRecord(user, workspaceId, 'CONTACT', id, await readJson(request));
+    return appContext.crmCore.assignRecord(user, workspaceId, 'CONTACT', id, await readJson(request), request.headers.get('idempotency-key') ?? undefined);
   });
 }

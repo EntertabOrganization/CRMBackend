@@ -23,6 +23,7 @@ export async function POST(request: NextRequest) {
       workspaceId,
       await readJson<{
         title: string;
+        responsibleUserId?: string;
         pipelineId?: string;
         stageId?: string;
         amount?: number;
@@ -31,6 +32,7 @@ export async function POST(request: NextRequest) {
         contactIds?: string[];
         primaryContactId?: string;
       }>(request),
+      request.headers.get('idempotency-key') ?? undefined,
     );
   });
 }

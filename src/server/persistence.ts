@@ -8,6 +8,12 @@ type Delegate = {
 };
 
 type TxClient = PrismaClient | Prisma.TransactionClient;
+type RowWithJson = {
+  settings?: unknown;
+  meta?: unknown;
+  payload?: unknown;
+  response?: unknown;
+};
 
 function asRecord(value: unknown): Record<string, unknown> {
   return (value ?? {}) as Record<string, unknown>;
@@ -147,12 +153,12 @@ export async function hydrateState(client: PrismaClient): Promise<DbState> {
   ]);
 
   return {
-    users: users.map((row) => ({ ...row, settings: asRecord(row.settings), meta: asRecordOrNull(row.meta) })),
+    users: users.map((row: RowWithJson) => ({ ...row, settings: asRecord(row.settings), meta: asRecordOrNull(row.meta) })),
     authIdentities,
     refreshSessions,
     emailVerificationTokens,
     passwordResetTokens,
-    workspaces: workspaces.map((row) => ({ ...row, settings: asRecord(row.settings), meta: asRecordOrNull(row.meta) })),
+    workspaces: workspaces.map((row: RowWithJson) => ({ ...row, settings: asRecord(row.settings), meta: asRecordOrNull(row.meta) })),
     workspaceMemberships,
     workspaceInvitations,
     permissions,
@@ -161,7 +167,7 @@ export async function hydrateState(client: PrismaClient): Promise<DbState> {
     departments,
     departmentMembers,
     partnerApplications,
-    partners: partners.map((row) => ({ ...row, settings: asRecord(row.settings), meta: asRecordOrNull(row.meta) })),
+    partners: partners.map((row: RowWithJson) => ({ ...row, settings: asRecord(row.settings), meta: asRecordOrNull(row.meta) })),
     partnerRoles,
     partnerMemberships,
     partnerWorkspaceRelations,
@@ -185,14 +191,14 @@ export async function hydrateState(client: PrismaClient): Promise<DbState> {
     crmLeadConversions,
     crmRecordObservers,
     crmStageHistory,
-    outboxEvents: outboxEvents.map((row) => ({ ...row, payload: asRecord(row.payload) })),
-    idempotencyRecords: idempotencyRecords.map((row) => ({ ...row, response: asRecord(row.response) })),
+    outboxEvents: outboxEvents.map((row: RowWithJson) => ({ ...row, payload: asRecord(row.payload) })),
+    idempotencyRecords: idempotencyRecords.map((row: RowWithJson) => ({ ...row, response: asRecord(row.response) })),
   } as unknown as DbState;
 }
 
 export async function persistState(client: PrismaClient, before: DbState, after: DbState): Promise<void> {
   await client.$transaction(
-    async (tx) => {
+    async (tx: Prisma.TransactionClient) => {
       // Upserts run before deletes: a request can both remove a parent (e.g. hard-delete
       // a workspace) and write a new row that references it (e.g. the audit log entry
       // for that very deletion). Writing first lets the FK check succeed while the

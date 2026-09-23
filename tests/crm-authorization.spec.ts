@@ -105,4 +105,53 @@ describe('CRM responsibility and observers', () => {
     app.crmCore.removeObserver(owner, workspace.id, 'LEAD', lead.id, observer.id);
     expect(app.crmCore.canReadRecord(observer, workspace.id, 'LEAD', lead.id)).toBe(false);
   });
+
+  it('exposes limited linked customer summaries on readable Deals without granting full customer record access', async () => {
+    const { app, user: owner, workspace } = await verifiedUser();
+    const dealReaderRole = roleWithPermissions(app, owner, workspace.id, 'Deal Reader Only', [
+      { permissionId: 'crm.deal.read', scope: 'OWN' },
+    ]);
+    const dealReader = await inviteMember(app, owner, workspace.id, dealReaderRole.id, 'crm-deal-reader@example.com');
+    const company = app.crmCore.createCompany(owner, workspace.id, {
+      name: 'Limited Company',
+      communications: [{ type: 'EMAIL', value: 'customer@example.com' }],
+      addressLine1: '12 Customer St',
+      city: 'Cairo',
+    });
+    const contact = app.crmCore.createContact(owner, workspace.id, {
+      firstName: 'Limited',
+      lastName: 'Contact',
+      communications: [{ type: 'PHONE', value: '+20 100 123 4567' }],
+    });
+    const deal = app.crm.createDeal(owner, workspace.id, {
+      title: 'Readable deal',
+      responsibleUserId: dealReader.id,
+      companyId: company.id,
+      contactIds: [contact.id],
+    });
+
+    expect(app.crmCore.canReadRecord(dealReader, workspace.id, 'DEAL', deal.id)).toBe(true);
+    expect(app.crmCore.canReadRecord(dealReader, workspace.id, 'COMPANY', company.id)).toBe(false);
+    expect(app.crmCore.canReadRecord(dealReader, workspace.id, 'CONTACT', contact.id)).toBe(false);
+
+    const detail = app.crmCore.getDealDetail(dealReader, workspace.id, deal.id);
+
+    expect(detail.customerSummary.company).toEqual(
+      expect.objectContaining({
+        id: company.id,
+        name: 'Limited Company',
+        communications: [expect.objectContaining({ type: 'EMAIL', value: 'customer@example.com' })],
+        address: expect.objectContaining({ addressLine1: '12 Customer St', city: 'Cairo' }),
+      }),
+    );
+    expect(detail.customerSummary.contacts).toEqual([
+      expect.objectContaining({
+        id: contact.id,
+        displayName: 'Limited Contact',
+        communications: [expect.objectContaining({ type: 'PHONE', value: '+20 100 123 4567' })],
+      }),
+    ]);
+    expect(app.crmCore.canReadRecord(dealReader, workspace.id, 'COMPANY', company.id)).toBe(false);
+    expect(app.crmCore.canReadRecord(dealReader, workspace.id, 'CONTACT', contact.id)).toBe(false);
+  });
 });

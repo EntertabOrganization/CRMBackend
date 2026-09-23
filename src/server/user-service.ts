@@ -106,10 +106,53 @@ export class UserService {
     return safeUser(user);
   }
 
-  softDelete(requester: User, id: string) {
+  softDelete(requester: User, id: string, input: { replacementResponsibleUserId?: string } = {}) {
     if (requester.id !== id) throw forbidden('Workspace owners cannot globally delete another user.');
+    this.reassignOrBlockCrmResponsibility(requester, input.replacementResponsibleUserId);
     requester.isDeleted = true;
     new AuditService(this.store).write({ actorUserId: requester.id, action: 'USER.SOFT_DELETED', entityType: 'User', entityId: id });
     return safeUser(requester);
+  }
+
+  private reassignOrBlockCrmResponsibility(user: User, replacementResponsibleUserId?: string) {
+    const ownedRecords = [
+      ...this.store.state.crmLeads.filter((record) => record.responsibleUserId === user.id && !record.isDeleted).map((record) => ({ entityType: 'LEAD', record })),
+      ...this.store.state.crmDeals.filter((record) => record.responsibleUserId === user.id && !record.isDeleted).map((record) => ({ entityType: 'DEAL', record })),
+      ...this.store.state.crmContacts.filter((record) => record.responsibleUserId === user.id && !record.isDeleted).map((record) => ({ entityType: 'CONTACT', record })),
+      ...this.store.state.crmCompanies.filter((record) => record.responsibleUserId === user.id && !record.isDeleted).map((record) => ({ entityType: 'COMPANY', record })),
+    ];
+    if (ownedRecords.length === 0) return;
+    if (!replacementResponsibleUserId) {
+      throw conflict('CRM_REASSIGNMENT_REQUIRED', 'CRM records must be reassigned before deleting this user.');
+    }
+    const affectedWorkspaceIds = Array.from(new Set(ownedRecords.map(({ record }) => record.workspaceId)));
+    for (const workspaceId of affectedWorkspaceIds) {
+      const replacementMembership = this.store.state.workspaceMemberships.find(
+        (membership) =>
+          membership.workspaceId === workspaceId &&
+          membership.userId === replacementResponsibleUserId &&
+          membership.status === 'ACTIVE' &&
+          !membership.isDeleted,
+      );
+      if (!replacementMembership) {
+        throw badRequest('CRM_REPLACEMENT_REQUIRED', 'Replacement responsible user must be an active member of every affected workspace.');
+      }
+    }
+
+    for (const { entityType, record } of ownedRecords) {
+      const before = { responsibleUserId: record.responsibleUserId, version: record.version };
+      record.responsibleUserId = replacementResponsibleUserId;
+      record.version += 1;
+      record.updatedAt = new Date();
+      new AuditService(this.store).write({
+        workspaceId: record.workspaceId,
+        actorUserId: user.id,
+        action: `CRM.${entityType}.ASSIGNED`,
+        entityType: `Crm${entityType === 'COMPANY' ? 'Company' : entityType.charAt(0) + entityType.slice(1).toLowerCase()}`,
+        entityId: record.id,
+        beforeData: before,
+        afterData: { responsibleUserId: replacementResponsibleUserId, version: record.version },
+      });
+    }
   }
 }

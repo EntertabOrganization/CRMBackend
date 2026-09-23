@@ -57,6 +57,7 @@ type LeadConversionInput = {
 };
 
 type ResponsibleRecord = CrmLead | CrmDeal | CrmContact | CrmCompany;
+const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
 
 function now() {
   return new Date();
@@ -141,6 +142,43 @@ export class CrmCoreService {
       sortable: ['createdAt', 'updatedAt', 'title', 'status', 'id'],
       defaultSortBy: 'createdAt',
     });
+  }
+
+  getDealDetail(actor: User, workspaceId: string, dealId: string) {
+    const deal = this.activeDeal(workspaceId, dealId);
+    this.assertReadPermission(actor.id, workspaceId, 'DEAL', deal);
+    const company = deal.companyId
+      ? this.store.state.crmCompanies.find((item) => item.id === deal.companyId && item.workspaceId === workspaceId && !item.isDeleted) ?? null
+      : null;
+    const contactRelations = this.store.state.crmDealContacts
+      .filter((relation) => relation.workspaceId === workspaceId && relation.dealId === deal.id)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+    const contacts = contactRelations.flatMap((relation) => {
+      const contact = this.store.state.crmContacts.find((item) => item.id === relation.contactId && item.workspaceId === workspaceId && !item.isDeleted);
+      if (!contact) return [];
+      return [{
+        id: contact.id,
+        displayName: contact.displayName,
+        role: relation.role,
+        isPrimary: relation.isPrimary,
+        communications: this.primaryContactCommunications(workspaceId, contact.id),
+        address: this.addressSummary(contact),
+      }];
+    });
+    return {
+      deal,
+      customerSummary: {
+        company: company
+          ? {
+              id: company.id,
+              name: company.name,
+              communications: this.primaryCompanyCommunications(workspaceId, company.id),
+              address: this.addressSummary(company),
+            }
+          : null,
+        contacts,
+      },
+    };
   }
 
   listContacts(actor: User, workspaceId: string, searchParams: URLSearchParams) {
@@ -334,7 +372,10 @@ export class CrmCoreService {
       isPrimary?: boolean;
       sortOrder?: number;
     },
+    idempotencyKey?: string,
   ) {
+    const idempotent = this.findIdempotentReplay(workspaceId, actor.id, 'crm.contact.company.link', input, idempotencyKey);
+    if (idempotent) return idempotent as CrmContactCompany;
     this.assertMembership(actor.id, workspaceId);
     this.activeContact(workspaceId, input.contactId);
     this.activeCompany(workspaceId, input.companyId);
@@ -359,6 +400,7 @@ export class CrmCoreService {
     };
     this.store.state.crmContactCompanies.push(relation);
     this.audit(actor.id, workspaceId, 'CRM.CONTACT.COMPANY_LINKED', 'CrmContact', input.contactId, null, relation);
+    this.storeIdempotentResponse(workspaceId, actor.id, 'crm.contact.company.link', input, idempotencyKey, relation);
     return relation;
   }
 
@@ -501,7 +543,7 @@ export class CrmCoreService {
           idempotencyKey,
           requestHash,
           response,
-          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          expiresAt: new Date(Date.now() + IDEMPOTENCY_TTL_MS),
           createdAt: now(),
         });
       }
@@ -522,7 +564,10 @@ export class CrmCoreService {
       isPrimary?: boolean;
       sortOrder?: number;
     },
+    idempotencyKey?: string,
   ) {
+    const idempotent = this.findIdempotentReplay(workspaceId, actor.id, 'crm.deal.contact.link', input, idempotencyKey);
+    if (idempotent) return idempotent as CrmDealContact;
     this.assertMembership(actor.id, workspaceId);
     this.activeDeal(workspaceId, input.dealId);
     this.activeContact(workspaceId, input.contactId);
@@ -544,6 +589,7 @@ export class CrmCoreService {
     };
     this.store.state.crmDealContacts.push(relation);
     this.audit(actor.id, workspaceId, 'CRM.DEAL.CONTACT_LINKED', 'CrmDeal', input.dealId, null, relation);
+    this.storeIdempotentResponse(workspaceId, actor.id, 'crm.deal.contact.link', input, idempotencyKey, relation);
     return relation;
   }
 
@@ -623,7 +669,11 @@ export class CrmCoreService {
     entityType: CrmRecordEntityType,
     recordId: string,
     input: { responsibleUserId: string; expectedVersion: number },
+    idempotencyKey?: string,
   ) {
+    const operation = `crm.${entityType.toLowerCase()}.assign:${recordId}`;
+    const idempotent = this.findIdempotentReplay(workspaceId, actor.id, operation, input, idempotencyKey);
+    if (idempotent) return idempotent as ResponsibleRecord;
     const record = this.activeCrmRecord(workspaceId, entityType, recordId);
     this.assertRecordPermission(actor.id, workspaceId, this.permissionKey(entityType, 'assign'), record);
     this.assertActiveWorkspaceMember(workspaceId, input.responsibleUserId);
@@ -636,6 +686,7 @@ export class CrmCoreService {
       responsibleUserId: record.responsibleUserId,
       version: record.version,
     });
+    this.storeIdempotentResponse(workspaceId, actor.id, operation, input, idempotencyKey, record);
     return record;
   }
 
@@ -839,6 +890,29 @@ export class CrmCoreService {
     }
   }
 
+  private primaryContactCommunications(workspaceId: string, contactId: string) {
+    return this.store.state.crmContactCommunications
+      .filter((item) => item.workspaceId === workspaceId && item.contactId === contactId && item.isPrimary)
+      .map(({ type, value, label }) => ({ type, value, label }));
+  }
+
+  private primaryCompanyCommunications(workspaceId: string, companyId: string) {
+    return this.store.state.crmCompanyCommunications
+      .filter((item) => item.workspaceId === workspaceId && item.companyId === companyId && item.isPrimary)
+      .map(({ type, value, label }) => ({ type, value, label }));
+  }
+
+  private addressSummary(record: Pick<CrmContact | CrmCompany, 'addressLine1' | 'addressLine2' | 'city' | 'stateOrProvince' | 'postalCode' | 'countryCode'>) {
+    return {
+      addressLine1: record.addressLine1 ?? null,
+      addressLine2: record.addressLine2 ?? null,
+      city: record.city ?? null,
+      stateOrProvince: record.stateOrProvince ?? null,
+      postalCode: record.postalCode ?? null,
+      countryCode: record.countryCode ?? null,
+    };
+  }
+
   private archiveRecord<T extends CrmContact | CrmCompany | CrmLead | CrmDeal>(
     actor: User,
     workspaceId: string,
@@ -993,6 +1067,52 @@ export class CrmCoreService {
       entityId,
       beforeData,
       afterData,
+    });
+  }
+
+  private findIdempotentReplay(
+    workspaceId: string,
+    actorUserId: string,
+    operation: string,
+    input: unknown,
+    idempotencyKey?: string,
+  ) {
+    if (!idempotencyKey) return null;
+    const requestHash = JSON.stringify(input);
+    const existing = this.store.state.idempotencyRecords.find(
+      (item) =>
+        item.workspaceId === workspaceId &&
+        item.actorUserId === actorUserId &&
+        item.operation === operation &&
+        item.idempotencyKey === idempotencyKey &&
+        item.expiresAt > now(),
+    );
+    if (!existing) return null;
+    if (existing.requestHash !== requestHash) {
+      throw conflict('IDEMPOTENCY_KEY_REUSED', 'Idempotency key was reused with a different payload.');
+    }
+    return existing.response;
+  }
+
+  private storeIdempotentResponse(
+    workspaceId: string,
+    actorUserId: string,
+    operation: string,
+    input: unknown,
+    idempotencyKey: string | undefined,
+    response: Record<string, unknown>,
+  ) {
+    if (!idempotencyKey) return;
+    this.store.state.idempotencyRecords.push({
+      id: this.store.id(),
+      workspaceId,
+      actorUserId,
+      operation,
+      idempotencyKey,
+      requestHash: JSON.stringify(input),
+      response,
+      expiresAt: new Date(Date.now() + IDEMPOTENCY_TTL_MS),
+      createdAt: now(),
     });
   }
 }

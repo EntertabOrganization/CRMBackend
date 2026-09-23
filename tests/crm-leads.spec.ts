@@ -36,6 +36,8 @@ describe('CRM leads and conversion', () => {
     expect(lead.utmSource).toBe('google');
     expect(app.store.state.crmLeadContacts).toEqual([expect.objectContaining({ leadId: lead.id, contactId: contact.id })]);
     expect(app.store.state.crmLeadCommunications.find((item) => item.type === 'EMAIL')?.normalizedValue).toBe('lead@example.com');
+    expect(app.store.state.auditLogs.some((log) => log.action === 'CRM.LEAD.CREATED' && log.entityId === lead.id)).toBe(true);
+    expect(app.store.state.outboxEvents.some((event) => event.eventType === 'CRM.LEAD.CREATED' && event.entityId === lead.id)).toBe(true);
 
     expect(() =>
       app.crm.createLead(user, workspace.id, {

@@ -37,6 +37,32 @@ describe('CRM core customer records', () => {
     expect(duplicate.id).toBeTruthy();
   });
 
+  it('isolates communication duplicate detection and communication mutation by Workspace', async () => {
+    const first = await verifiedUser();
+    const second = await verifiedUser();
+    const firstContact = first.app.crmCore.createContact(first.user, first.workspace.id, {
+      firstName: 'First',
+      lastName: 'Workspace',
+      communications: [{ type: 'EMAIL', value: 'shared@example.com' }],
+    });
+
+    const secondContact = second.app.crmCore.createContact(second.user, second.workspace.id, {
+      firstName: 'Second',
+      lastName: 'Workspace',
+      communications: [{ type: 'EMAIL', value: 'shared@example.com' }],
+    });
+
+    expect(firstContact.id).not.toBe(secondContact.id);
+    expect(first.app.store.state.crmContactCommunications).toHaveLength(1);
+    expect(second.app.store.state.crmContactCommunications).toHaveLength(1);
+    expect(() =>
+      first.app.crmCore.addContactCommunication(first.user, first.workspace.id, secondContact.id, {
+        type: 'PHONE',
+        value: '+20 100 222 3333',
+      }),
+    ).toThrow('CRM_CONTACT was not found.');
+  });
+
   it('supports many-to-many Contact and Company relationships with relationship-specific job data', async () => {
     const { app, user, workspace } = await verifiedUser();
     const contact = app.crmCore.createContact(user, workspace.id, { firstName: 'Nour', lastName: 'Adel' });
@@ -134,6 +160,8 @@ describe('CRM core customer records', () => {
     expect(firstDeal.companyId).toBe(company.id);
     expect(secondDeal.companyId).toBe(company.id);
     expect(app.store.state.crmDeals.filter((deal) => deal.companyId === company.id)).toHaveLength(2);
+    expect(app.store.state.auditLogs.some((log) => log.action === 'CRM.DEAL.CREATED' && log.entityId === firstDeal.id)).toBe(true);
+    expect(app.store.state.outboxEvents.some((event) => event.eventType === 'CRM.DEAL.CREATED' && event.entityId === firstDeal.id)).toBe(true);
     expect(app.store.state.crmDealContacts.filter((item) => item.dealId === firstDeal.id && item.isPrimary)).toEqual([
       expect.objectContaining({ contactId: secondaryContact.id }),
     ]);

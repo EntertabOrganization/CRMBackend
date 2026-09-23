@@ -29,6 +29,7 @@ type TransitionInput = {
   lostReasonId?: string;
   lostReasonComment?: string | null;
   overrideTransitionGraph?: boolean;
+  fieldValues?: Record<string, unknown>;
 };
 
 type PipelineMigrationInput = {
@@ -51,6 +52,22 @@ type CommunicationInput = {
   isPrimary?: boolean;
 };
 
+const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
+
+type RequiredFieldRule = {
+  field: string;
+  label?: string;
+};
+
+type RequiredFieldResolver = {
+  requiredFieldsForStage: (context: {
+    workspaceId: string;
+    entityType: CrmPipelineEntityType;
+    pipelineId: string;
+    stageId: string;
+  }) => RequiredFieldRule[];
+};
+
 function normalizeName(value: string) {
   return value.trim().replace(/\s+/g, ' ').toLowerCase();
 }
@@ -68,7 +85,14 @@ function now() {
 }
 
 export class CrmPipelineService {
-  constructor(private readonly store: InMemoryStore) {}
+  constructor(
+    private readonly store: InMemoryStore,
+    private requiredFieldResolver: RequiredFieldResolver = { requiredFieldsForStage: () => [] },
+  ) {}
+
+  setRequiredFieldResolver(resolver: RequiredFieldResolver) {
+    this.requiredFieldResolver = resolver;
+  }
 
   bootstrapDefaults(workspaceId: string) {
     const lead = this.defaultPipeline(workspaceId, 'LEAD', 'Default Lead Pipeline', [
@@ -421,7 +445,10 @@ export class CrmPipelineService {
       communications?: CommunicationInput[];
       forceCreate?: boolean;
     },
+    idempotencyKey?: string,
   ) {
+    const idempotent = this.findIdempotentReplay(workspaceId, actor.id, 'crm.lead.create', input, idempotencyKey);
+    if (idempotent) return idempotent as CrmLead;
     this.assertMembership(actor.id, workspaceId);
     this.assertLeadCustomerLinks(workspaceId, input.companyId ?? null, input.contactIds ?? []);
     this.assertActiveSource(workspaceId, input.sourceId ?? null);
@@ -489,6 +516,25 @@ export class CrmPipelineService {
       this.addLeadCommunication(workspaceId, record.id, communication);
     }
     this.appendStageHistory(workspaceId, 'LEAD', record.id, null, null, pipeline.id, stage.id, actor.id);
+    new AuditService(this.store).write({
+      workspaceId,
+      actorUserId: actor.id,
+      action: 'CRM.LEAD.CREATED',
+      entityType: 'CrmLead',
+      entityId: record.id,
+      afterData: { id: record.id, title: record.title, pipelineId: record.pipelineId, stageId: record.stageId },
+    });
+    this.store.state.outboxEvents.push({
+      id: this.store.id(),
+      workspaceId,
+      eventType: 'CRM.LEAD.CREATED',
+      entityType: 'LEAD',
+      entityId: record.id,
+      actorUserId: actor.id,
+      occurredAt: now(),
+      payload: { entityVersion: record.version, pipelineId: record.pipelineId, stageId: record.stageId },
+    });
+    this.storeIdempotentResponse(workspaceId, actor.id, 'crm.lead.create', input, idempotencyKey, record);
     return record;
   }
 
@@ -497,6 +543,7 @@ export class CrmPipelineService {
     workspaceId: string,
     input: {
       title: string;
+      responsibleUserId?: string;
       pipelineId?: string;
       stageId?: string;
       amount?: number;
@@ -515,8 +562,12 @@ export class CrmPipelineService {
       contactIds?: string[];
       primaryContactId?: string;
     },
+    idempotencyKey?: string,
   ) {
+    const idempotent = this.findIdempotentReplay(workspaceId, actor.id, 'crm.deal.create', input, idempotencyKey);
+    if (idempotent) return idempotent as CrmDeal;
     this.assertMembership(actor.id, workspaceId);
+    this.assertActiveWorkspaceMember(workspaceId, input.responsibleUserId ?? actor.id);
     this.assertActiveSource(workspaceId, input.sourceId ?? null);
     const contactIds = Array.from(new Set(input.contactIds ?? []));
     if (!input.companyId && contactIds.length === 0) {
@@ -538,7 +589,7 @@ export class CrmPipelineService {
       id: this.store.id(),
       workspaceId,
       title: input.title,
-      responsibleUserId: actor.id,
+      responsibleUserId: input.responsibleUserId ?? actor.id,
       companyId: input.companyId ?? null,
       pipelineId: pipeline.id,
       stageId: stage.id,
@@ -582,20 +633,47 @@ export class CrmPipelineService {
       });
     });
     this.appendStageHistory(workspaceId, 'DEAL', record.id, null, null, pipeline.id, stage.id, actor.id);
+    new AuditService(this.store).write({
+      workspaceId,
+      actorUserId: actor.id,
+      action: 'CRM.DEAL.CREATED',
+      entityType: 'CrmDeal',
+      entityId: record.id,
+      afterData: { id: record.id, title: record.title, pipelineId: record.pipelineId, stageId: record.stageId },
+    });
+    this.store.state.outboxEvents.push({
+      id: this.store.id(),
+      workspaceId,
+      eventType: 'CRM.DEAL.CREATED',
+      entityType: 'DEAL',
+      entityId: record.id,
+      actorUserId: actor.id,
+      occurredAt: now(),
+      payload: { entityVersion: record.version, pipelineId: record.pipelineId, stageId: record.stageId },
+    });
+    this.storeIdempotentResponse(workspaceId, actor.id, 'crm.deal.create', input, idempotencyKey, record);
     return record;
   }
 
-  transitionLead(actor: User, workspaceId: string, leadId: string, input: TransitionInput) {
+  transitionLead(actor: User, workspaceId: string, leadId: string, input: TransitionInput, idempotencyKey?: string) {
+    const idempotent = this.findIdempotentReplay(workspaceId, actor.id, `crm.lead.transition:${leadId}`, input, idempotencyKey);
+    if (idempotent) return idempotent as CrmLead;
     const lead = this.store.state.crmLeads.find((item) => item.id === leadId && item.workspaceId === workspaceId && !item.isDeleted);
     if (!lead) throw notFound('CRM_LEAD');
     if (lead.conversionStatus === 'CONVERTED') throw conflict('CRM_ALREADY_CONVERTED', 'Converted leads cannot be transitioned.');
-    return this.transitionRecord(actor, workspaceId, 'LEAD', lead, input);
+    const result = this.transitionRecord(actor, workspaceId, 'LEAD', lead, input);
+    this.storeIdempotentResponse(workspaceId, actor.id, `crm.lead.transition:${leadId}`, input, idempotencyKey, result);
+    return result;
   }
 
-  transitionDeal(actor: User, workspaceId: string, dealId: string, input: TransitionInput) {
+  transitionDeal(actor: User, workspaceId: string, dealId: string, input: TransitionInput, idempotencyKey?: string) {
+    const idempotent = this.findIdempotentReplay(workspaceId, actor.id, `crm.deal.transition:${dealId}`, input, idempotencyKey);
+    if (idempotent) return idempotent as CrmDeal;
     const deal = this.store.state.crmDeals.find((item) => item.id === dealId && item.workspaceId === workspaceId && !item.isDeleted);
     if (!deal) throw notFound('CRM_DEAL');
-    return this.transitionRecord(actor, workspaceId, 'DEAL', deal, input);
+    const result = this.transitionRecord(actor, workspaceId, 'DEAL', deal, input);
+    this.storeIdempotentResponse(workspaceId, actor.id, `crm.deal.transition:${dealId}`, input, idempotencyKey, result);
+    return result;
   }
 
   private transitionRecord<T extends CrmLead | CrmDeal>(
@@ -649,6 +727,7 @@ export class CrmPipelineService {
         : null;
       if (!lostReason) throw badRequest('CRM_LOST_REASON_REQUIRED', 'A valid lost reason is required for failure stages.');
     }
+    this.validateAndApplyRequiredFields(workspaceId, entityType, record, targetPipeline.id, targetStage.id, input.fieldValues ?? {});
 
     const before = { pipelineId: record.pipelineId, stageId: record.stageId, version: record.version };
     record.pipelineId = targetPipeline.id;
@@ -669,6 +748,33 @@ export class CrmPipelineService {
       version: record.version,
     });
     return record;
+  }
+
+  private validateAndApplyRequiredFields(
+    workspaceId: string,
+    entityType: CrmPipelineEntityType,
+    record: CrmLead | CrmDeal,
+    pipelineId: string,
+    stageId: string,
+    fieldValues: Record<string, unknown>,
+  ) {
+    const rules = this.requiredFieldResolver.requiredFieldsForStage({ workspaceId, entityType, pipelineId, stageId });
+    if (rules.length === 0) return;
+    const recordValues = record as unknown as Record<string, unknown>;
+    const missing = rules.filter((rule) => {
+      const value = fieldValues[rule.field] ?? recordValues[rule.field];
+      return value === null || value === undefined || (typeof value === 'string' && value.trim() === '');
+    });
+    if (missing.length > 0) {
+      throw badRequest('CRM_STAGE_REQUIRED_FIELDS_MISSING', 'Required fields are missing for the target stage.', {
+        fields: missing.map((rule) => ({ field: rule.field, label: rule.label ?? rule.field })),
+      });
+    }
+    for (const rule of rules) {
+      if (Object.prototype.hasOwnProperty.call(fieldValues, rule.field) && Object.prototype.hasOwnProperty.call(recordValues, rule.field)) {
+        recordValues[rule.field] = fieldValues[rule.field];
+      }
+    }
   }
 
   private defaultPipeline(workspaceId: string, entityType: CrmPipelineEntityType, name: string, stages: StageInput[]) {
@@ -880,6 +986,52 @@ export class CrmPipelineService {
     });
   }
 
+  private findIdempotentReplay(
+    workspaceId: string,
+    actorUserId: string,
+    operation: string,
+    input: unknown,
+    idempotencyKey?: string,
+  ) {
+    if (!idempotencyKey) return null;
+    const requestHash = JSON.stringify(input);
+    const existing = this.store.state.idempotencyRecords.find(
+      (item) =>
+        item.workspaceId === workspaceId &&
+        item.actorUserId === actorUserId &&
+        item.operation === operation &&
+        item.idempotencyKey === idempotencyKey &&
+        item.expiresAt > now(),
+    );
+    if (!existing) return null;
+    if (existing.requestHash !== requestHash) {
+      throw conflict('IDEMPOTENCY_KEY_REUSED', 'Idempotency key was reused with a different payload.');
+    }
+    return existing.response;
+  }
+
+  private storeIdempotentResponse(
+    workspaceId: string,
+    actorUserId: string,
+    operation: string,
+    input: unknown,
+    idempotencyKey: string | undefined,
+    response: Record<string, unknown>,
+  ) {
+    if (!idempotencyKey) return;
+    this.store.state.idempotencyRecords.push({
+      id: this.store.id(),
+      workspaceId,
+      actorUserId,
+      operation,
+      idempotencyKey,
+      requestHash: JSON.stringify(input),
+      response,
+      expiresAt: new Date(Date.now() + IDEMPOTENCY_TTL_MS),
+      createdAt: now(),
+    });
+  }
+
   private currentRecordsForStage(workspaceId: string, entityType: CrmPipelineEntityType, stageId: string) {
     return entityType === 'LEAD'
       ? this.store.state.crmLeads.filter((record) => record.workspaceId === workspaceId && record.stageId === stageId && !record.isDeleted)
@@ -1040,6 +1192,13 @@ export class CrmPipelineService {
       const contact = this.store.state.crmContacts.find((item) => item.id === contactId && item.workspaceId === workspaceId && !item.isDeleted);
       if (!contact) throw notFound('CRM_CONTACT');
     }
+  }
+
+  private assertActiveWorkspaceMember(workspaceId: string, userId: string) {
+    const membership = this.store.state.workspaceMemberships.find(
+      (item) => item.workspaceId === workspaceId && item.userId === userId && item.status === 'ACTIVE' && !item.isDeleted,
+    );
+    if (!membership) throw notFound('Workspace member');
   }
 
   private assertActiveSource(workspaceId: string, sourceId: string | null) {

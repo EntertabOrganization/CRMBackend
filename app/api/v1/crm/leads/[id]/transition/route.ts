@@ -12,6 +12,6 @@ export async function POST(request: NextRequest, { params }: Params) {
     const workspaceId = workspaceHeader(request);
     if (!workspaceId) throw badRequest('WORKSPACE_REQUIRED', 'X-Workspace-Id is required.');
     const { id } = await params;
-    return appContext.crm.transitionLead(user, workspaceId, id, await readJson(request));
+    return appContext.crm.transitionLead(user, workspaceId, id, await readJson(request), request.headers.get('idempotency-key') ?? undefined);
   });
 }
