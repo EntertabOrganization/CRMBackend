@@ -20,6 +20,7 @@ import { CrmPipelineService } from './crm-pipeline-service';
 import { applyCursorQuery, parseCursorQuery } from './query';
 import { requireText } from './validation';
 import type { InMemoryStore } from './store';
+import type { FieldEngine } from './fields/field-engine';
 
 type AddressInput = Partial<Pick<CrmContact, 'addressLine1' | 'addressLine2' | 'city' | 'stateOrProvince' | 'postalCode' | 'countryCode'>>;
 
@@ -39,6 +40,7 @@ type LeadConversionInput = {
       firstName?: string;
       lastName?: string;
       communications?: CommunicationInput[];
+      customFields?: Record<string, unknown>;
     };
   };
   company: {
@@ -47,6 +49,7 @@ type LeadConversionInput = {
     create?: {
       name?: string;
       communications?: CommunicationInput[];
+      customFields?: Record<string, unknown>;
     };
   };
   deal?: {
@@ -54,6 +57,7 @@ type LeadConversionInput = {
     title?: string;
     amount?: number | null;
     currencyCode?: string | null;
+    customFields?: Record<string, unknown>;
   };
 };
 
@@ -81,7 +85,35 @@ function normalizeCode(value: string) {
 }
 
 export class CrmCoreService {
-  constructor(private readonly store: InMemoryStore) {}
+  constructor(
+    private readonly store: InMemoryStore,
+    private readonly fields?: FieldEngine,
+  ) {}
+
+  /** Runs custom-field + requirement validation for the record about to be written (no-op without a field engine). */
+  private prepareCustomFields(
+    user: User,
+    workspaceId: string,
+    entityType: CrmRecordEntityType,
+    record: ResponsibleRecord,
+    supplied: unknown,
+    isCreate: boolean,
+  ) {
+    if (!this.fields) return null;
+    const access = this.fields.support.deps.access;
+    const adapter = this.fields.support.deps.registry.get(entityType);
+    const pipelined = record as { pipelineId?: string; stageId?: string };
+    return this.fields.validateWrite({
+      actor: access.actor(user, workspaceId),
+      entityType,
+      entityId: isCreate ? null : record.id,
+      isCreate,
+      supplied,
+      systemState: adapter.systemValues(record),
+      pipelineId: pipelined.pipelineId ?? null,
+      stageId: pipelined.stageId ?? null,
+    });
+  }
 
   createSource(
     actor: User,
@@ -228,6 +260,22 @@ export class CrmCoreService {
       responsibleUserId?: string;
       communications?: CommunicationInput[];
       forceCreate?: boolean;
+      customFields?: Record<string, unknown>;
+    },
+  ) {
+    return this.store.atomicSync(() => this.createContactUnsafe(actor, workspaceId, input));
+  }
+
+  private createContactUnsafe(
+    actor: User,
+    workspaceId: string,
+    input: AddressInput & {
+      firstName: string;
+      lastName: string;
+      responsibleUserId?: string;
+      communications?: CommunicationInput[];
+      forceCreate?: boolean;
+      customFields?: Record<string, unknown>;
     },
   ) {
     this.assertMembership(actor.id, workspaceId);
@@ -258,11 +306,14 @@ export class CrmCoreService {
       updatedAt: now(),
       version: 1,
     };
+    const prepared = this.prepareCustomFields(actor, workspaceId, 'CONTACT', contact, input.customFields, true);
     this.store.state.crmContacts.push(contact);
+    if (prepared) this.fields!.commit(prepared, contact.id);
     for (const communication of communications) {
       this.addContactCommunication(actor, workspaceId, contact.id, communication);
     }
     this.audit(actor.id, workspaceId, 'CRM.CONTACT.CREATED', 'CrmContact', contact.id, null, { id: contact.id, displayName: contact.displayName });
+    this.store.state.outboxEvents.push({ id: this.store.id(), workspaceId, eventType: 'CRM.CONTACT.CREATED', entityType: 'CONTACT', entityId: contact.id, actorUserId: actor.id, occurredAt: now(), payload: { entityVersion: contact.version } });
     return contact;
   }
 
@@ -274,6 +325,21 @@ export class CrmCoreService {
       responsibleUserId?: string;
       communications?: CommunicationInput[];
       forceCreate?: boolean;
+      customFields?: Record<string, unknown>;
+    },
+  ) {
+    return this.store.atomicSync(() => this.createCompanyUnsafe(actor, workspaceId, input));
+  }
+
+  private createCompanyUnsafe(
+    actor: User,
+    workspaceId: string,
+    input: AddressInput & {
+      name: string;
+      responsibleUserId?: string;
+      communications?: CommunicationInput[];
+      forceCreate?: boolean;
+      customFields?: Record<string, unknown>;
     },
   ) {
     this.assertMembership(actor.id, workspaceId);
@@ -301,11 +367,14 @@ export class CrmCoreService {
       updatedAt: now(),
       version: 1,
     };
+    const prepared = this.prepareCustomFields(actor, workspaceId, 'COMPANY', company, input.customFields, true);
     this.store.state.crmCompanies.push(company);
+    if (prepared) this.fields!.commit(prepared, company.id);
     for (const communication of communications) {
       this.addCompanyCommunication(actor, workspaceId, company.id, communication);
     }
     this.audit(actor.id, workspaceId, 'CRM.COMPANY.CREATED', 'CrmCompany', company.id, null, { id: company.id, name: company.name });
+    this.store.state.outboxEvents.push({ id: this.store.id(), workspaceId, eventType: 'CRM.COMPANY.CREATED', entityType: 'COMPANY', entityId: company.id, actorUserId: actor.id, occurredAt: now(), payload: { entityVersion: company.version } });
     return company;
   }
 
@@ -481,7 +550,8 @@ export class CrmCoreService {
 
       let deal = null;
       if (input.deal?.action === 'CREATE') {
-        deal = new CrmPipelineService(this.store).createDeal(actor, workspaceId, {
+        deal = new CrmPipelineService(this.store, undefined, this.fields).createDeal(actor, workspaceId, {
+          customFields: input.deal.customFields,
           title: input.deal.title ?? lead.title,
           companyId: company?.id ?? null,
           contactIds: contact ? [contact.id] : [],
@@ -694,6 +764,16 @@ export class CrmCoreService {
       responsibleUserId: record.responsibleUserId,
       version: record.version,
     });
+    this.store.state.outboxEvents.push({
+      id: this.store.id(),
+      workspaceId,
+      eventType: `CRM.${entityType}.ASSIGNED`,
+      entityType,
+      entityId: record.id,
+      actorUserId: actor.id,
+      occurredAt: now(),
+      payload: { fromUserId: before.responsibleUserId, toUserId: record.responsibleUserId, entityVersion: record.version },
+    });
     this.storeIdempotentResponse(workspaceId, actor.id, operation, input, idempotencyKey, record);
     return record;
   }
@@ -738,6 +818,114 @@ export class CrmCoreService {
     this.store.state.crmRecordObservers = this.store.state.crmRecordObservers.filter((observer) => observer.id !== existing.id);
     this.audit(actor.id, workspaceId, `CRM.${entityType}.OBSERVER_REMOVED`, this.entityClass(entityType), recordId, existing, null);
     return { id: existing.id };
+  }
+
+  // ---- update / detail with custom fields ------------------------------------------------------------------------
+
+  private static readonly ADDRESS_KEYS = ['addressLine1', 'addressLine2', 'city', 'stateOrProvince', 'postalCode', 'countryCode'];
+  private static readonly UTM_KEYS = ['utmSource', 'utmMedium', 'utmCampaign', 'utmContent', 'utmTerm'];
+
+  private updatableKeys(entityType: CrmRecordEntityType): { text: string[]; nullableText: string[]; numbers: string[] } {
+    const address = CrmCoreService.ADDRESS_KEYS;
+    switch (entityType) {
+      case 'LEAD':
+        return {
+          text: ['title'],
+          nullableText: ['firstName', 'lastName', 'companyName', 'sourceDescription', 'currencyCode', ...address, ...CrmCoreService.UTM_KEYS],
+          numbers: ['estimatedAmount'],
+        };
+      case 'DEAL':
+        return { text: ['title'], nullableText: ['sourceDescription', 'currencyCode', ...CrmCoreService.UTM_KEYS], numbers: ['amount'] };
+      case 'CONTACT':
+        return { text: ['firstName', 'lastName'], nullableText: [...address], numbers: [] };
+      case 'COMPANY':
+        return { text: ['name'], nullableText: [...address], numbers: [] };
+    }
+  }
+
+  /** PATCH semantics: only supplied keys change; system + custom values are validated and written together. */
+  updateRecord(
+    actor: User,
+    workspaceId: string,
+    entityType: CrmRecordEntityType,
+    recordId: string,
+    input: Record<string, unknown>,
+    idempotencyKey?: string,
+  ) {
+    const operation = `crm.${entityType.toLowerCase()}.update:${recordId}`;
+    const idempotent = this.findIdempotentReplay(workspaceId, actor.id, operation, input, idempotencyKey);
+    if (idempotent) return idempotent as ResponsibleRecord;
+    return this.store.atomicSync(() => {
+      const record = this.activeCrmRecord(workspaceId, entityType, recordId);
+      this.assertRecordPermission(actor.id, workspaceId, this.permissionKey(entityType, 'update'), record);
+      if (typeof input.expectedVersion !== 'number') throw badRequest('CRM_VERSION_REQUIRED', 'expectedVersion is required.');
+      if (record.version !== input.expectedVersion) throw conflict('CRM_VERSION_CONFLICT', 'CRM record version is stale.');
+      const keys = this.updatableKeys(entityType);
+      const allowed = new Set([...keys.text, ...keys.nullableText, ...keys.numbers, 'sourceId', 'companyId', 'customFields', 'expectedVersion', 'idempotencyKey']);
+      const unknown = Object.keys(input).filter((key) => !allowed.has(key));
+      if (unknown.length > 0) throw badRequest('CRM_FIELD_NOT_UPDATABLE', `These fields cannot be updated here: ${unknown.join(', ')}.`, { fields: unknown });
+
+      const changes: Record<string, unknown> = {};
+      for (const key of keys.text) {
+        if (input[key] !== undefined) changes[key] = requireText(input[key], key);
+      }
+      for (const key of keys.nullableText) {
+        if (input[key] === undefined) continue;
+        if (input[key] !== null && typeof input[key] !== 'string') throw badRequest('VALIDATION_ERROR', `${key} must be a string or null.`);
+        changes[key] = input[key] === null ? null : (input[key] as string).trim() || null;
+      }
+      for (const key of keys.numbers) {
+        if (input[key] === undefined) continue;
+        if (input[key] !== null && (typeof input[key] !== 'number' || !Number.isFinite(input[key]))) throw badRequest('VALIDATION_ERROR', `${key} must be a number or null.`);
+        changes[key] = input[key];
+      }
+      if ((entityType === 'LEAD' || entityType === 'DEAL') && input.sourceId !== undefined) {
+        if (input.sourceId !== null) {
+          const source = this.store.state.crmSources.find((item) => item.id === input.sourceId && item.workspaceId === workspaceId && item.isActive);
+          if (!source) throw notFound('CRM_SOURCE');
+        }
+        changes.sourceId = input.sourceId;
+      }
+      if (entityType === 'DEAL' && input.companyId !== undefined) {
+        if (input.companyId !== null) this.activeCompany(workspaceId, input.companyId as string);
+        else if (!this.store.state.crmDealContacts.some((item) => item.dealId === recordId)) {
+          throw badRequest('CRM_CUSTOMER_REQUIRED', 'A deal requires a company or at least one contact.');
+        }
+        changes.companyId = input.companyId;
+      }
+
+      const target = record as unknown as Record<string, unknown>;
+      const preview = { ...target, ...changes } as unknown as ResponsibleRecord;
+      const prepared = this.prepareCustomFields(actor, workspaceId, entityType, preview, input.customFields, false);
+      const before: Record<string, unknown> = {};
+      for (const key of Object.keys(changes)) before[key] = target[key];
+      Object.assign(target, changes);
+      if (entityType === 'CONTACT') (record as CrmContact).displayName = displayName((record as CrmContact).firstName, (record as CrmContact).lastName);
+      if (prepared) this.fields!.commit(prepared, record.id);
+      record.version += 1;
+      record.updatedAt = now();
+      const changedFields = [...Object.keys(changes), ...(prepared ? [...prepared.changes.values()].map((entry) => `customFields.${entry.field.code}`) : [])];
+      this.audit(actor.id, workspaceId, `CRM.${entityType}.UPDATED`, this.entityClass(entityType), record.id, before, { ...changes, version: record.version });
+      this.store.state.outboxEvents.push({
+        id: this.store.id(),
+        workspaceId,
+        eventType: `CRM.${entityType}.UPDATED`,
+        entityType,
+        entityId: record.id,
+        actorUserId: actor.id,
+        occurredAt: now(),
+        payload: { entityVersion: record.version, changedFields },
+      });
+      this.storeIdempotentResponse(workspaceId, actor.id, operation, input, idempotencyKey, record);
+      return record;
+    });
+  }
+
+  /** Detail read for any CRM record: normal read permission applies, custom fields are authorized per field. */
+  getRecord(actor: User, workspaceId: string, entityType: CrmRecordEntityType, recordId: string) {
+    const record = this.activeCrmRecord(workspaceId, entityType, recordId);
+    this.assertReadPermission(actor.id, workspaceId, entityType, record);
+    return record;
   }
 
   canReadRecord(actor: User, workspaceId: string, entityType: CrmRecordEntityType, recordId: string) {
@@ -842,6 +1030,7 @@ export class CrmCoreService {
         .filter((item) => item.leadId === lead.id)
         .map((item) => ({ type: item.type, value: item.value, label: item.label, isPrimary: item.isPrimary })),
       forceCreate: true,
+      customFields: create.customFields,
     });
   }
 
@@ -861,6 +1050,7 @@ export class CrmCoreService {
       name: create.name ?? lead.companyName ?? lead.title,
       communications: create.communications ?? [],
       forceCreate: true,
+      customFields: create.customFields,
     });
   }
 

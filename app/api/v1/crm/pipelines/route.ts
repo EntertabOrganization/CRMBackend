@@ -19,7 +19,16 @@ export async function GET(request: NextRequest) {
     const workspaceId = workspaceHeader(request);
     if (!workspaceId) throw badRequest('WORKSPACE_REQUIRED', 'X-Workspace-Id is required.');
     const entityType = request.nextUrl.searchParams.get('entityType') as CrmPipelineEntityType | null;
-    return appContext.crm.listPipelines(user, workspaceId, entityType ?? undefined);
+    const pipelines = appContext.crm.listPipelines(user, workspaceId, entityType ?? undefined);
+    // Opt-in so existing clients keep the plain list; the settings UI needs stages to scope requirement rules.
+    if (request.nextUrl.searchParams.get('includeStages') !== 'true') return pipelines;
+    return pipelines.map((pipeline) => ({
+      ...pipeline,
+      stages: appContext.store.state.crmStages
+        .filter((stage) => stage.pipelineId === pipeline.id && stage.isActive)
+        .sort((a, b) => a.position - b.position)
+        .map((stage) => ({ id: stage.id, name: stage.name, semanticType: stage.semanticType, position: stage.position })),
+    }));
   });
 }
 

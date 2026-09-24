@@ -38,8 +38,27 @@ describe('database seed configuration', () => {
         'crm.deal.transition',
         'crm.pipeline.manage',
         'crm.pipeline.transition.override',
+        'custom_fields.manage',
+        'required_fields.manage',
+        'activity.create',
+        'activity.read',
+        'activity.update',
+        'activity.delete',
+        'activity.complete',
+        'activity.reopen',
+        'activity.assign',
+        'activity.manage_types',
+        'timeline.read',
+        'timeline.comment',
+        'timeline.comment_edit',
+        'timeline.comment_delete',
       ]),
     );
-    expect(seedConfig.PERMISSIONS).toHaveLength(45);
+    expect(seedConfig.PERMISSIONS).toHaveLength(59);
+  });
+
+  it('keeps the seed catalog identical to the server permission catalog', () => {
+    const { PERMISSION_CATALOG } = require('../src/server/permissions');
+    expect([...seedConfig.PERMISSIONS].sort()).toEqual([...PERMISSION_CATALOG].sort());
   });
 });

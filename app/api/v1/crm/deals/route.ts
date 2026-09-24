@@ -1,38 +1,21 @@
 import { NextRequest } from 'next/server';
 import { appContext } from '@/src/server/app-context';
-import { badRequest } from '@/src/server/errors';
-import { readJson, requireUser, workspaceHeader } from '@/src/server/request';
+import { readJson } from '@/src/server/request';
 import { route, routeWithMeta } from '@/src/server/response';
+import { idempotencyKeyOf, requireWorkspaceContext } from '@/src/server/route-helpers';
 
 export async function GET(request: NextRequest) {
   return routeWithMeta(async () => {
-    const user = await requireUser(request, appContext.store);
-    const workspaceId = workspaceHeader(request);
-    if (!workspaceId) throw badRequest('WORKSPACE_REQUIRED', 'X-Workspace-Id is required.');
-    return appContext.crmCore.listDeals(user, workspaceId, request.nextUrl.searchParams);
+    const { user, workspaceId, actor } = await requireWorkspaceContext(request);
+    const result = appContext.crmCore.listDeals(user, workspaceId, request.nextUrl.searchParams);
+    return { data: appContext.fields.decorate(actor, 'DEAL', result.data), meta: result.meta };
   });
 }
 
 export async function POST(request: NextRequest) {
   return route(async () => {
-    const user = await requireUser(request, appContext.store);
-    const workspaceId = workspaceHeader(request);
-    if (!workspaceId) throw badRequest('WORKSPACE_REQUIRED', 'X-Workspace-Id is required.');
-    return appContext.crm.createDeal(
-      user,
-      workspaceId,
-      await readJson<{
-        title: string;
-        responsibleUserId?: string;
-        pipelineId?: string;
-        stageId?: string;
-        amount?: number;
-        currencyCode?: string;
-        companyId?: string | null;
-        contactIds?: string[];
-        primaryContactId?: string;
-      }>(request),
-      request.headers.get('idempotency-key') ?? undefined,
-    );
+    const { user, workspaceId, actor } = await requireWorkspaceContext(request);
+    const record = appContext.crm.createDeal(user, workspaceId, (await readJson(request)) as never, idempotencyKeyOf(request));
+    return appContext.fields.decorate(actor, 'DEAL', [record])[0];
   });
 }

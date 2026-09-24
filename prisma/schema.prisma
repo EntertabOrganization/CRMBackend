@@ -774,16 +774,22 @@ model CrmStageHistory {
 }
 
 model OutboxEvent {
-  id          String   @id @default(uuid()) @db.Uuid
-  workspaceId String   @map("workspace_id") @db.Uuid
-  eventType   String   @map("event_type")
-  entityType  String   @map("entity_type")
-  entityId    String   @map("entity_id") @db.Uuid
-  actorUserId String?  @map("actor_user_id") @db.Uuid
-  occurredAt  DateTime @default(now()) @map("occurred_at")
-  payload     Json
+  id             String    @id @default(uuid()) @db.Uuid
+  workspaceId    String    @map("workspace_id") @db.Uuid
+  eventType      String    @map("event_type")
+  entityType     String    @map("entity_type")
+  entityId       String    @map("entity_id") @db.Uuid
+  actorUserId    String?   @map("actor_user_id") @db.Uuid
+  occurredAt     DateTime  @default(now()) @map("occurred_at")
+  payload        Json
+  eventVersion   Int       @default(1) @map("event_version")
+  correlationId  String?   @map("correlation_id")
+  causationId    String?   @map("causation_id")
+  idempotencyKey String?   @map("idempotency_key")
+  projectedAt    DateTime? @map("projected_at")
 
   @@index([workspaceId, eventType, occurredAt])
+  @@index([projectedAt, occurredAt])
   @@map("outbox_events")
 }
 
@@ -801,4 +807,412 @@ model IdempotencyRecord {
   @@unique([workspaceId, actorUserId, operation, idempotencyKey])
   @@index([expiresAt])
   @@map("idempotency_records")
+}
+
+// ---------------------------------------------------------------------------
+// Custom & Required Fields
+// ---------------------------------------------------------------------------
+
+enum CustomFieldType {
+  TEXT
+  TEXTAREA
+  INTEGER
+  DECIMAL
+  BOOLEAN
+  DATE
+  DATETIME
+  LIST
+  MULTI_LIST
+  PHONE
+  EMAIL
+  URL
+  MONEY
+  USER_REFERENCE
+  CRM_REFERENCE
+  FILE
+  ADDRESS
+}
+
+model CrmCustomField {
+  id                    String          @id @default(uuid()) @db.Uuid
+  workspaceId           String          @map("workspace_id") @db.Uuid
+  entityType            String          @map("entity_type")
+  code                  String
+  label                 String
+  helpText              String?         @map("help_text")
+  fieldType             CustomFieldType @map("field_type")
+  isMultiple            Boolean         @default(false) @map("is_multiple")
+  isActive              Boolean         @default(true) @map("is_active")
+  sortOrder             Int             @default(0) @map("sort_order")
+  staticDefaultValue    Json?           @map("static_default_value")
+  validationConfig      Json?           @map("validation_config")
+  referenceConfig       Json?           @map("reference_config")
+  activityTypeId        String?         @map("activity_type_id") @db.Uuid
+  showOnCreate          Boolean         @default(true) @map("show_on_create")
+  showOnEdit            Boolean         @default(true) @map("show_on_edit")
+  showOnDetail          Boolean         @default(true) @map("show_on_detail")
+  availableAsListColumn Boolean         @default(false) @map("available_as_list_column")
+  searchable            Boolean         @default(false)
+  filterable            Boolean         @default(false)
+  sortable              Boolean         @default(false)
+  availableInForms      Boolean         @default(false) @map("available_in_forms")
+  availableInImport     Boolean         @default(false) @map("available_in_import")
+  availableInExport     Boolean         @default(false) @map("available_in_export")
+  availableInApi        Boolean         @default(true) @map("available_in_api")
+  version               Int             @default(1)
+  createdByUserId       String?         @map("created_by_user_id") @db.Uuid
+  updatedByUserId       String?         @map("updated_by_user_id") @db.Uuid
+  createdAt             DateTime        @default(now()) @map("created_at")
+  updatedAt             DateTime        @updatedAt @map("updated_at")
+
+  @@unique([workspaceId, entityType, code])
+  @@index([workspaceId, entityType, isActive, sortOrder])
+  @@map("crm_custom_fields")
+}
+
+model CrmCustomFieldOption {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  fieldId     String   @map("field_id") @db.Uuid
+  code        String
+  label       String
+  sortOrder   Int      @default(0) @map("sort_order")
+  isActive    Boolean  @default(true) @map("is_active")
+  version     Int      @default(1)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([fieldId, code])
+  @@index([workspaceId, fieldId, isActive, sortOrder])
+  @@map("crm_custom_field_options")
+}
+
+model CrmCustomFieldValue {
+  id            String    @id @default(uuid()) @db.Uuid
+  workspaceId   String    @map("workspace_id") @db.Uuid
+  fieldId       String    @map("field_id") @db.Uuid
+  entityType    String    @map("entity_type")
+  entityId      String    @map("entity_id") @db.Uuid
+  ordinal       Int       @default(0)
+  valueText     String?   @map("value_text")
+  valueInteger  Int?      @map("value_integer")
+  valueDecimal  Decimal?  @map("value_decimal") @db.Decimal(28, 8)
+  valueBoolean  Boolean?  @map("value_boolean")
+  valueDate     DateTime? @map("value_date") @db.Date
+  valueDateTime DateTime? @map("value_datetime")
+  valueUuid     String?   @map("value_uuid") @db.Uuid
+  valueJson     Json?     @map("value_json")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@unique([fieldId, entityType, entityId, ordinal])
+  @@index([workspaceId, entityType, entityId, fieldId])
+  @@index([workspaceId, fieldId])
+  @@map("crm_custom_field_values")
+}
+
+model CrmFieldVisibilityRule {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  fieldId     String   @map("field_id") @db.Uuid
+  subjectType String   @map("subject_type")
+  subjectId   String   @map("subject_id") @db.Uuid
+  restriction String
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([fieldId, subjectType, subjectId])
+  @@index([workspaceId, fieldId])
+  @@map("crm_field_visibility_rules")
+}
+
+model CrmFieldRequirement {
+  id                   String   @id @default(uuid()) @db.Uuid
+  workspaceId          String   @map("workspace_id") @db.Uuid
+  entityType           String   @map("entity_type")
+  targetKind           String   @map("target_kind")
+  targetSystemFieldKey String?  @map("target_system_field_key")
+  targetCustomFieldId  String?  @map("target_custom_field_id") @db.Uuid
+  pipelineId           String?  @map("pipeline_id") @db.Uuid
+  stageId              String?  @map("stage_id") @db.Uuid
+  isActive             Boolean  @default(true) @map("is_active")
+  conditions           Json?
+  conditionsVersion    Int      @default(1) @map("conditions_version")
+  version              Int      @default(1)
+  createdByUserId      String?  @map("created_by_user_id") @db.Uuid
+  updatedByUserId      String?  @map("updated_by_user_id") @db.Uuid
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  @@index([workspaceId, entityType, isActive, pipelineId, stageId])
+  @@index([workspaceId, targetCustomFieldId])
+  @@map("crm_field_requirements")
+}
+
+model CrmCustomFieldMigration {
+  id                  String          @id @default(uuid()) @db.Uuid
+  workspaceId         String          @map("workspace_id") @db.Uuid
+  fieldId             String          @map("field_id") @db.Uuid
+  fromType            CustomFieldType @map("from_type")
+  toType              CustomFieldType @map("to_type")
+  requestedByUserId   String          @map("requested_by_user_id") @db.Uuid
+  status              String
+  preview             Json
+  report              Json?
+  checkpoint          Json?
+  schemaVersionBefore Int?            @map("schema_version_before")
+  schemaVersionAfter  Int?            @map("schema_version_after")
+  idempotencyKey      String?         @map("idempotency_key")
+  startedAt           DateTime?       @map("started_at")
+  completedAt         DateTime?       @map("completed_at")
+  createdAt           DateTime        @default(now()) @map("created_at")
+
+  @@index([workspaceId, fieldId])
+  @@map("crm_custom_field_migrations")
+}
+
+model CrmFieldSchemaVersion {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  entityType  String   @map("entity_type")
+  version     Int      @default(1)
+  updatedAt   DateTime @default(now()) @map("updated_at")
+
+  @@unique([workspaceId, entityType])
+  @@map("crm_field_schema_versions")
+}
+
+// ---------------------------------------------------------------------------
+// Activities
+// ---------------------------------------------------------------------------
+
+enum ActivityStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum ActivityPriority {
+  LOW
+  NORMAL
+  HIGH
+}
+
+enum ActivityDirection {
+  INCOMING
+  OUTGOING
+  NOT_APPLICABLE
+}
+
+model CrmActivityType {
+  id                     String            @id @default(uuid()) @db.Uuid
+  workspaceId            String            @map("workspace_id") @db.Uuid
+  code                   String
+  name                   String
+  icon                   String?
+  colorToken             String?           @map("color_token")
+  defaultDurationMinutes Int?              @map("default_duration_minutes")
+  defaultPriority        ActivityPriority  @default(NORMAL) @map("default_priority")
+  defaultDirection       ActivityDirection @default(NOT_APPLICABLE) @map("default_direction")
+  enabled                Boolean           @default(true)
+  ownerApp               String?           @map("owner_app")
+  version                Int               @default(1)
+  createdAt              DateTime          @default(now()) @map("created_at")
+  updatedAt              DateTime          @updatedAt @map("updated_at")
+
+  @@unique([workspaceId, code])
+  @@map("crm_activity_types")
+}
+
+model CrmActivity {
+  id                   String            @id @default(uuid()) @db.Uuid
+  workspaceId          String            @map("workspace_id") @db.Uuid
+  typeCode             String            @map("type_code")
+  customActivityTypeId String?           @map("custom_activity_type_id") @db.Uuid
+  subject              String
+  description          String?
+  status               ActivityStatus    @default(PLANNED)
+  priority             ActivityPriority  @default(NORMAL)
+  direction            ActivityDirection @default(NOT_APPLICABLE)
+  createdByUserId      String?           @map("created_by_user_id") @db.Uuid
+  responsibleUserId    String?           @map("responsible_user_id") @db.Uuid
+  startAt              DateTime?         @map("start_at")
+  endAt                DateTime?         @map("end_at")
+  deadline             DateTime?
+  deadlineVersion      Int               @default(1) @map("deadline_version")
+  location             String?
+  resultText           String?           @map("result_text")
+  completedAt          DateTime?         @map("completed_at")
+  cancelledAt          DateTime?         @map("cancelled_at")
+  cancellationReason   String?           @map("cancellation_reason")
+  reopenedAt           DateTime?         @map("reopened_at")
+  adapterKind          String?           @map("adapter_kind")
+  adapterResourceId    String?           @map("adapter_resource_id")
+  externalOrigin       String?           @map("external_origin")
+  externalId           String?           @map("external_id")
+  fileIds              Json              @default("[]") @map("file_ids")
+  version              Int               @default(1)
+  isDeleted            Boolean           @default(false) @map("is_deleted")
+  deletedAt            DateTime?         @map("deleted_at")
+  deletedByUserId      String?           @map("deleted_by_user_id") @db.Uuid
+  createdAt            DateTime          @default(now()) @map("created_at")
+  updatedAt            DateTime          @updatedAt @map("updated_at")
+
+  @@unique([workspaceId, externalOrigin, externalId])
+  @@index([workspaceId, responsibleUserId, status, deadline])
+  @@index([workspaceId, isDeleted, status])
+  @@index([workspaceId, typeCode])
+  @@map("crm_activities")
+}
+
+model CrmActivityBinding {
+  id              String   @id @default(uuid()) @db.Uuid
+  workspaceId     String   @map("workspace_id") @db.Uuid
+  activityId      String   @map("activity_id") @db.Uuid
+  entityType      String   @map("entity_type")
+  entityId        String   @map("entity_id") @db.Uuid
+  isPrimary       Boolean  @default(false) @map("is_primary")
+  createdByUserId String?  @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@unique([activityId, entityType, entityId])
+  @@index([workspaceId, entityType, entityId])
+  @@index([activityId])
+  @@map("crm_activity_bindings")
+}
+
+model CrmActivityParticipant {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  activityId  String   @map("activity_id") @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  role        String
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([activityId, userId, role])
+  @@index([workspaceId, userId])
+  @@map("crm_activity_participants")
+}
+
+model CrmActivityCommunication {
+  id                String   @id @default(uuid()) @db.Uuid
+  workspaceId       String   @map("workspace_id") @db.Uuid
+  activityId        String   @map("activity_id") @db.Uuid
+  communicationType String   @map("communication_type")
+  crmEntityType     String?  @map("crm_entity_type")
+  crmEntityId       String?  @map("crm_entity_id") @db.Uuid
+  normalizedValue   String   @map("normalized_value")
+  rawDisplayValue   String?  @map("raw_display_value")
+  label             String?
+  isPrimary         Boolean  @default(false) @map("is_primary")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  @@index([workspaceId, activityId])
+  @@map("crm_activity_communications")
+}
+
+model CrmActivityReminder {
+  id            String    @id @default(uuid()) @db.Uuid
+  workspaceId   String    @map("workspace_id") @db.Uuid
+  activityId    String    @map("activity_id") @db.Uuid
+  mode          String
+  relativeTo    String?   @map("relative_to")
+  offsetSeconds Int?      @map("offset_seconds")
+  absoluteAt    DateTime? @map("absolute_at")
+  scheduledFor  DateTime? @map("scheduled_for")
+  status        String
+  occurrenceKey String    @map("occurrence_key")
+  sentAt        DateTime? @map("sent_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@unique([workspaceId, occurrenceKey])
+  @@index([status, scheduledFor])
+  @@index([workspaceId, activityId])
+  @@map("crm_activity_reminders")
+}
+
+model CrmActivityReminderRecipient {
+  id          String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  reminderId  String @map("reminder_id") @db.Uuid
+  userId      String @map("user_id") @db.Uuid
+
+  @@unique([reminderId, userId])
+  @@map("crm_activity_reminder_recipients")
+}
+
+model CrmActivityOverdueOccurrence {
+  id              String   @id @default(uuid()) @db.Uuid
+  workspaceId     String   @map("workspace_id") @db.Uuid
+  activityId      String   @map("activity_id") @db.Uuid
+  deadline        DateTime
+  deadlineVersion Int      @map("deadline_version")
+  emittedAt       DateTime @default(now()) @map("emitted_at")
+
+  @@unique([activityId, deadlineVersion])
+  @@map("crm_activity_overdue_occurrences")
+}
+
+// ---------------------------------------------------------------------------
+// Timeline
+// ---------------------------------------------------------------------------
+
+model CrmTimelineEntry {
+  id                   String   @id @default(uuid()) @db.Uuid
+  workspaceId          String   @map("workspace_id") @db.Uuid
+  entityType           String   @map("entity_type")
+  entityId             String   @map("entity_id") @db.Uuid
+  category             String
+  sourceType           String   @map("source_type")
+  sourceId             String   @map("source_id")
+  sourceEventId        String   @map("source_event_id")
+  projectionKind       String   @default("DEFAULT") @map("projection_kind")
+  sourceVersion        Int?     @map("source_version")
+  occurredAt           DateTime @map("occurred_at")
+  actorType            String   @map("actor_type")
+  actorUserId          String?  @map("actor_user_id") @db.Uuid
+  actorDisplaySnapshot String?  @map("actor_display_snapshot")
+  summaryCode          String   @map("summary_code")
+  summaryTextSnapshot  String?  @map("summary_text_snapshot")
+  presentationSnapshot Json     @map("presentation_snapshot")
+  correlationId        String?  @map("correlation_id")
+  projectionVersion    Int      @default(1) @map("projection_version")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  @@unique([workspaceId, entityType, entityId, sourceEventId, projectionKind])
+  @@index([workspaceId, entityType, entityId, occurredAt, id])
+  @@map("crm_timeline_entries")
+}
+
+model CrmTimelineComment {
+  id               String    @id @default(uuid()) @db.Uuid
+  workspaceId      String    @map("workspace_id") @db.Uuid
+  entityType       String    @map("entity_type")
+  entityId         String    @map("entity_id") @db.Uuid
+  linkedActivityId String?   @map("linked_activity_id") @db.Uuid
+  authorUserId     String    @map("author_user_id") @db.Uuid
+  body             String
+  fileIds          Json      @default("[]") @map("file_ids")
+  isDeleted        Boolean   @default(false) @map("is_deleted")
+  deletedAt        DateTime? @map("deleted_at")
+  deletedByUserId  String?   @map("deleted_by_user_id") @db.Uuid
+  version          Int       @default(1)
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  @@index([workspaceId, entityType, entityId, createdAt])
+  @@map("crm_timeline_comments")
+}
+
+model CrmTimelineCommentMention {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  commentId   String   @map("comment_id") @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([commentId, userId])
+  @@map("crm_timeline_comment_mentions")
 }

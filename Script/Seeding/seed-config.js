@@ -52,6 +52,20 @@ const PERMISSIONS = [
   'crm.pipeline.read',
   'crm.pipeline.manage',
   'crm.pipeline.transition.override',
+  'custom_fields.manage',
+  'required_fields.manage',
+  'activity.create',
+  'activity.read',
+  'activity.update',
+  'activity.delete',
+  'activity.complete',
+  'activity.reopen',
+  'activity.assign',
+  'activity.manage_types',
+  'timeline.read',
+  'timeline.comment',
+  'timeline.comment_edit',
+  'timeline.comment_delete',
 ];
 
 module.exports = {

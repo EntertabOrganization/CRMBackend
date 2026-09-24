@@ -1,9 +1,11 @@
-export const openApiDocument = {
+import { CRM_EXTENSION_TAGS, crmExtensionPaths } from './openapi-extensions';
+
+const baseDocument = {
   openapi: '3.1.0',
   info: {
     title: 'EntertabCRM Backend API',
     version: '0.1.0',
-    description: 'EntertabCRM Auth Module and workspace management API.',
+    description: 'EntertabCRM Auth Module, workspace management, CRM core, custom & required fields, activities and timeline API.',
   },
   servers: [{ url: '/api/v1' }],
   tags: [
@@ -205,6 +207,18 @@ export const openApiDocument = {
     '/crm/deals/{id}/transition': securedAction('CRM Deals', 'Transition a deal between stages or pipelines.'),
   },
 } as const;
+
+function mergePaths<T extends object>(base: T, extra: Record<string, Record<string, unknown>>): T & Record<string, Record<string, unknown>> {
+  const merged: Record<string, unknown> = { ...(base as Record<string, unknown>) };
+  for (const [path, operations] of Object.entries(extra)) merged[path] = { ...((merged[path] as object | undefined) ?? {}), ...operations };
+  return merged as T & Record<string, Record<string, unknown>>;
+}
+
+export const openApiDocument = {
+  ...baseDocument,
+  tags: [...baseDocument.tags, ...CRM_EXTENSION_TAGS],
+  paths: mergePaths(baseDocument.paths, crmExtensionPaths()),
+};
 
 function authPost(summary: string, schema: string) {
   return {

@@ -15,6 +15,7 @@ import type {
 import { badRequest, conflict, forbidden, notFound } from './errors';
 import { requireText } from './validation';
 import type { InMemoryStore } from './store';
+import type { FieldEngine } from './fields/field-engine';
 
 type StageInput = {
   name: string;
@@ -31,6 +32,8 @@ type TransitionInput = {
   lostReasonComment?: string | null;
   overrideTransitionGraph?: boolean;
   fieldValues?: Record<string, unknown>;
+  /** Custom-field values supplied together with the transition (e.g. values a target-stage rule requires). */
+  customFields?: Record<string, unknown>;
 };
 
 type PipelineMigrationInput = {
@@ -89,7 +92,35 @@ export class CrmPipelineService {
   constructor(
     private readonly store: InMemoryStore,
     private requiredFieldResolver: RequiredFieldResolver = { requiredFieldsForStage: () => [] },
+    private readonly fields?: FieldEngine,
   ) {}
+
+  /** Custom-field + requirement validation for a pipeline record write (no-op without a field engine). */
+  private prepareCustomFields(
+    user: User,
+    workspaceId: string,
+    entityType: CrmPipelineEntityType,
+    record: CrmLead | CrmDeal,
+    systemOverrides: Record<string, unknown>,
+    supplied: unknown,
+    isCreate: boolean,
+    pipelineId: string,
+    stageId: string,
+  ) {
+    if (!this.fields) return null;
+    const access = this.fields.support.deps.access;
+    const adapter = this.fields.support.deps.registry.get(entityType);
+    return this.fields.validateWrite({
+      actor: access.actor(user, workspaceId),
+      entityType,
+      entityId: isCreate ? null : record.id,
+      isCreate,
+      supplied,
+      systemState: { ...adapter.systemValues(record), ...systemOverrides },
+      pipelineId,
+      stageId,
+    });
+  }
 
   setRequiredFieldResolver(resolver: RequiredFieldResolver) {
     this.requiredFieldResolver = resolver;
@@ -447,7 +478,17 @@ export class CrmPipelineService {
       originVersion?: string | null;
       communications?: CommunicationInput[];
       forceCreate?: boolean;
+      customFields?: Record<string, unknown>;
     },
+    idempotencyKey?: string,
+  ) {
+    return this.store.atomicSync(() => this.createLeadUnsafe(actor, workspaceId, input, idempotencyKey));
+  }
+
+  private createLeadUnsafe(
+    actor: User,
+    workspaceId: string,
+    input: Parameters<CrmPipelineService['createLead']>[2],
     idempotencyKey?: string,
   ) {
     const idempotent = this.findIdempotentReplay(workspaceId, actor.id, 'crm.lead.create', input, idempotencyKey);
@@ -503,7 +544,9 @@ export class CrmPipelineService {
       updatedAt: now(),
       version: 1,
     };
+    const prepared = this.prepareCustomFields(actor, workspaceId, 'LEAD', record, {}, input.customFields, true, pipeline.id, stage.id);
     this.store.state.crmLeads.push(record);
+    if (prepared) this.fields!.commit(prepared, record.id);
     for (const [index, contactId] of Array.from(new Set(input.contactIds ?? [])).entries()) {
       this.store.state.crmLeadContacts.push({
         id: this.store.id(),
@@ -565,7 +608,17 @@ export class CrmPipelineService {
       companyId?: string | null;
       contactIds?: string[];
       primaryContactId?: string;
+      customFields?: Record<string, unknown>;
     },
+    idempotencyKey?: string,
+  ) {
+    return this.store.atomicSync(() => this.createDealUnsafe(actor, workspaceId, input, idempotencyKey));
+  }
+
+  private createDealUnsafe(
+    actor: User,
+    workspaceId: string,
+    input: Parameters<CrmPipelineService['createDeal']>[2],
     idempotencyKey?: string,
   ) {
     const idempotent = this.findIdempotentReplay(workspaceId, actor.id, 'crm.deal.create', input, idempotencyKey);
@@ -623,7 +676,9 @@ export class CrmPipelineService {
       updatedAt: now(),
       version: 1,
     };
+    const prepared = this.prepareCustomFields(actor, workspaceId, 'DEAL', record, {}, input.customFields, true, pipeline.id, stage.id);
     this.store.state.crmDeals.push(record);
+    if (prepared) this.fields!.commit(prepared, record.id);
     contactIds.forEach((contactId, index) => {
       this.store.state.crmDealContacts.push({
         id: this.store.id(),
@@ -666,7 +721,7 @@ export class CrmPipelineService {
     const lead = this.store.state.crmLeads.find((item) => item.id === leadId && item.workspaceId === workspaceId && !item.isDeleted);
     if (!lead) throw notFound('CRM_LEAD');
     if (lead.conversionStatus === 'CONVERTED') throw conflict('CRM_ALREADY_CONVERTED', 'Converted leads cannot be transitioned.');
-    const result = this.transitionRecord(actor, workspaceId, 'LEAD', lead, input);
+    const result = this.store.atomicSync(() => this.transitionRecord(actor, workspaceId, 'LEAD', lead, input));
     this.storeIdempotentResponse(workspaceId, actor.id, `crm.lead.transition:${leadId}`, input, idempotencyKey, result);
     return result;
   }
@@ -676,7 +731,7 @@ export class CrmPipelineService {
     if (idempotent) return idempotent as CrmDeal;
     const deal = this.store.state.crmDeals.find((item) => item.id === dealId && item.workspaceId === workspaceId && !item.isDeleted);
     if (!deal) throw notFound('CRM_DEAL');
-    const result = this.transitionRecord(actor, workspaceId, 'DEAL', deal, input);
+    const result = this.store.atomicSync(() => this.transitionRecord(actor, workspaceId, 'DEAL', deal, input));
     this.storeIdempotentResponse(workspaceId, actor.id, `crm.deal.transition:${dealId}`, input, idempotencyKey, result);
     return result;
   }
@@ -733,6 +788,9 @@ export class CrmPipelineService {
       if (!lostReason) throw badRequest('CRM_LOST_REASON_REQUIRED', 'A valid lost reason is required for failure stages.');
     }
     this.validateAndApplyRequiredFields(workspaceId, entityType, record, targetPipeline.id, targetStage.id, input.fieldValues ?? {});
+    // Required-field rules for the TARGET pipeline/stage (system + custom) are validated before anything is committed.
+    const prepared = this.prepareCustomFields(actor, workspaceId, entityType, record, input.fieldValues ?? {}, input.customFields, false, targetPipeline.id, targetStage.id);
+    if (prepared) this.fields!.commit(prepared, record.id);
 
     const before = { pipelineId: record.pipelineId, stageId: record.stageId, version: record.version };
     record.pipelineId = targetPipeline.id;

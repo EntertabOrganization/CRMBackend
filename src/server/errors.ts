@@ -38,3 +38,6 @@ export const conflict = (code: string, message: string, details: unknown = null)
 
 export const tooManyRequests = (message = 'Too many requests. Please try again later.') =>
   new AppError('RATE_LIMITED', message, 429);
+
+export const fieldValidationFailed = (fields: Record<string, { code: string; message: string; requirementRuleIds?: string[] }[]>) =>
+  new AppError('FIELD_VALIDATION_FAILED', 'One or more fields are invalid.', 400, { fields });

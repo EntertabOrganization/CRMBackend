@@ -510,6 +510,12 @@ export type OutboxEvent = {
   actorUserId?: string | null;
   occurredAt: Date;
   payload: Record<string, unknown>;
+  eventVersion?: number;
+  correlationId?: string | null;
+  causationId?: string | null;
+  idempotencyKey?: string | null;
+  /** Set once the Timeline projector has consumed the event. */
+  projectedAt?: Date | null;
 };
 
 export type SessionContext = {

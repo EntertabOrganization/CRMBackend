@@ -3,7 +3,7 @@
  * handlers, the real persistence layer and a throwaway Postgres database (entertabcrm_test),
  * which is recreated and migrated at the start of the run.
  */
-import { api, coveredEndpoints, disconnectTestDatabase, discoverEndpoints, prepareTestDatabase } from './support/api';
+import { api, coveredAuthenticatedEndpoints, coveredEndpoints, disconnectTestDatabase, discoverEndpoints, prepareTestDatabase } from './support/api';
 
 jest.setTimeout(120_000);
 
@@ -484,6 +484,17 @@ describe('CRM pipelines and stages', () => {
     expect(leads.data.every((p: any) => p.entityType === 'LEAD')).toBe(true);
   });
 
+  it('GET /crm/pipelines?includeStages=true adds ordered active stages and leaves the default list unchanged', async () => {
+    const plain = await api('GET', '/api/v1/crm/pipelines', authed({ query: { entityType: 'DEAL' } }));
+    expect(plain.data[0].stages).toBeUndefined();
+    const withStages = await api('GET', '/api/v1/crm/pipelines', authed({ query: { entityType: 'DEAL', includeStages: 'true' } }));
+    expectOk(withStages);
+    const stages = withStages.data[0].stages as Array<{ id: string; name: string; position: number; semanticType: string }>;
+    expect(stages.length).toBeGreaterThan(1);
+    expect(stages.map((stage) => stage.position)).toEqual([...stages.map((stage) => stage.position)].sort((a, b) => a - b));
+    expect(Object.keys(stages[0]).sort()).toEqual(['id', 'name', 'position', 'semanticType']);
+  });
+
   it('POST /crm/pipelines creates pipelines with stages and validates their structure', async () => {
     const lead = await api('POST', '/api/v1/crm/pipelines', authed({ body: { entityType: 'LEAD', name: `Custom Lead ${RUN}`, stages: stageSet('L') } }));
     expectOk(lead);
@@ -762,6 +773,542 @@ describe('CRM deals', () => {
   });
 });
 
+describe('Custom fields API', () => {
+  const fields: Record<string, any> = {};
+  ctx.fields = fields;
+
+  it('POST /crm/custom-fields creates fields (with options) and GET lists/filters them', async () => {
+    const post = (body: Record<string, unknown>) => api('POST', '/api/v1/crm/custom-fields', authed({ body: { entityType: 'DEAL', ...body } }));
+    const list = await post({ label: 'API Industry', code: 'api_industry', fieldType: 'LIST', options: [{ label: 'Finance' }, { label: 'Health' }], filterable: true });
+    expectOk(list);
+    fields.industry = list.data;
+    expect(list.data.options).toHaveLength(2);
+    fields.users = (await post({ label: 'API Users', code: 'api_users', fieldType: 'INTEGER', validationConfig: { minimum: 1 } })).data;
+    fields.money = (await post({ label: 'API Budget', code: 'api_budget', fieldType: 'MONEY' })).data;
+    fields.renewal = (await post({ label: 'API Renewal', code: 'api_renewal', fieldType: 'DATE' })).data;
+    fields.signed = (await post({ label: 'API Signed', code: 'api_signed', fieldType: 'DATETIME' })).data;
+    fields.address = (await post({ label: 'API Office', code: 'api_office', fieldType: 'ADDRESS' })).data;
+    fields.tags = (await post({ label: 'API Tags', code: 'api_tags', fieldType: 'MULTI_LIST', options: [{ label: 'One' }, { label: 'Two' }, { label: 'Three' }] })).data;
+    fields.ratio = (await post({ label: 'API Ratio', code: 'api_ratio', fieldType: 'DECIMAL' })).data;
+    fields.note = (await post({ label: 'API Note', code: 'api_note', fieldType: 'TEXT' })).data;
+    for (const field of Object.values(fields)) expect(field.id).toBeTruthy();
+
+    const listed = await api('GET', '/api/v1/crm/custom-fields', authed({ query: { entityType: 'DEAL', isActive: 'true', limit: '3', sortBy: 'sortOrder' } }));
+    expectOk(listed);
+    expect(listed.data).toHaveLength(3);
+    expect(listed.body.meta).toMatchObject({ page: 1, limit: 3, total: 9 });
+    expect((await api('GET', '/api/v1/crm/custom-fields', authed({ query: { fieldType: 'LIST' } }))).data.map((f: any) => f.code)).toEqual(['api_industry']);
+    // The requirement condition builder offers only the operators each type supports, straight from the server.
+    const operatorsOf = async (fieldType: string) => (await api('GET', '/api/v1/crm/custom-fields', authed({ query: { entityType: 'DEAL', fieldType, limit: '1' } }))).data[0]?.conditionOperators;
+    expect(await operatorsOf('LIST')).toEqual(['EQ', 'NEQ', 'IN', 'NOT_IN', 'IS_EMPTY', 'IS_NOT_EMPTY']);
+    expect(await operatorsOf('DATE')).toEqual(['EQ', 'NEQ', 'GT', 'GTE', 'LT', 'LTE', 'IS_EMPTY', 'IS_NOT_EMPTY']);
+    expect(await operatorsOf('TEXT')).toContain('CONTAINS');
+    expectError(await post({ label: 'Dup', code: 'api_industry', fieldType: 'TEXT' }), 409, 'CUSTOM_FIELD_CODE_CONFLICT');
+    expectError(await post({ entityType: 'ROBOT', label: 'X', fieldType: 'TEXT' }), 400, 'ENTITY_TYPE_NOT_FIELD_CAPABLE');
+    expectError(await post({ label: 'X', fieldType: 'TEXT', validationConfig: { pattern: '(a+)+' } }), 400, 'FIELD_VALIDATION_FAILED');
+  });
+
+  it('GET and PATCH /crm/custom-fields/[fieldId] read and update with optimistic concurrency', async () => {
+    const got = await api('GET', '/api/v1/crm/custom-fields/[fieldId]', authed({ params: { fieldId: fields.industry.id } }));
+    expectOk(got);
+    expect(got.data.code).toBe('api_industry');
+    const patched = await api('PATCH', '/api/v1/crm/custom-fields/[fieldId]', authed({ params: { fieldId: fields.industry.id }, body: { version: got.data.version, label: 'Industry (renamed)' } }));
+    expectOk(patched);
+    expect(patched.data).toMatchObject({ label: 'Industry (renamed)', code: 'api_industry', version: got.data.version + 1 });
+    expectError(await api('PATCH', '/api/v1/crm/custom-fields/[fieldId]', authed({ params: { fieldId: fields.industry.id }, body: { version: got.data.version, label: 'stale' } })), 409, 'CONFIGURATION_VERSION_CONFLICT');
+    expectError(await api('PATCH', '/api/v1/crm/custom-fields/[fieldId]', authed({ params: { fieldId: fields.industry.id }, body: { version: patched.data.version, code: 'nope' } })), 400, 'CUSTOM_FIELD_IMMUTABLE');
+    expectError(await api('GET', '/api/v1/crm/custom-fields/[fieldId]', authed({ params: { fieldId: MISSING_ID } })), 404, 'CUSTOM_FIELD_NOT_FOUND');
+    // A caller outside the workspace cannot administer its fields.
+    expectError(await api('GET', '/api/v1/crm/custom-fields/[fieldId]', { token: ctx.other.token, workspaceId: ws.owner.workspaceId, params: { fieldId: fields.industry.id } }), 403);
+  });
+
+  it('manages list options through the option endpoints', async () => {
+    const fieldId = fields.industry.id;
+    const created = await api('POST', '/api/v1/crm/custom-fields/[fieldId]/options', authed({ params: { fieldId }, body: { label: 'Retail' } }));
+    expectOk(created);
+    const listed = await api('GET', '/api/v1/crm/custom-fields/[fieldId]/options', authed({ params: { fieldId } }));
+    expectOk(listed);
+    expect(listed.data.map((o: any) => o.label)).toEqual(['Finance', 'Health', 'Retail']);
+    const updated = await api('PATCH', '/api/v1/crm/custom-fields/[fieldId]/options/[optionId]', authed({ params: { fieldId, optionId: created.data.id }, body: { label: 'Retail & E-commerce', version: created.data.version } }));
+    expectOk(updated);
+    expect(updated.data).toMatchObject({ id: created.data.id, code: created.data.code, label: 'Retail & E-commerce' });
+    expectOk(await api('POST', '/api/v1/crm/custom-fields/[fieldId]/options/[optionId]/deactivate', authed({ params: { fieldId, optionId: created.data.id } })));
+    expectOk(await api('POST', '/api/v1/crm/custom-fields/[fieldId]/options/[optionId]/activate', authed({ params: { fieldId, optionId: created.data.id } })));
+    const field = (await api('GET', '/api/v1/crm/custom-fields/[fieldId]', authed({ params: { fieldId } }))).data;
+    const order = [...listed.data].reverse().map((o: any) => o.id);
+    const reordered = await api('POST', '/api/v1/crm/custom-fields/[fieldId]/options/reorder', authed({ params: { fieldId }, body: { orderedOptionIds: order, expectedSchemaVersion: field.schemaVersion } }));
+    expectOk(reordered);
+    expect(reordered.data.options.map((o: any) => o.id)).toEqual(order);
+    expectError(await api('POST', '/api/v1/crm/custom-fields/[fieldId]/options/reorder', authed({ params: { fieldId }, body: { orderedOptionIds: order, expectedSchemaVersion: field.schemaVersion } })), 409, 'CONFIGURATION_VERSION_CONFLICT');
+    expectError(await api('POST', '/api/v1/crm/custom-fields/[fieldId]/options', authed({ params: { fieldId: fields.users.id }, body: { label: 'x' } })), 400, 'CUSTOM_FIELD_TYPE_UNSUPPORTED');
+    expectError(await api('PATCH', '/api/v1/crm/custom-fields/[fieldId]/options/[optionId]', authed({ params: { fieldId, optionId: MISSING_ID }, body: { label: 'x', version: 1 } })), 404, 'FIELD_OPTION_NOT_FOUND');
+  });
+
+  it('POST /crm/custom-fields/reorder atomically reorders the fields of an entity', async () => {
+    const all = (await api('GET', '/api/v1/crm/custom-fields', authed({ query: { entityType: 'DEAL', limit: '100' } }))).data;
+    const ids = all.map((f: any) => f.id).reverse();
+    const version = all[0].schemaVersion;
+    const res = await api('POST', '/api/v1/crm/custom-fields/reorder', authed({ body: { orderedFieldIds: ids, expectedSchemaVersion: version } }));
+    expectOk(res);
+    expect(res.data.fields.map((f: any) => f.id)).toEqual(ids);
+    expectError(await api('POST', '/api/v1/crm/custom-fields/reorder', authed({ body: { orderedFieldIds: ids, expectedSchemaVersion: version } })), 409, 'CONFIGURATION_VERSION_CONFLICT');
+    expectError(await api('POST', '/api/v1/crm/custom-fields/reorder', authed({ body: { orderedFieldIds: ids.slice(1), expectedSchemaVersion: version + 1 } })), 400, 'FIELD_REORDER_INVALID');
+  });
+
+  it('writes and reads every typed value through Postgres (typed columns, exact decimals, dates, JSON)', async () => {
+    const created = await api('POST', '/api/v1/crm/deals', authed({
+      body: {
+        title: `Typed deal ${RUN}`,
+        companyId: ctx.company.id,
+        customFields: {
+          api_industry: fields.industry.options[0].id,
+          api_users: 400,
+          api_budget: { amount: '125000.50', currency: 'usd' },
+          api_renewal: '2027-03-01',
+          api_signed: '2027-01-01T10:00:00+02:00',
+          api_office: { line1: '100 Main St', city: 'Edmonton', countryCode: 'CA' },
+          api_tags: [fields.tags.options[2].id, fields.tags.options[0].id],
+          api_ratio: '0.00000001',
+          api_note: 'hello',
+        },
+      },
+    }));
+    expectOk(created);
+    ctx.typedDeal = created.data;
+    expect(created.data.customFields).toEqual({
+      api_industry: fields.industry.options[0].id,
+      api_users: 400,
+      api_budget: { amount: '125000.5', currency: 'USD' },
+      api_renewal: '2027-03-01',
+      api_signed: '2027-01-01T08:00:00.000Z',
+      api_office: { line1: '100 Main St', city: 'Edmonton', countryCode: 'CA' },
+      api_tags: [fields.tags.options[2].id, fields.tags.options[0].id],
+      api_ratio: '0.00000001',
+      api_note: 'hello',
+    });
+    // The request that reads it back re-hydrated everything from the database.
+    const detail = await api('GET', '/api/v1/crm/deals/[id]', authed({ params: { id: ctx.typedDeal.id } }));
+    expectOk(detail);
+    expect(detail.data.customFields).toEqual(created.data.customFields);
+
+    const { prisma } = await import('@/src/server/prisma-client');
+    const rows = await prisma.crmCustomFieldValue.findMany({ where: { entityId: ctx.typedDeal.id }, orderBy: [{ fieldId: 'asc' }, { ordinal: 'asc' }] });
+    expect(rows).toHaveLength(10);
+    const byField = (id: string) => rows.filter((row) => row.fieldId === id);
+    expect(byField(fields.users.id)[0]).toMatchObject({ valueInteger: 400, valueText: null, valueDecimal: null });
+    expect(byField(fields.money.id)[0].valueDecimal!.toFixed()).toBe('125000.5');
+    expect(byField(fields.money.id)[0].valueText).toBe('USD');
+    expect(byField(fields.ratio.id)[0].valueDecimal!.toFixed()).toBe('0.00000001'); // no float rounding, no exponent form
+    expect(byField(fields.renewal.id)[0].valueDate!.toISOString()).toBe('2027-03-01T00:00:00.000Z');
+    expect(byField(fields.signed.id)[0].valueDateTime!.toISOString()).toBe('2027-01-01T08:00:00.000Z');
+    expect(byField(fields.address.id)[0].valueJson).toEqual({ line1: '100 Main St', city: 'Edmonton', countryCode: 'CA' });
+    expect(byField(fields.tags.id).map((row) => [row.ordinal, row.valueUuid])).toEqual([[0, fields.tags.options[2].id], [1, fields.tags.options[0].id]]);
+    expect(byField(fields.industry.id)[0].valueUuid).toBe(fields.industry.options[0].id);
+  });
+
+  it('returns all safe field errors in one response and rejects unknown or hidden codes', async () => {
+    const res = await api('POST', '/api/v1/crm/deals', authed({ body: { title: 'Bad deal', companyId: ctx.company.id, customFields: { api_users: 0, api_budget: { amount: 'x', currency: 'usd' }, nope: 1 } } }));
+    expectError(res, 400, 'FIELD_VALIDATION_FAILED');
+    expect(Object.keys(res.body.error.details.fields).sort()).toEqual(['api_budget', 'api_users', 'nope']);
+    expect(res.body.error.details.fields.nope[0].code).toBe('UNKNOWN_FIELD');
+    // Nothing was written: the failed create left no deal behind.
+    const { prisma } = await import('@/src/server/prisma-client');
+    expect(await prisma.crmDeal.count({ where: { title: 'Bad deal' } })).toBe(0);
+  });
+
+  it('PATCH /crm/deals/[id] updates system and custom values atomically with stale-version detection', async () => {
+    const detail = (await api('GET', '/api/v1/crm/deals/[id]', authed({ params: { id: ctx.typedDeal.id } }))).data;
+    const patched = await api('PATCH', '/api/v1/crm/deals/[id]', authed({ params: { id: ctx.typedDeal.id }, body: { expectedVersion: detail.version, title: 'Typed deal (patched)', amount: 9000, customFields: { api_users: 500, api_tags: [fields.tags.options[1].id] } } }));
+    expectOk(patched);
+    expect(patched.data).toMatchObject({ title: 'Typed deal (patched)', amount: 9000, version: detail.version + 1 });
+    expect(patched.data.customFields).toMatchObject({ api_users: 500, api_tags: [fields.tags.options[1].id], api_note: 'hello' });
+    const failed = await api('PATCH', '/api/v1/crm/deals/[id]', authed({ params: { id: ctx.typedDeal.id }, body: { expectedVersion: patched.data.version, title: 'Should not stick', customFields: { api_users: -5 } } }));
+    expectError(failed, 400, 'FIELD_VALIDATION_FAILED');
+    const after = (await api('GET', '/api/v1/crm/deals/[id]', authed({ params: { id: ctx.typedDeal.id } }))).data;
+    expect(after).toMatchObject({ title: 'Typed deal (patched)', version: patched.data.version });
+    expect(after.customFields.api_users).toBe(500);
+    expectError(await api('PATCH', '/api/v1/crm/deals/[id]', authed({ params: { id: ctx.typedDeal.id }, body: { expectedVersion: detail.version, title: 'stale' } })), 409, 'CRM_VERSION_CONFLICT');
+    expectError(await api('PATCH', '/api/v1/crm/deals/[id]', authed({ params: { id: ctx.typedDeal.id }, body: { expectedVersion: after.version, status: 'WON' } })), 400, 'CRM_FIELD_NOT_UPDATABLE');
+    const list = await api('GET', '/api/v1/crm/deals', authed({ query: { search: 'Typed deal' } }));
+    expect(list.data[0].customFields.api_users).toBe(500);
+  });
+
+  it('serves lead, contact and company create/detail/update with custom fields', async () => {
+    const make = (entityType: string, body: Record<string, unknown>) => api('POST', '/api/v1/crm/custom-fields', authed({ body: { entityType, ...body } }));
+    expectOk(await make('LEAD', { label: 'Lead score', code: 'lead_score', fieldType: 'INTEGER' }));
+    expectOk(await make('CONTACT', { label: 'Nickname', code: 'nickname', fieldType: 'TEXT' }));
+    expectOk(await make('COMPANY', { label: 'Employees', code: 'employees', fieldType: 'INTEGER' }));
+    const lead = await api('POST', '/api/v1/crm/leads', authed({ body: { title: `Scored lead ${RUN}`, customFields: { lead_score: 9 } } }));
+    const contact = await api('POST', '/api/v1/crm/contacts', authed({ body: { firstName: 'Nick', lastName: `Name${RUN}`, customFields: { nickname: 'Nicky' } } }));
+    const company = await api('POST', '/api/v1/crm/companies', authed({ body: { name: `Sized Co ${RUN}`, customFields: { employees: 250 } } }));
+    for (const res of [lead, contact, company]) expectOk(res);
+    expect(lead.data.customFields).toEqual({ lead_score: 9 });
+    ctx.customLead = lead.data;
+    ctx.customContact = contact.data;
+    ctx.customCompany = company.data;
+    const getLead = await api('GET', '/api/v1/crm/leads/[id]', authed({ params: { id: lead.data.id } }));
+    const getContact = await api('GET', '/api/v1/crm/contacts/[id]', authed({ params: { id: contact.data.id } }));
+    const getCompany = await api('GET', '/api/v1/crm/companies/[id]', authed({ params: { id: company.data.id } }));
+    expect([getLead.data.customFields.lead_score, getContact.data.customFields.nickname, getCompany.data.customFields.employees]).toEqual([9, 'Nicky', 250]);
+    const patchedLead = await api('PATCH', '/api/v1/crm/leads/[id]', authed({ params: { id: lead.data.id }, body: { expectedVersion: getLead.data.version, title: 'Lead renamed', customFields: { lead_score: 10 } } }));
+    const patchedContact = await api('PATCH', '/api/v1/crm/contacts/[id]', authed({ params: { id: contact.data.id }, body: { expectedVersion: getContact.data.version, lastName: 'Renamed', customFields: { nickname: null } } }));
+    const patchedCompany = await api('PATCH', '/api/v1/crm/companies/[id]', authed({ params: { id: company.data.id }, body: { expectedVersion: getCompany.data.version, city: 'Cairo', customFields: { employees: 300 } } }));
+    expect([patchedLead.data.customFields, patchedContact.data.customFields, patchedCompany.data.customFields]).toEqual([{ lead_score: 10 }, { nickname: null }, { employees: 300 }]);
+    expect([patchedLead.data.title, patchedContact.data.displayName, patchedCompany.data.city]).toEqual(['Lead renamed', 'Nick Renamed', 'Cairo']);
+    const lists = await Promise.all([
+      api('GET', '/api/v1/crm/leads', authed({ query: { search: 'Lead renamed' } })),
+      api('GET', '/api/v1/crm/contacts', authed({ query: { search: 'Renamed' } })),
+      api('GET', '/api/v1/crm/companies', authed({ query: { search: 'Sized Co' } })),
+    ]);
+    expect(lists.map((res) => res.data[0].customFields)).toEqual([{ lead_score: 10 }, { nickname: null }, { employees: 300 }]);
+    expectError(await api('GET', '/api/v1/crm/leads/[id]', authed({ params: { id: MISSING_ID } })), 404);
+  });
+
+  it('serves the authorized field schema for creating, editing and listing', async () => {
+    const create = await api('GET', '/api/v1/crm/field-schema/[entityType]', authed({ params: { entityType: 'deals' }, query: { surface: 'create' } }));
+    expectOk(create);
+    expect(create.data.fields.map((f: any) => f.code)).toEqual(expect.arrayContaining(['api_industry', 'api_users', 'api_budget']));
+    expect(create.data.systemFields.map((f: any) => f.key)).toContain('amount');
+    const edit = await api('GET', '/api/v1/crm/field-schema/[entityType]/[entityId]', authed({ params: { entityType: 'DEAL', entityId: ctx.typedDeal.id }, query: { surface: 'edit' } }));
+    expectOk(edit);
+    expect(edit.data.fields.find((f: any) => f.code === 'api_industry').options.map((o: any) => o.label)).toEqual(['Retail & E-commerce', 'Health', 'Finance']);
+    expectError(await api('GET', '/api/v1/crm/field-schema/[entityType]/[entityId]', authed({ params: { entityType: 'DEAL', entityId: MISSING_ID } })), 404, 'RESOURCE_NOT_FOUND_OR_FORBIDDEN');
+    expectError(await api('GET', '/api/v1/crm/field-schema/[entityType]', authed({ params: { entityType: 'robots' } })), 400);
+    expectError(await api('GET', '/api/v1/crm/field-schema/[entityType]', authed({ params: { entityType: 'deal' }, query: { surface: 'sideways' } })), 400, 'SCHEMA_SURFACE_INVALID');
+    expectOk(await api('GET', '/api/v1/crm/field-schema/[entityType]', authed({ params: { entityType: 'activities' }, query: { surface: 'create' } })));
+  });
+
+  it('runs the required-field rule lifecycle through the API and enforces it on create', async () => {
+    const created = await api('POST', '/api/v1/crm/field-requirements', authed({ body: { entityType: 'DEAL', target: { kind: 'CUSTOM', fieldId: fields.note.id }, conditions: { operator: 'ALL', children: [{ type: 'PREDICATE', field: { kind: 'SYSTEM', key: 'amount' }, operator: 'GTE', value: '5000' }] } } }));
+    expectOk(created);
+    ctx.rule = created.data;
+    const listed = await api('GET', '/api/v1/crm/field-requirements', authed({ query: { entityType: 'DEAL', isActive: 'true' } }));
+    expect(listed.data.map((r: any) => r.id)).toContain(created.data.id);
+    expectOk(await api('GET', '/api/v1/crm/field-requirements/[ruleId]', authed({ params: { ruleId: created.data.id } })));
+    const descriptors = await api('GET', '/api/v1/crm/field-requirements/system-fields', authed({ query: { entityType: 'DEAL' } }));
+    expect(descriptors.data.find((d: any) => d.key === 'amount').operators).toContain('GTE');
+    // Conditional rule: a big deal without the note is refused, a small one is not.
+    expectError(await api('POST', '/api/v1/crm/deals', authed({ body: { title: 'Big', companyId: ctx.company.id, amount: 10000 } })), 400, 'FIELD_VALIDATION_FAILED');
+    expectOk(await api('POST', '/api/v1/crm/deals', authed({ body: { title: 'Small', companyId: ctx.company.id, amount: 100 } })));
+    expectOk(await api('POST', '/api/v1/crm/deals', authed({ body: { title: 'Big with note', companyId: ctx.company.id, amount: 10000, customFields: { api_note: 'justified' } } })));
+    const patched = await api('PATCH', '/api/v1/crm/field-requirements/[ruleId]', authed({ params: { ruleId: created.data.id }, body: { version: created.data.version, conditions: null } }));
+    expectOk(patched);
+    expectError(await api('PATCH', '/api/v1/crm/field-requirements/[ruleId]', authed({ params: { ruleId: created.data.id }, body: { version: created.data.version, conditions: null } })), 409, 'CONFIGURATION_VERSION_CONFLICT');
+    expectError(await api('POST', '/api/v1/crm/field-requirements', authed({ body: { entityType: 'DEAL', target: { kind: 'CUSTOM', fieldId: fields.note.id }, conditions: { type: 'PREDICATE', field: { kind: 'SYSTEM', key: 'amount' }, operator: 'CONTAINS', value: 'x' } } })), 400, 'FIELD_REQUIREMENT_INVALID');
+    // Dependencies block deactivating the target while the rule is active.
+    const deps = await api('GET', '/api/v1/crm/custom-fields/[fieldId]/dependencies', authed({ params: { fieldId: fields.note.id } }));
+    expectOk(deps);
+    expect(deps.data.blocking).toBe(1);
+    expectError(await api('POST', '/api/v1/crm/custom-fields/[fieldId]/deactivate', authed({ params: { fieldId: fields.note.id }, body: {} })), 409, 'CUSTOM_FIELD_DEPENDENCIES_EXIST');
+    expectOk(await api('POST', '/api/v1/crm/field-requirements/[ruleId]/deactivate', authed({ params: { ruleId: created.data.id }, body: {} })));
+    expectOk(await api('POST', '/api/v1/crm/deals', authed({ body: { title: 'Big again', companyId: ctx.company.id, amount: 10000 } })));
+    expectOk(await api('POST', '/api/v1/crm/field-requirements/[ruleId]/activate', authed({ params: { ruleId: created.data.id }, body: {} })));
+    expectOk(await api('POST', '/api/v1/crm/field-requirements/[ruleId]/deactivate', authed({ params: { ruleId: created.data.id }, body: {} })));
+    expectOk(await api('DELETE', '/api/v1/crm/field-requirements/[ruleId]', authed({ params: { ruleId: created.data.id } })));
+    expectError(await api('GET', '/api/v1/crm/field-requirements/[ruleId]', authed({ params: { ruleId: created.data.id } })), 404, 'FIELD_REQUIREMENT_NOT_FOUND');
+  });
+
+  it('migrates a field type through preview, start and status endpoints', async () => {
+    const field = (await api('POST', '/api/v1/crm/custom-fields', authed({ body: { entityType: 'CONTACT', label: 'Headcount', code: 'headcount', fieldType: 'TEXT' } }))).data;
+    expectOk(await api('POST', '/api/v1/crm/contacts', authed({ body: { firstName: 'H', lastName: 'One', customFields: { headcount: '42' } } })));
+    expectOk(await api('POST', '/api/v1/crm/contacts', authed({ body: { firstName: 'H', lastName: 'Two', customFields: { headcount: 'many' } } })));
+    expectError(await api('PATCH', '/api/v1/crm/custom-fields/[fieldId]', authed({ params: { fieldId: field.id }, body: { version: field.version, fieldType: 'INTEGER' } })), 409, 'CUSTOM_FIELD_TYPE_MIGRATION_REQUIRED');
+    const preview = await api('POST', '/api/v1/crm/custom-fields/[fieldId]/type-migration/preview', authed({ params: { fieldId: field.id }, body: { targetType: 'INTEGER' } }));
+    expectOk(preview);
+    expect(preview.data.summary).toMatchObject({ totalValues: 2, convertible: 1, nonConvertible: 1 });
+    const failed = await api('POST', '/api/v1/crm/custom-fields/[fieldId]/type-migration', authed({ params: { fieldId: field.id }, body: { targetType: 'INTEGER', version: field.version } }));
+    expectOk(failed);
+    expect(failed.data.status).toBe('FAILED');
+    const status = await api('GET', '/api/v1/crm/custom-fields/[fieldId]/type-migration/[migrationId]', authed({ params: { fieldId: field.id, migrationId: failed.data.id } }));
+    expect(status.data.status).toBe('FAILED');
+    expectError(await api('GET', '/api/v1/crm/custom-fields/[fieldId]/type-migration/[migrationId]', authed({ params: { fieldId: field.id, migrationId: MISSING_ID } })), 404, 'CUSTOM_FIELD_MIGRATION_NOT_FOUND');
+    const { prisma } = await import('@/src/server/prisma-client');
+    expect((await prisma.crmCustomField.findUnique({ where: { id: field.id } }))!.fieldType).toBe('TEXT');
+    expect(await prisma.crmCustomFieldMigration.count({ where: { fieldId: field.id, status: 'FAILED' } })).toBe(1);
+    // Fix the offending value and migrate for real.
+    const two = (await api('GET', '/api/v1/crm/contacts', authed({ query: { search: 'Two' } }))).data[0];
+    expectOk(await api('PATCH', '/api/v1/crm/contacts/[id]', authed({ params: { id: two.id }, body: { expectedVersion: two.version, customFields: { headcount: '7' } } })));
+    const current = (await api('GET', '/api/v1/crm/custom-fields/[fieldId]', authed({ params: { fieldId: field.id } }))).data;
+    const done = await api('POST', '/api/v1/crm/custom-fields/[fieldId]/type-migration', authed({ params: { fieldId: field.id }, body: { targetType: 'INTEGER', version: current.version } }));
+    expect(done.data.status).toBe('COMPLETED');
+    expect((await api('GET', '/api/v1/crm/contacts/[id]', authed({ params: { id: two.id } }))).data.customFields.headcount).toBe(7);
+    expect((await prisma.crmCustomFieldValue.findMany({ where: { fieldId: field.id } })).every((row) => row.valueInteger !== null && row.valueText === null)).toBe(true);
+  });
+
+  it('activates, deactivates and hard-deletes fields through the lifecycle endpoints', async () => {
+    const field = (await api('POST', '/api/v1/crm/custom-fields', authed({ body: { entityType: 'COMPANY', label: 'Disposable', code: 'disposable', fieldType: 'TEXT' } }))).data;
+    expectError(await api('DELETE', '/api/v1/crm/custom-fields/[fieldId]/hard', authed({ params: { fieldId: field.id } })), 409, 'CUSTOM_FIELD_IN_USE');
+    const off = await api('POST', '/api/v1/crm/custom-fields/[fieldId]/deactivate', authed({ params: { fieldId: field.id }, body: { version: field.version } }));
+    expectOk(off);
+    expect(off.data.isActive).toBe(false);
+    const on = await api('POST', '/api/v1/crm/custom-fields/[fieldId]/activate', authed({ params: { fieldId: field.id }, body: {} }));
+    expect(on.data.isActive).toBe(true);
+    expectOk(await api('POST', '/api/v1/crm/custom-fields/[fieldId]/deactivate', authed({ params: { fieldId: field.id }, body: {} })));
+    expectOk(await api('DELETE', '/api/v1/crm/custom-fields/[fieldId]/hard', authed({ params: { fieldId: field.id } })));
+    expectError(await api('GET', '/api/v1/crm/custom-fields/[fieldId]', authed({ params: { fieldId: field.id } })), 404);
+  });
+
+  it('keeps field configuration isolated per workspace', async () => {
+    const mine = (await api('GET', '/api/v1/crm/custom-fields', authed({ query: { limit: '100' } }))).data;
+    const foreignWorkspace = (await api('POST', '/api/v1/workspaces', { token: ws.owner.token, body: { name: `Fields Iso ${RUN}` } })).data;
+    const theirs = await api('GET', '/api/v1/crm/custom-fields', { token: ws.owner.token, workspaceId: foreignWorkspace.id, query: { limit: '100' } });
+    expect(theirs.data).toEqual([]);
+    expect(mine.length).toBeGreaterThan(5);
+    expectError(await api('GET', '/api/v1/crm/custom-fields/[fieldId]', { token: ws.owner.token, workspaceId: foreignWorkspace.id, params: { fieldId: fields.industry.id } }), 404, 'CUSTOM_FIELD_NOT_FOUND');
+    // Field codes of another workspace are simply unknown fields here.
+    const foreignDeal = await api('POST', '/api/v1/crm/deals', { token: ws.owner.token, workspaceId: foreignWorkspace.id, body: { title: 'x', companyId: ctx.company.id, customFields: { api_users: 5 } } });
+    expectError(foreignDeal, 404);
+  });
+});
+
+describe('Activities API', () => {
+  const act: Record<string, any> = {};
+  ctx.act = act;
+
+  it('GET/POST/PATCH /crm/activity-types manages custom types and enable/disable', async () => {
+    const created = await api('POST', '/api/v1/crm/activity-types', authed({ body: { code: 'SITE_VISIT', name: 'Site visit', icon: 'map-pin', defaultDurationMinutes: 45, defaultPriority: 'HIGH' } }));
+    expectOk(created);
+    act.type = created.data;
+    const listed = await api('GET', '/api/v1/crm/activity-types', authed());
+    // Custom types carry the version the editor must send back; built-ins have none.
+    expect(listed.data.find((type: any) => type.id === created.data.id).version).toBe(created.data.version);
+    expect(listed.data.find((type: any) => type.code === 'CALL').version).toBeUndefined();
+    expectOk(listed);
+    expect(listed.data.map((t: any) => t.code)).toEqual(expect.arrayContaining(['CALL', 'MEETING', 'SITE_VISIT']));
+    expect(listed.data.map((t: any) => t.code)).not.toContain('REMINDER');
+    expectOk(await api('GET', '/api/v1/crm/activity-types/[typeId]', authed({ params: { typeId: created.data.id } })));
+    const patched = await api('PATCH', '/api/v1/crm/activity-types/[typeId]', authed({ params: { typeId: created.data.id }, body: { version: created.data.version, name: 'Site visit (on-site)' } }));
+    expectOk(patched);
+    expectError(await api('PATCH', '/api/v1/crm/activity-types/[typeId]', authed({ params: { typeId: created.data.id }, body: { version: created.data.version, name: 'stale' } })), 409, 'CONFIGURATION_VERSION_CONFLICT');
+    expectError(await api('POST', '/api/v1/crm/activity-types', authed({ body: { code: 'CALL', name: 'Fake' } })), 409, 'ACTIVITY_TYPE_CODE_CONFLICT');
+    expectOk(await api('POST', '/api/v1/crm/activity-types/[typeId]/disable', authed({ params: { typeId: created.data.id } })));
+    expectError(await api('POST', '/api/v1/crm/activities', authed({ body: { typeCode: 'SITE_VISIT', subject: 'blocked' } })), 409, 'ACTIVITY_TYPE_DISABLED');
+    expectOk(await api('POST', '/api/v1/crm/activity-types/[typeId]/enable', authed({ params: { typeId: created.data.id } })));
+    expectError(await api('GET', '/api/v1/crm/activity-types/[typeId]', authed({ params: { typeId: MISSING_ID } })), 404, 'ACTIVITY_TYPE_NOT_FOUND');
+    // Somebody outside the workspace cannot manage its types.
+    expectError(await api('POST', '/api/v1/crm/activity-types', { token: ctx.other.token, workspaceId: ws.owner.workspaceId, body: { code: 'NOPE', name: 'x' } }), 403);
+  });
+
+  it('POST /crm/activities creates an Activity with bindings, communications, reminders and custom fields', async () => {
+    const activityField = await api('POST', '/api/v1/crm/custom-fields', authed({ body: { entityType: 'ACTIVITY', label: 'Call outcome', code: 'call_outcome', fieldType: 'TEXT' } }));
+    expectOk(activityField);
+    const start = new Date(Date.now() + 3 * 86_400_000).toISOString();
+    const body = {
+      typeCode: 'CALL',
+      subject: 'Follow up on proposal',
+      priority: 'HIGH',
+      startAt: start,
+      endAt: new Date(new Date(start).getTime() + 1_800_000).toISOString(),
+      deadline: start,
+      bindings: [{ entityType: 'DEAL', entityId: ctx.typedDeal.id }, { entityType: 'COMPANY', entityId: ctx.company.id }],
+      communications: [{ type: 'PHONE', value: '+1 (202) 555-0123', crmEntityType: 'COMPANY', crmEntityId: ctx.company.id }],
+      reminders: [{ mode: 'RELATIVE', relativeTo: 'START', offsetSeconds: -3600 }],
+      customFields: { call_outcome: 'pending' },
+    };
+    const created = await api('POST', '/api/v1/crm/activities', authed({ headers: { 'idempotency-key': `act-${RUN}` }, body }));
+    expectOk(created);
+    act.call = created.data;
+    expect(created.data).toMatchObject({ status: 'PLANNED', priority: 'HIGH', direction: 'OUTGOING', customFields: { call_outcome: 'pending' } });
+    expect(created.data.bindings).toHaveLength(2);
+    expect(created.data.communications[0].value).toBe('+12025550123');
+    expect(created.data.reminders).toHaveLength(1);
+    // The same idempotency key returns the same logical Activity.
+    const replay = await api('POST', '/api/v1/crm/activities', authed({ headers: { 'idempotency-key': `act-${RUN}` }, body }));
+    expect(replay.data.id).toBe(created.data.id);
+    expectError(await api('POST', '/api/v1/crm/activities', authed({ headers: { 'idempotency-key': `act-${RUN}` }, body: { typeCode: 'CALL', subject: 'A different request' } })), 409, 'IDEMPOTENCY_CONFLICT');
+    expectError(await api('POST', '/api/v1/crm/activities', authed({ body: { typeCode: 'NOPE', subject: 'x' } })), 404, 'ACTIVITY_TYPE_NOT_FOUND');
+    expectError(await api('POST', '/api/v1/crm/activities', authed({ body: { typeCode: 'CALL', subject: 'x', startAt: 'soon' } })), 400, 'ACTIVITY_TIME_INVALID');
+    expectError(await api('POST', '/api/v1/crm/activities', authed({ body: { typeCode: 'CALL', subject: 'x', bindings: [{ entityType: 'DEAL', entityId: MISSING_ID }] } })), 403, 'ACTIVITY_BINDING_FORBIDDEN');
+    const { prisma } = await import('@/src/server/prisma-client');
+    expect(await prisma.crmActivity.count({ where: { subject: 'Follow up on proposal' } })).toBe(1);
+    expect(await prisma.crmActivityBinding.count({ where: { activityId: created.data.id } })).toBe(2);
+    expect(await prisma.crmActivityReminder.count({ where: { activityId: created.data.id, status: 'SCHEDULED' } })).toBe(1);
+    expect((await prisma.crmActivityCommunication.findFirst({ where: { activityId: created.data.id } }))!.normalizedValue).toBe('+12025550123');
+  });
+
+  it('GET /crm/activities lists My Open Activities with cursor pagination and filters', async () => {
+    const second = await api('POST', '/api/v1/crm/activities', authed({ body: { typeCode: 'FOLLOW_UP', subject: `Overdue follow-up ${RUN}`, deadline: new Date(Date.now() - 3_600_000).toISOString() } }));
+    expectOk(second);
+    ctx.overdueActivity = second.data;
+    const mine = await api('GET', '/api/v1/crm/activities', authed());
+    expectOk(mine);
+    expect(mine.body.meta).toMatchObject({ view: 'MY_OPEN', hasMore: false });
+    expect(mine.data[0].id).toBe(second.data.id); // overdue first
+    expect(mine.data[0].isOverdue).toBe(true);
+    const page1 = await api('GET', '/api/v1/crm/activities', authed({ query: { limit: '1', view: 'ALL' } }));
+    expect(page1.body.meta.hasMore).toBe(true);
+    const page2 = await api('GET', '/api/v1/crm/activities', authed({ query: { limit: '1', view: 'ALL', cursor: page1.body.meta.nextCursor } }));
+    expect(page2.data[0].id).not.toBe(page1.data[0].id);
+    expect((await api('GET', '/api/v1/crm/activities', authed({ query: { typeCode: 'CALL', bindingEntityId: ctx.typedDeal.id, view: 'ALL' } }))).data.map((a: any) => a.id)).toEqual([act.call.id]);
+    expect((await api('GET', '/api/v1/crm/activities', authed({ query: { overdue: 'true' } }))).data.map((a: any) => a.id)).toEqual([second.data.id]);
+    expectError(await api('GET', '/api/v1/crm/activities', authed({ query: { status: 'BOGUS' } })), 400, 'CRM_QUERY_INVALID');
+    expectError(await api('GET', '/api/v1/crm/activities', authed({ query: { cursor: '???' } })), 400, 'CRM_CURSOR_INVALID');
+  });
+
+  it('GET/PATCH /crm/activities/[activityId] read and update with optimistic concurrency', async () => {
+    const got = await api('GET', '/api/v1/crm/activities/[activityId]', authed({ params: { activityId: act.call.id } }));
+    expectOk(got);
+    const patched = await api('PATCH', '/api/v1/crm/activities/[activityId]', authed({ params: { activityId: act.call.id }, body: { expectedVersion: got.data.version, subject: 'Follow up (patched)', description: 'notes' } }));
+    expectOk(patched);
+    expect(patched.data).toMatchObject({ subject: 'Follow up (patched)', version: got.data.version + 1 });
+    expectError(await api('PATCH', '/api/v1/crm/activities/[activityId]', authed({ params: { activityId: act.call.id }, body: { expectedVersion: got.data.version, subject: 'stale' } })), 409, 'ACTIVITY_VERSION_CONFLICT');
+    expectError(await api('PATCH', '/api/v1/crm/activities/[activityId]', authed({ params: { activityId: act.call.id }, body: { expectedVersion: patched.data.version, status: 'COMPLETED' } })), 400, 'ACTIVITY_STATUS_PATCH_FORBIDDEN');
+    expectError(await api('GET', '/api/v1/crm/activities/[activityId]', authed({ params: { activityId: MISSING_ID } })), 404, 'ACTIVITY_NOT_FOUND');
+    expectError(await api('GET', '/api/v1/crm/activities/[activityId]', { token: ctx.other.token, workspaceId: ws.owner.workspaceId, params: { activityId: act.call.id } }), 403);
+  });
+
+  it('runs the lifecycle commands: start, complete, cancel, reopen (with idempotency)', async () => {
+    const id = act.call.id;
+    expectOk(await api('POST', '/api/v1/crm/activities/[activityId]/start', authed({ params: { activityId: id }, body: {} })));
+    const completeBody = { resultText: 'Customer requested revised pricing.', customFields: { call_outcome: 'FOLLOW_UP_REQUIRED' } };
+    const done = await api('POST', '/api/v1/crm/activities/[activityId]/complete', authed({ params: { activityId: id }, headers: { 'idempotency-key': `done-${RUN}` }, body: completeBody }));
+    expectOk(done);
+    expect(done.data).toMatchObject({ status: 'COMPLETED', resultText: 'Customer requested revised pricing.', customFields: { call_outcome: 'FOLLOW_UP_REQUIRED' } });
+    const replay = await api('POST', '/api/v1/crm/activities/[activityId]/complete', authed({ params: { activityId: id }, headers: { 'idempotency-key': `done-${RUN}` }, body: completeBody }));
+    expect(replay.data.version).toBe(done.data.version);
+    expectError(await api('POST', '/api/v1/crm/activities/[activityId]/start', authed({ params: { activityId: id }, body: {} })), 409, 'ACTIVITY_INVALID_TRANSITION');
+    expectError(await api('PATCH', '/api/v1/crm/activities/[activityId]', authed({ params: { activityId: id }, body: { expectedVersion: done.data.version, subject: 'rewrite' } })), 409, 'ACTIVITY_EDIT_REQUIRES_REOPEN');
+    const reopened = await api('POST', '/api/v1/crm/activities/[activityId]/reopen', authed({ params: { activityId: id }, body: { reason: 'Customer came back' } }));
+    expect(reopened.data.status).toBe('IN_PROGRESS');
+    const cancelled = await api('POST', '/api/v1/crm/activities/[activityId]/cancel', authed({ params: { activityId: id }, body: { reason: 'Deal lost' } }));
+    expect(cancelled.data).toMatchObject({ status: 'CANCELLED', cancellationReason: 'Deal lost' });
+    expect((await api('POST', '/api/v1/crm/activities/[activityId]/reopen', authed({ params: { activityId: id }, body: {} }))).data.status).toBe('PLANNED');
+    const { prisma } = await import('@/src/server/prisma-client');
+    expect((await prisma.crmActivity.findUnique({ where: { id } }))!.status).toBe('PLANNED');
+    expect(await prisma.outboxEvent.count({ where: { entityId: id, eventType: 'ACTIVITY_COMPLETED' } })).toBe(1);
+  });
+
+  it('manages bindings and reminders through their dedicated endpoints', async () => {
+    const id = act.call.id;
+    const lead = ctx.customLead;
+    const added = await api('POST', '/api/v1/crm/activities/[activityId]/bindings', authed({ params: { activityId: id }, body: { entityType: 'LEAD', entityId: lead.id } }));
+    expectOk(added);
+    const bindings = await api('GET', '/api/v1/crm/activities/[activityId]/bindings', authed({ params: { activityId: id } }));
+    expect(bindings.data.map((b: any) => b.entityType).sort()).toEqual(['COMPANY', 'DEAL', 'LEAD']);
+    expectError(await api('POST', '/api/v1/crm/activities/[activityId]/bindings', authed({ params: { activityId: id }, body: { entityType: 'LEAD', entityId: lead.id } })), 409, 'ACTIVITY_BINDING_EXISTS');
+    expectOk(await api('DELETE', '/api/v1/crm/activities/[activityId]/bindings/[bindingId]', authed({ params: { activityId: id, bindingId: added.data.id } })));
+    expectError(await api('DELETE', '/api/v1/crm/activities/[activityId]/bindings/[bindingId]', authed({ params: { activityId: id, bindingId: added.data.id } })), 404, 'ACTIVITY_BINDING_NOT_FOUND');
+
+    const tomorrow = new Date(Date.now() + 86_400_000).toISOString();
+    const reminder = await api('POST', '/api/v1/crm/activities/[activityId]/reminders', authed({ params: { activityId: id }, body: { mode: 'ABSOLUTE', absoluteAt: tomorrow } }));
+    expectOk(reminder);
+    const listed = await api('GET', '/api/v1/crm/activities/[activityId]/reminders', authed({ params: { activityId: id } }));
+    expect(listed.data).toHaveLength(2);
+    const updated = await api('PATCH', '/api/v1/crm/activities/[activityId]/reminders/[reminderId]', authed({ params: { activityId: id, reminderId: reminder.data.id }, body: { mode: 'ABSOLUTE', absoluteAt: new Date(Date.now() + 2 * 86_400_000).toISOString() } }));
+    expectOk(updated);
+    expectOk(await api('DELETE', '/api/v1/crm/activities/[activityId]/reminders/[reminderId]', authed({ params: { activityId: id, reminderId: reminder.data.id } })));
+    expectError(await api('POST', '/api/v1/crm/activities/[activityId]/reminders', authed({ params: { activityId: id }, body: { mode: 'ABSOLUTE', absoluteAt: '2020-01-01T00:00:00Z' } })), 400, 'ACTIVITY_REMINDER_INVALID');
+    expectError(await api('PATCH', '/api/v1/crm/activities/[activityId]/reminders/[reminderId]', authed({ params: { activityId: id, reminderId: MISSING_ID }, body: { mode: 'ABSOLUTE', absoluteAt: tomorrow } })), 404, 'ACTIVITY_REMINDER_NOT_FOUND');
+  });
+
+  it('DELETE and POST /restore soft-delete and bring an Activity back', async () => {
+    const created = await api('POST', '/api/v1/crm/activities', authed({ body: { typeCode: 'FOLLOW_UP', subject: `Recyclable ${RUN}`, bindings: [{ entityType: 'DEAL', entityId: ctx.typedDeal.id }] } }));
+    const id = created.data.id;
+    expectOk(await api('DELETE', '/api/v1/crm/activities/[activityId]', authed({ params: { activityId: id } })));
+    expectError(await api('GET', '/api/v1/crm/activities/[activityId]', authed({ params: { activityId: id } })), 404, 'ACTIVITY_NOT_FOUND');
+    expect((await api('GET', '/api/v1/crm/activities/[activityId]', authed({ params: { activityId: id }, query: { includeDeleted: 'true' } }))).data.isDeleted).toBe(true);
+    const { prisma } = await import('@/src/server/prisma-client');
+    expect((await prisma.crmActivity.findUnique({ where: { id } }))!.isDeleted).toBe(true);
+    const restored = await api('POST', '/api/v1/crm/activities/[activityId]/restore', authed({ params: { activityId: id }, body: {} }));
+    expectOk(restored);
+    expect(restored.data.isDeleted).toBe(false);
+    expectOk(await api('GET', '/api/v1/crm/activities/[activityId]', authed({ params: { activityId: id } })));
+  });
+
+  it('POST /crm/activities/bulk reports per-item outcomes', async () => {
+    const a = (await api('POST', '/api/v1/crm/activities', authed({ body: { typeCode: 'FOLLOW_UP', subject: `Bulk A ${RUN}` } }))).data;
+    const b = (await api('POST', '/api/v1/crm/activities', authed({ body: { typeCode: 'FOLLOW_UP', subject: `Bulk B ${RUN}` } }))).data;
+    const res = await api('POST', '/api/v1/crm/activities/bulk', authed({ headers: { 'idempotency-key': `bulk-${RUN}` }, body: { operation: 'COMPLETE', activityIds: [a.id, MISSING_ID, b.id] } }));
+    expectOk(res);
+    expect(res.data).toMatchObject({ succeeded: 2, failed: 1 });
+    expect(res.data.results.map((r: any) => r.code ?? 'ok')).toEqual(['ok', 'ACTIVITY_NOT_FOUND', 'ok']);
+    expectError(await api('POST', '/api/v1/crm/activities/bulk', authed({ body: { operation: 'COMPLETE', activityIds: Array.from({ length: 101 }, () => MISSING_ID) } })), 400, 'ACTIVITY_BULK_LIMIT_EXCEEDED');
+    expectError(await api('POST', '/api/v1/crm/activities/bulk', authed({ body: { operation: 'EXPLODE', activityIds: [a.id] } })), 400, 'ACTIVITY_BULK_OPERATION_INVALID');
+  });
+});
+
+describe('Timeline API', () => {
+  it('GET /crm/[entityType]/[entityId]/timeline projects activity and CRM events for the record', async () => {
+    const res = await api('GET', '/api/v1/crm/[entityType]/[entityId]/timeline', authed({ params: { entityType: 'deals', entityId: ctx.typedDeal.id } }));
+    expectOk(res);
+    const codes = res.data.map((entry: any) => entry.summaryCode);
+    expect(codes).toEqual(expect.arrayContaining(['CRM_RECORD_CREATED', 'ACTIVITY_CREATED', 'ACTIVITY_COMPLETED', 'ACTIVITY_CANCELLED', 'ACTIVITY_REOPENED']));
+    expect(res.body.meta).toMatchObject({ limit: 50, hasMore: false, nextCursor: null });
+    const paged = await api('GET', '/api/v1/crm/[entityType]/[entityId]/timeline', authed({ params: { entityType: 'DEAL', entityId: ctx.typedDeal.id }, query: { limit: '2' } }));
+    expect(paged.body.meta.hasMore).toBe(true);
+    const next = await api('GET', '/api/v1/crm/[entityType]/[entityId]/timeline', authed({ params: { entityType: 'DEAL', entityId: ctx.typedDeal.id }, query: { limit: '2', cursor: paged.body.meta.nextCursor } }));
+    expect(next.data.map((e: any) => e.id).some((id: string) => paged.data.map((e: any) => e.id).includes(id))).toBe(false);
+    expect((await api('GET', '/api/v1/crm/[entityType]/[entityId]/timeline', authed({ params: { entityType: 'DEAL', entityId: ctx.typedDeal.id }, query: { category: 'STAGE_CHANGE' } }))).data).toEqual([]);
+    expectError(await api('GET', '/api/v1/crm/[entityType]/[entityId]/timeline', authed({ params: { entityType: 'DEAL', entityId: MISSING_ID } })), 403, 'TIMELINE_ACCESS_FORBIDDEN');
+    expectError(await api('GET', '/api/v1/crm/[entityType]/[entityId]/timeline', authed({ params: { entityType: 'robots', entityId: ctx.typedDeal.id } })), 400);
+    const { prisma } = await import('@/src/server/prisma-client');
+    expect(await prisma.crmTimelineEntry.count({ where: { entityId: ctx.typedDeal.id } })).toBeGreaterThanOrEqual(5);
+    expect(await prisma.outboxEvent.count({ where: { projectedAt: null, workspaceId: ws.owner.workspaceId } })).toBe(0);
+  });
+
+  it('POST/GET/PATCH/DELETE comments cover mentions, linked activities, edit and soft delete', async () => {
+    const commentBody = { body: 'Customer confirmed the scope. <b>bold</b>', mentions: [{ userId: ws.owner.userId }], linkedActivityId: ctx.act.call.id };
+    const created = await api('POST', '/api/v1/crm/[entityType]/[entityId]/timeline/comments', authed({ params: { entityType: 'deals', entityId: ctx.typedDeal.id }, headers: { 'idempotency-key': `comment-${RUN}` }, body: commentBody }));
+    expectOk(created);
+    expect(created.data).toMatchObject({ body: 'Customer confirmed the scope. bold', version: 1, linkedActivityId: ctx.act.call.id, mentions: [{ userId: ws.owner.userId }] });
+    const replay = await api('POST', '/api/v1/crm/[entityType]/[entityId]/timeline/comments', authed({ params: { entityType: 'deals', entityId: ctx.typedDeal.id }, headers: { 'idempotency-key': `comment-${RUN}` }, body: commentBody }));
+    expect(replay.data.id).toBe(created.data.id);
+    expectOk(await api('GET', '/api/v1/crm/timeline/comments/[commentId]', authed({ params: { commentId: created.data.id } })));
+    const timeline = await api('GET', '/api/v1/crm/[entityType]/[entityId]/timeline', authed({ params: { entityType: 'DEAL', entityId: ctx.typedDeal.id }, query: { category: 'COMMENT' } }));
+    expect(timeline.data).toHaveLength(1);
+    const edited = await api('PATCH', '/api/v1/crm/timeline/comments/[commentId]', authed({ params: { commentId: created.data.id }, body: { expectedVersion: 1, body: 'Edited text' } }));
+    expectOk(edited);
+    expect(edited.data).toMatchObject({ body: 'Edited text', version: 2, edited: true });
+    expectError(await api('PATCH', '/api/v1/crm/timeline/comments/[commentId]', authed({ params: { commentId: created.data.id }, body: { expectedVersion: 1, body: 'stale' } })), 409, 'TIMELINE_COMMENT_VERSION_CONFLICT');
+    const deleted = await api('DELETE', '/api/v1/crm/timeline/comments/[commentId]', authed({ params: { commentId: created.data.id } }));
+    expectOk(deleted);
+    expect(deleted.data).toMatchObject({ isDeleted: true, body: null });
+    const { prisma } = await import('@/src/server/prisma-client');
+    expect(await prisma.crmTimelineComment.findUnique({ where: { id: created.data.id } })).toMatchObject({ isDeleted: true, body: 'Edited text', version: 3 });
+    expect(await prisma.crmTimelineCommentMention.count({ where: { commentId: created.data.id } })).toBe(1);
+    expectError(await api('POST', '/api/v1/crm/[entityType]/[entityId]/timeline/comments', authed({ params: { entityType: 'DEAL', entityId: ctx.typedDeal.id }, body: { body: '   ' } })), 400, 'FIELD_VALIDATION_FAILED');
+    expectError(await api('POST', '/api/v1/crm/[entityType]/[entityId]/timeline/comments', authed({ params: { entityType: 'DEAL', entityId: ctx.typedDeal.id }, body: { body: 'x', fileIds: [MISSING_ID] } })), 400, 'FILES_UNAVAILABLE');
+    expectError(await api('GET', '/api/v1/crm/timeline/comments/[commentId]', authed({ params: { commentId: MISSING_ID } })), 404, 'TIMELINE_COMMENT_NOT_FOUND');
+    expectError(await api('POST', '/api/v1/crm/[entityType]/[entityId]/timeline/comments', { token: ctx.other.token, workspaceId: ws.owner.workspaceId, params: { entityType: 'DEAL', entityId: ctx.typedDeal.id }, body: { body: 'intruder' } }), 403);
+  });
+});
+
+describe('Realtime and operational jobs', () => {
+  it('GET /crm/realtime opens an authenticated event stream', async () => {
+    const res = await api('GET', '/api/v1/crm/realtime', authed({ stream: true }));
+    expect(res.status).toBe(200);
+    expectError(await api('GET', '/api/v1/crm/realtime', { workspaceId: ws.owner.workspaceId }), 401, 'UNAUTHENTICATED');
+    expectError(await api('GET', '/api/v1/crm/realtime', { token: ws.owner.token }), 400, 'WORKSPACE_REQUIRED');
+  });
+
+  it('POST /internal/crm/jobs/[job] runs idempotent scheduler jobs only with the job token', async () => {
+    process.env.INTERNAL_JOB_TOKEN = 'test-job-token-0123456789';
+    const headers = { 'x-internal-job-token': 'test-job-token-0123456789' };
+    const run = (job: string, body: Record<string, unknown> = {}, extra: Record<string, string> = headers) => api('POST', '/api/v1/internal/crm/jobs/[job]', { params: { job }, headers: extra, body });
+    const overdue = await run('overdue');
+    expectOk(overdue);
+    expect(overdue.data.emitted).toBeGreaterThanOrEqual(1); // the overdue follow-up created above
+    const again = await run('overdue');
+    expect(again.data.emitted).toBe(0); // exactly once per deadline occurrence, even across requests
+    const { prisma } = await import('@/src/server/prisma-client');
+    expect(await prisma.crmActivityOverdueOccurrence.count({ where: { activityId: ctx.overdueActivity.id } })).toBe(1);
+    expectOk(await run('reminders'));
+    expectOk(await run('timeline-project'));
+    const before = await prisma.crmTimelineEntry.count({ where: { workspaceId: ws.owner.workspaceId } });
+    expectOk(await run('timeline-rebuild', { workspaceId: ws.owner.workspaceId }));
+    expect(await prisma.crmTimelineEntry.count({ where: { workspaceId: ws.owner.workspaceId } })).toBe(before); // rebuild is idempotent
+    expect(await prisma.crmTimelineComment.count({ where: { workspaceId: ws.owner.workspaceId } })).toBeGreaterThanOrEqual(1); // comments untouched
+    expectError(await run('timeline-rebuild'), 400, 'WORKSPACE_REQUIRED');
+    expectError(await run('bogus'), 400, 'JOB_UNKNOWN');
+    expectError(await run('overdue', {}, { 'x-internal-job-token': 'wrong' }), 401, 'UNAUTHENTICATED');
+    expectError(await run('overdue', {}, {}), 401, 'UNAUTHENTICATED');
+    // A user bearer token is not a job credential.
+    expectError(await api('POST', '/api/v1/internal/crm/jobs/[job]', authed({ params: { job: 'overdue' }, body: {} })), 401, 'UNAUTHENTICATED');
+    delete process.env.INTERNAL_JOB_TOKEN;
+    expectError(await run('overdue'), 401, 'UNAUTHENTICATED'); // disabled when unconfigured
+  });
+});
+
 describe('Cross-cutting behaviour', () => {
   // Everything under app/ is locked behind a bearer token unless it is listed here. A newly added
   // route therefore fails this test until it either checks the token or is consciously allow-listed.
@@ -843,7 +1390,11 @@ describe('Cross-cutting behaviour', () => {
     const all = await discoverEndpoints();
     const covered = coveredEndpoints();
     const missing = all.filter((endpoint) => !covered.has(endpoint));
-    expect(all.length).toBeGreaterThan(80);
+    expect(all.length).toBeGreaterThan(130);
     expect(missing).toEqual([]);
+    // Rejecting a request is not enough: every protected endpoint must also have been exercised with real credentials.
+    const authenticated = coveredAuthenticatedEndpoints();
+    const neverAuthenticated = all.filter((endpoint) => !PUBLIC_ENDPOINTS.has(endpoint) && !authenticated.has(endpoint));
+    expect(neverAuthenticated).toEqual([]);
   });
 });

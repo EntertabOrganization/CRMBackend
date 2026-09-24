@@ -40,6 +40,28 @@ import type {
   WorkspaceMembership,
 } from './domain';
 import { catalogPermissions } from './permissions';
+import type {
+  CustomField,
+  CustomFieldMigration,
+  CustomFieldOption,
+  CustomFieldValueRow,
+  FieldRequirement,
+  FieldSchemaVersion,
+  FieldVisibilityRule,
+} from './fields/types';
+import type {
+  Activity,
+  ActivityBinding,
+  ActivityCommunication,
+  ActivityOverdueOccurrence,
+  ActivityParticipant,
+  ActivityReminder,
+  ActivityReminderRecipient,
+  ActivityType,
+  TimelineComment,
+  TimelineCommentMention,
+  TimelineEntry,
+} from './activities/types';
 
 export type DbState = {
   users: User[];
@@ -82,6 +104,24 @@ export type DbState = {
   crmStageHistory: CrmStageHistory[];
   outboxEvents: OutboxEvent[];
   idempotencyRecords: IdempotencyRecord[];
+  crmCustomFields: CustomField[];
+  crmCustomFieldOptions: CustomFieldOption[];
+  crmCustomFieldValues: CustomFieldValueRow[];
+  crmFieldVisibilityRules: FieldVisibilityRule[];
+  crmFieldRequirements: FieldRequirement[];
+  crmCustomFieldMigrations: CustomFieldMigration[];
+  crmFieldSchemaVersions: FieldSchemaVersion[];
+  crmActivityTypes: ActivityType[];
+  crmActivities: Activity[];
+  crmActivityBindings: ActivityBinding[];
+  crmActivityParticipants: ActivityParticipant[];
+  crmActivityCommunications: ActivityCommunication[];
+  crmActivityReminders: ActivityReminder[];
+  crmActivityReminderRecipients: ActivityReminderRecipient[];
+  crmActivityOverdueOccurrences: ActivityOverdueOccurrence[];
+  crmTimelineEntries: TimelineEntry[];
+  crmTimelineComments: TimelineComment[];
+  crmTimelineCommentMentions: TimelineCommentMention[];
 };
 
 export class InMemoryStore {
@@ -129,6 +169,24 @@ export class InMemoryStore {
       crmStageHistory: [],
       outboxEvents: [],
       idempotencyRecords: [],
+      crmCustomFields: [],
+      crmCustomFieldOptions: [],
+      crmCustomFieldValues: [],
+      crmFieldVisibilityRules: [],
+      crmFieldRequirements: [],
+      crmCustomFieldMigrations: [],
+      crmFieldSchemaVersions: [],
+      crmActivityTypes: [],
+      crmActivities: [],
+      crmActivityBindings: [],
+      crmActivityParticipants: [],
+      crmActivityCommunications: [],
+      crmActivityReminders: [],
+      crmActivityReminderRecipients: [],
+      crmActivityOverdueOccurrences: [],
+      crmTimelineEntries: [],
+      crmTimelineComments: [],
+      crmTimelineCommentMentions: [],
       ...seed,
     };
   }
@@ -142,6 +200,54 @@ export class InMemoryStore {
       return result;
     } catch (error) {
       throw error;
+    }
+  }
+
+  /**
+   * Runs a multi-record mutation and, if it throws, rolls every touched row back IN PLACE, so a failed business
+   * operation never leaves half-applied changes for the request wrapper to persist. Rows keep their object identity
+   * (callers and tests that still hold a reference to a record see the restored values).
+   * Rows are restored shallowly: mutation code must replace nested values instead of mutating them in place.
+   */
+  atomicSync<T>(operation: () => T): T {
+    const snapshot = this.captureShallow();
+    try {
+      return operation();
+    } catch (error) {
+      this.restoreShallow(snapshot);
+      throw error;
+    }
+  }
+
+  async atomic<T>(operation: () => Promise<T>): Promise<T> {
+    const snapshot = this.captureShallow();
+    try {
+      return await operation();
+    } catch (error) {
+      this.restoreShallow(snapshot);
+      throw error;
+    }
+  }
+
+  private captureShallow() {
+    const entries: Array<{ key: keyof DbState; rows: object[]; copies: object[] }> = [];
+    for (const key of Object.keys(this.state) as Array<keyof DbState>) {
+      const rows = this.state[key] as unknown as object[];
+      entries.push({ key, rows: [...rows], copies: rows.map((row) => ({ ...row })) });
+    }
+    return entries;
+  }
+
+  private restoreShallow(snapshot: ReturnType<InMemoryStore['captureShallow']>) {
+    const state = this.state as unknown as Record<string, object[]>;
+    for (const { key, rows, copies } of snapshot) {
+      rows.forEach((row, index) => {
+        const original = copies[index] as Record<string, unknown>;
+        const target = row as Record<string, unknown>;
+        for (const field of Object.keys(target)) if (!(field in original)) delete target[field];
+        Object.assign(target, original);
+      });
+      state[key as string] = rows;
     }
   }
 

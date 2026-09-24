@@ -84,8 +84,13 @@ export class WorkspaceService {
   }
 
   resolveSession(user: User): SessionContext {
+    // A membership only counts while its workspace still exists; otherwise a deleted workspace would hide every other one.
     const userMemberships = this.store.state.workspaceMemberships.filter(
-      (membership) => membership.userId === user.id && membership.status === 'ACTIVE' && !membership.isDeleted,
+      (membership) =>
+        membership.userId === user.id &&
+        membership.status === 'ACTIVE' &&
+        !membership.isDeleted &&
+        this.store.state.workspaces.some((workspace) => workspace.id === membership.workspaceId && !workspace.isDeleted),
     );
     const lastActiveWorkspaceId = typeof user.settings.lastActiveWorkspaceId === 'string'
       ? user.settings.lastActiveWorkspaceId

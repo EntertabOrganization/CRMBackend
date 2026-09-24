@@ -18,6 +18,8 @@ export type ApiOptions = {
   query?: Record<string, string>;
   params?: Record<string, string>;
   headers?: Record<string, string>;
+  /** For streaming endpoints (SSE): return once headers arrive and cancel the body instead of waiting for it to end. */
+  stream?: boolean;
 };
 
 export type ApiResult<T = any> = {
@@ -27,6 +29,8 @@ export type ApiResult<T = any> = {
 };
 
 const covered = new Set<string>();
+/** Endpoints exercised with real credentials (a bearer token or the internal job token), not just rejected. */
+const coveredAuthenticated = new Set<string>();
 let requestCounter = 0;
 
 /**
@@ -62,6 +66,10 @@ export async function disconnectTestDatabase() {
   await prisma.$disconnect();
 }
 
+export function coveredAuthenticatedEndpoints() {
+  return new Set(coveredAuthenticated);
+}
+
 export function coveredEndpoints() {
   return new Set(covered);
 }
@@ -95,7 +103,12 @@ export async function api<T = any>(method: Method, template: string, options: Ap
   });
   const response: Response = await handler(request, { params: Promise.resolve(params) });
   covered.add(`${method} ${template}`);
+  if (options.token || options.headers?.['x-internal-job-token']) coveredAuthenticated.add(`${method} ${template}`);
 
+  if (options.stream && response.status === 200) {
+    await response.body?.cancel();
+    return { status: response.status, body: null, data: undefined as never };
+  }
   const text = await response.text();
   let body: any = text;
   try {

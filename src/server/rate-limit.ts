@@ -27,6 +27,20 @@ export const authRateLimitPolicies = {
   logoutAll: { scope: 'auth.logout-all', limit: 20, windowMs: 15 * 60 * 1000 },
 } satisfies Record<string, RateLimitPolicy>;
 
+/** Per-user limits for the CRM configuration, bulk and comment endpoints (keyed by user, not by address). */
+export const crmRateLimitPolicies = {
+  configWrite: { scope: 'crm.config-write', limit: 240, windowMs: 60 * 1000 },
+  bulk: { scope: 'crm.activity-bulk', limit: 30, windowMs: 60 * 1000 },
+  comment: { scope: 'crm.timeline-comment', limit: 120, windowMs: 60 * 1000 },
+  migration: { scope: 'crm.field-migration', limit: 20, windowMs: 60 * 60 * 1000 },
+} satisfies Record<string, RateLimitPolicy>;
+
+export type CrmRateLimit = keyof typeof crmRateLimitPolicies;
+
+export function rateLimitUser(userId: string, policy: keyof typeof crmRateLimitPolicies) {
+  checkRateLimit(userId, crmRateLimitPolicies[policy]);
+}
+
 export function checkRateLimit(identifier: string, policy: RateLimitPolicy, now = Date.now()) {
   const key = `${policy.scope}:${identifier}`;
   const bucket = buckets.get(key);
