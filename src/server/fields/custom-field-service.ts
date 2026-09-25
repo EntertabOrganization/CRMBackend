@@ -75,8 +75,26 @@ export class CustomFieldDefinitionService {
     return this.support.store;
   }
 
+  /**
+   * Set only for the duration of one synchronous call made by a module that owns a field-capable entity (e.g. Catalog
+   * properties): that module has already verified its own permission and that the field belongs to its entity type, so the
+   * definition service accepts the module permission instead of the generic custom_fields.manage for this call.
+   */
+  private delegatedManagePermission: string | null = null;
+
+  runWithDelegatedManagePermission<T>(permissionKey: string, run: () => T): T {
+    const previous = this.delegatedManagePermission;
+    this.delegatedManagePermission = permissionKey;
+    try {
+      return run();
+    } finally {
+      this.delegatedManagePermission = previous;
+    }
+  }
+
   private manageActor(user: User, workspaceId: string) {
     const actor = this.support.deps.access.actor(user, workspaceId);
+    if (this.delegatedManagePermission && this.support.deps.access.scopeFor(actor, this.delegatedManagePermission) === 'WORKSPACE') return actor;
     this.support.deps.access.requireWorkspaceScope(actor, FIELD_PERMISSIONS.manageFields);
     return actor;
   }

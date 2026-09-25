@@ -516,6 +516,10 @@ export type OutboxEvent = {
   idempotencyKey?: string | null;
   /** Set once the Timeline projector has consumed the event. */
   projectedAt?: Date | null;
+  /** Set once the Automation consumer has matched the event against active Rules (independent of Timeline projection). */
+  automationProcessedAt?: Date | null;
+  /** Depth of the Automation chain that produced the event (0 / absent = originated outside Automation). */
+  automationDepth?: number;
 };
 
 export type SessionContext = {

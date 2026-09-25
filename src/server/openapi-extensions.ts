@@ -1,8 +1,9 @@
+import { AUTOMATION_CATALOG_ROWS, AUTOMATION_CATALOG_TAGS } from './openapi-automation-catalog';
 /**
  * OpenAPI paths for Custom & Required Fields, Activities and Timeline. Each row is [path, method, tag, summary, extras].
  * Request bodies are described in prose (the payload contracts live in the Custom_Fields_Activities_Timeline pack).
  */
-type Row = [path: string, method: 'get' | 'post' | 'put' | 'patch' | 'delete', tag: string, summary: string, extras?: { query?: string[]; cursor?: boolean; sse?: boolean; jobToken?: boolean }];
+export type Row = [path: string, method: 'get' | 'post' | 'put' | 'patch' | 'delete', tag: string, summary: string, extras?: { query?: string[]; cursor?: boolean; sse?: boolean; jobToken?: boolean; integrationKey?: boolean }];
 
 export const CRM_EXTENSION_TAGS = [
   { name: 'Custom Fields' },
@@ -13,6 +14,7 @@ export const CRM_EXTENSION_TAGS = [
   { name: 'Timeline' },
   { name: 'Realtime' },
   { name: 'Operations' },
+  ...AUTOMATION_CATALOG_TAGS,
 ];
 
 const ROWS: Row[] = [
@@ -82,7 +84,7 @@ const ROWS: Row[] = [
   ['/crm/companies/{id}', 'get', 'CRM Companies', 'Get a company with authorized custom fields.'],
   ['/crm/companies/{id}', 'patch', 'CRM Companies', 'Update a company and its custom fields atomically (expectedVersion required).'],
   ['/crm/realtime', 'get', 'Realtime', 'Server-Sent Events stream of advisory invalidation hints (ids/versions only). REST stays authoritative.', { sse: true }],
-  ['/internal/crm/jobs/{job}', 'post', 'Operations', 'Scheduler jobs: overdue, reminders, timeline-project, timeline-rebuild. Requires the x-internal-job-token header.', { jobToken: true }],
+  ['/internal/crm/jobs/{job}', 'post', 'Operations', 'Scheduler jobs: overdue, reminders, timeline-project, timeline-rebuild, automation-ingest, automation-run. Requires the x-internal-job-token header.', { jobToken: true }],
 ];
 
 function operation([path, , tag, summary, extras]: Row) {
@@ -90,13 +92,14 @@ function operation([path, , tag, summary, extras]: Row) {
   for (const [, name] of path.matchAll(/\{(\w+)\}/g)) parameters.push({ name, in: 'path', required: true, schema: { type: 'string' } });
   for (const name of extras?.query ?? []) parameters.push({ name, in: 'query', schema: { type: 'string' } });
   if (extras?.cursor) parameters.push({ name: 'cursor', in: 'query', schema: { type: 'string' } }, { name: 'limit', in: 'query', schema: { type: 'integer', maximum: 100 } });
-  if (!extras?.jobToken) parameters.push({ name: 'X-Workspace-Id', in: 'header', required: true, schema: { type: 'string', format: 'uuid' } });
+  if (extras?.integrationKey) parameters.push({ name: 'x-automation-integration-key', in: 'header', required: true, schema: { type: 'string' } });
+  else if (!extras?.jobToken) parameters.push({ name: 'X-Workspace-Id', in: 'header', required: true, schema: { type: 'string', format: 'uuid' } });
   else parameters.push({ name: 'x-internal-job-token', in: 'header', required: true, schema: { type: 'string' } });
   const error = { description: 'Error response.', content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiError' } } } };
   return {
     tags: [tag],
     summary,
-    security: extras?.jobToken ? [] : [{ bearerAuth: [] }],
+    security: extras?.jobToken || extras?.integrationKey ? [] : [{ bearerAuth: [] }],
     parameters,
     responses: {
       '200': extras?.sse
@@ -114,7 +117,7 @@ function operation([path, , tag, summary, extras]: Row) {
 
 export function crmExtensionPaths(): Record<string, Record<string, unknown>> {
   const paths: Record<string, Record<string, unknown>> = {};
-  for (const row of ROWS) {
+  for (const row of [...ROWS, ...AUTOMATION_CATALOG_ROWS]) {
     paths[row[0]] ??= {};
     paths[row[0]][row[1]] = operation(row);
   }

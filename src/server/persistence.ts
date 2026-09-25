@@ -87,6 +87,44 @@ const COLLECTIONS: { key: keyof DbState; delegate: (client: TxClient) => Delegat
 ];
 
 /**
+ * Collections added by the Automation and Products & Catalog modules. They are table-driven: `model` is the Prisma delegate
+ * name and `decimals` lists NUMERIC columns that Prisma returns as Decimal instances (the domain works with canonical decimal
+ * strings, so hydration converts them and persistence hands the strings straight back to Prisma).
+ */
+type ExtraCollection = { key: keyof DbState; model: string; decimals?: string[] };
+const EXTRA_COLLECTIONS: ExtraCollection[] = [
+  { key: 'catalogSettings', model: 'catalogSettings' },
+  { key: 'catalogs', model: 'catalog' },
+  { key: 'catalogUnits', model: 'catalogUnit' },
+  { key: 'catalogPriceTypes', model: 'catalogPriceType' },
+  { key: 'catalogCategories', model: 'catalogCategory' },
+  { key: 'catalogProducts', model: 'catalogProduct', decimals: ['taxRate', 'weight', 'length', 'width', 'height'] },
+  { key: 'catalogProductCategories', model: 'catalogProductCategory' },
+  { key: 'catalogUnitRatios', model: 'catalogProductUnitRatio', decimals: ['ratio'] },
+  { key: 'catalogPrices', model: 'catalogProductPrice', decimals: ['amount'] },
+  { key: 'catalogPropertyProfiles', model: 'catalogPropertyProfile' },
+  { key: 'catalogProductMedia', model: 'catalogProductMedia' },
+  { key: 'commercialRowSets', model: 'commercialRowSet', decimals: ['subtotal', 'taxTotal', 'total'] },
+  {
+    key: 'commercialProductRows',
+    model: 'commercialProductRow',
+    decimals: ['unitRatioSnapshot', 'quantity', 'unitPrice', 'discountValue', 'discountAmount', 'taxRate', 'subtotal', 'taxAmount', 'total'],
+  },
+  { key: 'automationRules', model: 'automationRule' },
+  { key: 'automationRevisions', model: 'automationRuleRevision' },
+  { key: 'automationActions', model: 'automationAction' },
+  { key: 'automationJobs', model: 'automationJob' },
+  { key: 'automationExecutions', model: 'automationExecution' },
+  { key: 'automationActionExecutions', model: 'automationActionExecution' },
+  { key: 'automationLogs', model: 'automationLog' },
+  { key: 'automationExtensions', model: 'automationExtensionDefinition' },
+  { key: 'automationCredentials', model: 'automationIntegrationCredential' },
+];
+for (const extra of EXTRA_COLLECTIONS) {
+  COLLECTIONS.push({ key: extra.key, delegate: (c) => (c as unknown as Record<string, Delegate>)[extra.model] });
+}
+
+/**
  * Collections whose rows carry a natural UNIQUE key and are replaced by delete + re-insert under a new id (typed custom values,
  * participants, mentions, timeline rebuilds...). They have no foreign keys, so their removals run BEFORE the upserts; otherwise the
  * re-inserted row would collide with the row it replaces.
@@ -102,6 +140,8 @@ const DELETE_BEFORE_UPSERT = new Set<keyof DbState>([
   'crmActivityOverdueOccurrences',
   'crmTimelineEntries',
   'crmTimelineCommentMentions',
+  // Draft action lists are rebuilt on every edit under the (revision, sortOrder) unique key.
+  'automationActions',
 ]);
 
 export async function hydrateState(client: PrismaClient): Promise<DbState> {
@@ -225,7 +265,7 @@ export async function hydrateState(client: PrismaClient): Promise<DbState> {
     client.crmTimelineCommentMention.findMany(),
   ]);
 
-  return {
+  const state = {
     users: users.map((row: RowWithJson) => ({ ...row, settings: asRecord(row.settings), meta: asRecordOrNull(row.meta) })),
     authIdentities,
     refreshSessions,
@@ -289,6 +329,26 @@ export async function hydrateState(client: PrismaClient): Promise<DbState> {
     crmTimelineComments: crmTimelineComments.map((row: { fileIds?: unknown }) => ({ ...row, fileIds: Array.isArray(row.fileIds) ? row.fileIds : [] })),
     crmTimelineCommentMentions,
   } as unknown as DbState;
+
+  const target = state as unknown as Record<string, unknown[]>;
+  const extraRows = await Promise.all(
+    EXTRA_COLLECTIONS.map((extra) => (client as unknown as Record<string, Delegate>)[extra.model].findMany() as Promise<Array<Record<string, unknown>>>),
+  );
+  EXTRA_COLLECTIONS.forEach((extra, index) => {
+    const rows = extraRows[index];
+    target[extra.key as string] = extra.decimals?.length ? rows.map((row) => decimalsToStrings(row, extra.decimals!)) : rows;
+  });
+  return state;
+}
+
+/** Prisma returns Decimal instances; the domain carries canonical decimal strings. */
+function decimalsToStrings(row: Record<string, unknown>, columns: string[]) {
+  const copy = { ...row };
+  for (const column of columns) {
+    const value = copy[column] as { toFixed(): string } | null | undefined;
+    copy[column] = value == null ? null : canonicalDecimal(value.toFixed());
+  }
+  return copy;
 }
 
 export async function persistState(client: PrismaClient, before: DbState, after: DbState): Promise<void> {

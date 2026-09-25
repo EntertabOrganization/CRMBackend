@@ -6,6 +6,8 @@ import { ActivityAdapterRegistry } from './activities/adapters';
 import { TimelineService } from './activities/timeline-service';
 import { AuthService } from './auth-service';
 import { AuditService } from './audit-service';
+import { AutomationModule } from './automation';
+import { CatalogModule } from './catalog';
 import { CrmCoreService } from './crm-core-service';
 import { CrmPipelineService } from './crm-pipeline-service';
 import { DepartmentService } from './department-service';
@@ -38,8 +40,14 @@ function createAppContext() {
   const activityTypeAdmin = new ActivityTypeService(store, access, activityTypes, (workspaceId) => {
     realtime.enqueue({ type: 'ACTIVITY_TYPE_CHANGED', workspaceId, data: {} });
   });
+  const crmCore = new CrmCoreService(store, fields);
+  const catalog = new CatalogModule({ store, access, realtime, fields, registry, crmCore, files: () => ports.files });
+  const crm = new CrmPipelineService(store, undefined, fields);
+  const automation = new AutomationModule({ store, access, realtime, fields, registry, crm, crmCore, activities });
   return {
     store,
+    catalog,
+    automation,
     mailer,
     google,
     realtime,
@@ -63,8 +71,8 @@ function createAppContext() {
     roles: new RoleService(store),
     departments: new DepartmentService(store),
     partners: new PartnerService(store),
-    crmCore: new CrmCoreService(store, fields),
-    crm: new CrmPipelineService(store, undefined, fields),
+    crmCore,
+    crm,
   };
 }
 

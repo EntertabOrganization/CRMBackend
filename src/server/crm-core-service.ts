@@ -21,6 +21,7 @@ import { applyCursorQuery, parseCursorQuery } from './query';
 import { requireText } from './validation';
 import type { InMemoryStore } from './store';
 import type { FieldEngine } from './fields/field-engine';
+import { fieldTypeRegistry } from './fields/field-types';
 
 type AddressInput = Partial<Pick<CrmContact, 'addressLine1' | 'addressLine2' | 'city' | 'stateOrProvince' | 'postalCode' | 'countryCode'>>;
 
@@ -899,6 +900,16 @@ export class CrmCoreService {
       const prepared = this.prepareCustomFields(actor, workspaceId, entityType, preview, input.customFields, false);
       const before: Record<string, unknown> = {};
       for (const key of Object.keys(changes)) before[key] = target[key];
+      // Compact before/after values let Automation evaluate CHANGED_FROM / CHANGED_TO without re-reading history.
+      const changed: Record<string, { before: unknown; after: unknown }> = {};
+      for (const key of Object.keys(changes)) changed[key] = { before: before[key] ?? null, after: changes[key] ?? null };
+      if (prepared && this.fields) {
+        for (const { field, items } of prepared.changes.values()) {
+          const handler = fieldTypeRegistry.get(field.fieldType);
+          const toApi = (list: unknown[]) => (field.isMultiple ? list.map((item) => handler.toApi(item)) : list.length > 0 ? handler.toApi(list[0]) : null);
+          changed[`customFields.${field.code}`] = { before: toApi(this.fields.values.loadItems(workspaceId, entityType, record.id, field)), after: toApi(items) };
+        }
+      }
       Object.assign(target, changes);
       if (entityType === 'CONTACT') (record as CrmContact).displayName = displayName((record as CrmContact).firstName, (record as CrmContact).lastName);
       if (prepared) this.fields!.commit(prepared, record.id);
@@ -914,7 +925,7 @@ export class CrmCoreService {
         entityId: record.id,
         actorUserId: actor.id,
         occurredAt: now(),
-        payload: { entityVersion: record.version, changedFields },
+        payload: { entityVersion: record.version, changedFields, changed },
       });
       this.storeIdempotentResponse(workspaceId, actor.id, operation, input, idempotencyKey, record);
       return record;

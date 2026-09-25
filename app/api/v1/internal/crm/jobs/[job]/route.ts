@@ -3,7 +3,7 @@ import { NextRequest } from 'next/server';
 import { appContext } from '@/src/server/app-context';
 import { badRequest, unauthorized } from '@/src/server/errors';
 import { readJson } from '@/src/server/request';
-import { route } from '@/src/server/response';
+import { fail, ok, route, runAutomationDue } from '@/src/server/response';
 
 function assertJobToken(request: NextRequest) {
   const expected = process.env.INTERNAL_JOB_TOKEN ?? '';
@@ -19,6 +19,18 @@ function assertJobToken(request: NextRequest) {
  * projection and Timeline rebuild. Every job is idempotent, so a retried or duplicated run is harmless.
  */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ job: string }> }) {
+  const jobName = (await params).job;
+  if (jobName === 'automation-run') {
+    // Runs OUTSIDE the request transaction wrapper: it claims jobs atomically (lease + SKIP LOCKED) and every step
+    // (including slow external calls) manages its own transactions, so it must not hold the request queue.
+    try {
+      assertJobToken(request);
+      const body = await readJson<Record<string, unknown>>(request);
+      return ok(await runAutomationDue(typeof body.limit === 'number' ? Math.min(Math.max(body.limit, 1), 100) : 25));
+    } catch (error) {
+      return fail(error);
+    }
+  }
   return route(async () => {
     assertJobToken(request);
     const { job } = await params;
@@ -28,6 +40,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         return appContext.activities.runOverdueSweep();
       case 'reminders':
         return appContext.activities.runDueReminders();
+      case 'automation-ingest':
+        // Matches unseen outbox events against active Rules and records jobs (also done inline after every request).
+        return appContext.automation.ingestPending();
       case 'timeline-project':
         return appContext.timeline.projectPending(typeof body.workspaceId === 'string' ? body.workspaceId : undefined);
       case 'timeline-rebuild': {

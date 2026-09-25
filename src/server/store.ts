@@ -50,6 +50,32 @@ import type {
   FieldVisibilityRule,
 } from './fields/types';
 import type {
+  AutomationAction,
+  AutomationActionExecution,
+  AutomationCredential,
+  AutomationExecution,
+  AutomationExtension,
+  AutomationJob,
+  AutomationLog,
+  AutomationRevision,
+  AutomationRule,
+} from './automation/types';
+import type {
+  Catalog,
+  CatalogCategory,
+  CatalogSettings,
+  CatalogUnit,
+  CommercialProductRow,
+  CommercialRowSet,
+  PriceType,
+  Product,
+  ProductCategoryMembership,
+  ProductMedia,
+  ProductPrice,
+  ProductUnitRatio,
+  PropertyProfile,
+} from './catalog/types';
+import type {
   Activity,
   ActivityBinding,
   ActivityCommunication,
@@ -122,6 +148,28 @@ export type DbState = {
   crmTimelineEntries: TimelineEntry[];
   crmTimelineComments: TimelineComment[];
   crmTimelineCommentMentions: TimelineCommentMention[];
+  catalogSettings: CatalogSettings[];
+  catalogs: Catalog[];
+  catalogUnits: CatalogUnit[];
+  catalogPriceTypes: PriceType[];
+  catalogCategories: CatalogCategory[];
+  catalogProducts: Product[];
+  catalogProductCategories: ProductCategoryMembership[];
+  catalogUnitRatios: ProductUnitRatio[];
+  catalogPrices: ProductPrice[];
+  catalogPropertyProfiles: PropertyProfile[];
+  catalogProductMedia: ProductMedia[];
+  commercialRowSets: CommercialRowSet[];
+  commercialProductRows: CommercialProductRow[];
+  automationRules: AutomationRule[];
+  automationRevisions: AutomationRevision[];
+  automationActions: AutomationAction[];
+  automationJobs: AutomationJob[];
+  automationExecutions: AutomationExecution[];
+  automationActionExecutions: AutomationActionExecution[];
+  automationLogs: AutomationLog[];
+  automationExtensions: AutomationExtension[];
+  automationCredentials: AutomationCredential[];
 };
 
 export class InMemoryStore {
@@ -187,6 +235,28 @@ export class InMemoryStore {
       crmTimelineEntries: [],
       crmTimelineComments: [],
       crmTimelineCommentMentions: [],
+      catalogSettings: [],
+      catalogs: [],
+      catalogUnits: [],
+      catalogPriceTypes: [],
+      catalogCategories: [],
+      catalogProducts: [],
+      catalogProductCategories: [],
+      catalogUnitRatios: [],
+      catalogPrices: [],
+      catalogPropertyProfiles: [],
+      catalogProductMedia: [],
+      commercialRowSets: [],
+      commercialProductRows: [],
+      automationRules: [],
+      automationRevisions: [],
+      automationActions: [],
+      automationJobs: [],
+      automationExecutions: [],
+      automationActionExecutions: [],
+      automationLogs: [],
+      automationExtensions: [],
+      automationCredentials: [],
       ...seed,
     };
   }

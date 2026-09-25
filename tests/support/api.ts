@@ -103,7 +103,7 @@ export async function api<T = any>(method: Method, template: string, options: Ap
   });
   const response: Response = await handler(request, { params: Promise.resolve(params) });
   covered.add(`${method} ${template}`);
-  if (options.token || options.headers?.['x-internal-job-token']) coveredAuthenticated.add(`${method} ${template}`);
+  if (options.token || options.headers?.['x-internal-job-token'] || options.headers?.['x-automation-integration-key']) coveredAuthenticated.add(`${method} ${template}`);
 
   if (options.stream && response.status === 200) {
     await response.body?.cancel();

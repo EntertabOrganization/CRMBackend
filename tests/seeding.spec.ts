@@ -54,7 +54,7 @@ describe('database seed configuration', () => {
         'timeline.comment_delete',
       ]),
     );
-    expect(seedConfig.PERMISSIONS).toHaveLength(59);
+    expect(seedConfig.PERMISSIONS).toHaveLength(82);
   });
 
   it('keeps the seed catalog identical to the server permission catalog', () => {

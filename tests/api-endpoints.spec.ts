@@ -3,6 +3,7 @@
  * handlers, the real persistence layer and a throwaway Postgres database (entertabcrm_test),
  * which is recreated and migrated at the start of the run.
  */
+import { resetRateLimits } from '@/src/server/rate-limit';
 import { api, coveredAuthenticatedEndpoints, coveredEndpoints, disconnectTestDatabase, discoverEndpoints, prepareTestDatabase } from './support/api';
 
 jest.setTimeout(120_000);
@@ -1306,6 +1307,431 @@ describe('Realtime and operational jobs', () => {
     expectError(await api('POST', '/api/v1/internal/crm/jobs/[job]', authed({ params: { job: 'overdue' }, body: {} })), 401, 'UNAUTHENTICATED');
     delete process.env.INTERNAL_JOB_TOKEN;
     expectError(await run('overdue'), 401, 'UNAUTHENTICATED'); // disabled when unconfigured
+  });
+});
+
+describe('Products & Catalog API', () => {
+  beforeEach(() => resetRateLimits());
+  const call = (method: any, template: string, options: Record<string, unknown> = {}) => api(method, template, authed(options));
+
+  it('manages Catalogs, categories, Units and Price Types through their endpoints', async () => {
+    const catalogs = await call('GET', '/api/v1/catalogs');
+    expectOk(catalogs);
+    ctx.catalog = catalogs.data.find((c: any) => c.isDefault);
+    expect(catalogs.data.filter((c: any) => c.isDefault)).toHaveLength(1);
+    const second = await call('POST', '/api/v1/catalogs', { body: { name: `Wholesale ${RUN}`, code: `WS${RUN % 100000}` } });
+    expectOk(second);
+    expectOk(await call('GET', '/api/v1/catalogs/[catalogId]', { params: { catalogId: second.data.id } }));
+    const patched = await call('PATCH', '/api/v1/catalogs/[catalogId]', { params: { catalogId: second.data.id }, body: { version: second.data.version, description: 'B2B' } });
+    expectOk(patched);
+    expectError(await call('PATCH', '/api/v1/catalogs/[catalogId]', { params: { catalogId: second.data.id }, body: { version: second.data.version, description: 'stale' } }), 409, 'CATALOG_VERSION_CONFLICT');
+    expectOk(await call('POST', '/api/v1/catalogs/[catalogId]/set-default', { params: { catalogId: second.data.id } }));
+    expectOk(await call('POST', '/api/v1/catalogs/[catalogId]/set-default', { params: { catalogId: ctx.catalog.id } }));
+    expectError(await call('GET', '/api/v1/catalogs/[catalogId]', { params: { catalogId: MISSING_ID } }), 404, 'CATALOG_NOT_FOUND');
+
+    const categoryPath = { catalogId: ctx.catalog.id };
+    const root = await call('POST', '/api/v1/catalogs/[catalogId]/categories', { params: categoryPath, body: { name: 'Apparel' } });
+    const other = await call('POST', '/api/v1/catalogs/[catalogId]/categories', { params: categoryPath, body: { name: 'Gear' } });
+    const child = await call('POST', '/api/v1/catalogs/[catalogId]/categories', { params: categoryPath, body: { name: 'Shirts', parentId: root.data.id } });
+    expectOk(root);
+    expectOk(child);
+    ctx.category = root.data;
+    ctx.childCategory = child.data;
+    const tree = await call('GET', '/api/v1/catalogs/[catalogId]/categories', { params: categoryPath, query: { format: 'tree' } });
+    expectOk(tree);
+    expect(tree.data.find((node: any) => node.id === root.data.id).children[0].id).toBe(child.data.id);
+    expectOk(await call('GET', '/api/v1/catalogs/[catalogId]/categories/[categoryId]', { params: { ...categoryPath, categoryId: root.data.id } }));
+    expectOk(await call('PATCH', '/api/v1/catalogs/[catalogId]/categories/[categoryId]', { params: { ...categoryPath, categoryId: other.data.id }, body: { version: other.data.version, name: 'Equipment' } }));
+    expectOk(await call('POST', '/api/v1/catalogs/[catalogId]/categories/reorder', { params: categoryPath, body: { parentId: null, orderedIds: [other.data.id, root.data.id] } }));
+    expectError(await call('POST', '/api/v1/catalogs/[catalogId]/categories/[categoryId]/move', { params: { ...categoryPath, categoryId: root.data.id }, body: { parentId: child.data.id } }), 409, 'CATEGORY_CYCLE');
+    expectOk(await call('POST', '/api/v1/catalogs/[catalogId]/categories/[categoryId]/move', { params: { ...categoryPath, categoryId: other.data.id }, body: { parentId: root.data.id } }));
+    expectError(await call('DELETE', '/api/v1/catalogs/[catalogId]/categories/[categoryId]', { params: { ...categoryPath, categoryId: root.data.id } }), 409, 'CATEGORY_HAS_DEPENDENCIES');
+    expectOk(await call('DELETE', '/api/v1/catalogs/[catalogId]/categories/[categoryId]', { params: { ...categoryPath, categoryId: other.data.id } }));
+
+    const units = await call('GET', '/api/v1/catalog/units');
+    expectOk(units);
+    expect(units.data.map((u: any) => u.code)).toEqual(expect.arrayContaining(['PIECE', 'BOX', 'HOUR']));
+    ctx.units = units.data;
+    const crate = await call('POST', '/api/v1/catalog/units', { body: { code: 'crate', name: 'Crate', precision: 0 } });
+    expectOk(crate);
+    expectOk(await call('GET', '/api/v1/catalog/units/[unitId]', { params: { unitId: crate.data.id } }));
+    expectOk(await call('PATCH', '/api/v1/catalog/units/[unitId]', { params: { unitId: crate.data.id }, body: { version: crate.data.version, name: 'Wooden crate' } }));
+    expectError(await call('POST', '/api/v1/catalog/units', { body: { code: 'CRATE', name: 'dup' } }), 409, 'UNIT_CODE_CONFLICT');
+
+    const types = await call('GET', '/api/v1/catalog/price-types');
+    expectOk(types);
+    ctx.baseType = types.data.find((t: any) => t.isBase);
+    const retail = await call('POST', '/api/v1/catalog/price-types', { body: { code: 'retail', name: 'Retail' } });
+    expectOk(retail);
+    ctx.retailType = retail.data;
+    expectOk(await call('GET', '/api/v1/catalog/price-types/[priceTypeId]', { params: { priceTypeId: retail.data.id } }));
+    expectOk(await call('PATCH', '/api/v1/catalog/price-types/[priceTypeId]', { params: { priceTypeId: retail.data.id }, body: { version: retail.data.version, name: 'Retail price' } }));
+    expectOk(await call('POST', '/api/v1/catalog/price-types/[priceTypeId]/set-base', { params: { priceTypeId: retail.data.id } }));
+    expectOk(await call('POST', '/api/v1/catalog/price-types/[priceTypeId]/set-base', { params: { priceTypeId: ctx.baseType.id } }));
+    expectError(await call('PATCH', '/api/v1/catalog/price-types/[priceTypeId]', { params: { priceTypeId: ctx.baseType.id }, body: { version: 1, isActive: false } }), 409);
+  });
+
+  it('manages Product properties through the shared field engine', async () => {
+    const color = await call('POST', '/api/v1/catalog/properties', { body: { label: `Color ${RUN}`, fieldType: 'LIST', options: [{ code: 'red', label: 'Red' }, { code: 'blue', label: 'Blue' }], catalog: { variantAxis: true } } });
+    expectOk(color);
+    ctx.color = color.data;
+    const material = await call('POST', '/api/v1/catalog/properties', { body: { label: `Material ${RUN}`, fieldType: 'TEXT', catalog: { filterable: true } } });
+    expectOk(material);
+    ctx.material = material.data;
+    const listed = await call('GET', '/api/v1/catalog/properties');
+    expectOk(listed);
+    expect(listed.data.map((p: any) => p.id)).toEqual(expect.arrayContaining([color.data.id, material.data.id]));
+    expectOk(await call('PATCH', '/api/v1/catalog/properties/[propertyId]', { params: { propertyId: material.data.id }, body: { version: material.data.version, label: `Material ${RUN}!` } }));
+    const settings = await call('PATCH', '/api/v1/catalog/properties/[propertyId]/catalog-settings', { params: { propertyId: material.data.id }, body: { version: material.data.catalog.version, searchable: true, displayInList: true } });
+    expectOk(settings);
+    expect(settings.data.catalog).toMatchObject({ searchable: true, filterable: true });
+    expectError(await call('PATCH', '/api/v1/catalog/properties/[propertyId]/catalog-settings', { params: { propertyId: material.data.id }, body: { version: settings.data.catalog.version, variantAxis: true } }), 400, 'PROPERTY_AXIS_TYPE_INVALID');
+    const options = await call('GET', '/api/v1/catalog/properties/[propertyId]/options', { params: { propertyId: color.data.id } });
+    expectOk(options);
+    ctx.colorOptions = options.data;
+    const added = await call('POST', '/api/v1/catalog/properties/[propertyId]/options', { params: { propertyId: color.data.id }, body: { code: 'green', label: 'Green' } });
+    expectOk(added);
+    expectOk(await call('PATCH', '/api/v1/catalog/properties/[propertyId]/options/[optionId]', { params: { propertyId: color.data.id, optionId: added.data.id }, body: { label: 'Forest green', version: added.data.version } }));
+    const refreshed = await call('GET', '/api/v1/catalog/properties');
+    const all = refreshed.data.map((p: any) => p.id);
+    expectOk(await call('POST', '/api/v1/catalog/properties/reorder', { body: { orderedFieldIds: [...all].reverse(), expectedSchemaVersion: refreshed.data[0].schemaVersion } }));
+  });
+
+  it('creates Products, generates a Variant matrix and manages prices, ratios, media and lifecycle', async () => {
+    const unit = (code: string) => ctx.units.find((u: any) => u.code === code);
+    const parent = await call('POST', '/api/v1/catalog/products', {
+      body: { type: 'PRODUCT_WITH_VARIANTS', name: `Shirt ${RUN}`, description: 'Cotton', variantAxes: [ctx.color.id], categoryIds: [ctx.childCategory.id], customFields: {}, taxable: true, taxRate: '15' },
+      headers: { 'idempotency-key': `parent-${RUN}` },
+    });
+    expectOk(parent);
+    ctx.parent = parent.data;
+    const replay = await call('POST', '/api/v1/catalog/products', {
+      body: { type: 'PRODUCT_WITH_VARIANTS', name: `Shirt ${RUN}`, description: 'Cotton', variantAxes: [ctx.color.id], categoryIds: [ctx.childCategory.id], customFields: {}, taxable: true, taxRate: '15' },
+      headers: { 'idempotency-key': `parent-${RUN}` },
+    });
+    expect(replay.data.id).toBe(parent.data.id);
+    expectError(await call('POST', '/api/v1/catalog/products', { body: { type: 'SIMPLE_PRODUCT', name: 'x', sku: 's', version: 3 } }), 400, 'CATALOG_FIELD_NOT_UPDATABLE');
+    expectOk(await call('GET', '/api/v1/catalog/products/[productId]', { params: { productId: parent.data.id } }));
+    expectError(await call('GET', '/api/v1/catalog/products/[productId]', { params: { productId: MISSING_ID } }), 404, 'PRODUCT_NOT_FOUND');
+
+    const optionIds = ctx.colorOptions.map((o: any) => o.id);
+    const matrix = { axes: [{ fieldId: ctx.color.id, optionIds }], skuPrefix: `SH${RUN}` };
+    const preview = await call('POST', '/api/v1/catalog/products/[productId]/variants/generate', { params: { productId: parent.data.id }, body: { ...matrix, preview: true } });
+    expectOk(preview);
+    expect(preview.data.totals).toMatchObject({ combinations: 2, new: 2 });
+    const generated = await call('POST', '/api/v1/catalog/products/[productId]/variants/generate', { params: { productId: parent.data.id }, body: matrix });
+    expectOk(generated);
+    expect(generated.data.applied.created).toBe(2);
+    expect((await call('POST', '/api/v1/catalog/products/[productId]/variants/generate', { params: { productId: parent.data.id }, body: matrix })).data.applied.created).toBe(0);
+    const variants = await call('GET', '/api/v1/catalog/products/[productId]/variants', { params: { productId: parent.data.id } });
+    expectOk(variants);
+    expect(variants.data).toHaveLength(2);
+    ctx.variant = variants.data[0];
+    const extra = await call('POST', '/api/v1/catalog/products/[productId]/variants', { params: { productId: parent.data.id }, body: { sku: `SH${RUN}-EXTRA`, axisValues: [{ fieldId: ctx.color.id, optionId: ctx.colorOptions.find((o: any) => o.code === 'green')?.id ?? optionIds[0] }] } });
+    expect([200, 409]).toContain(extra.status);
+    const detail = await call('GET', '/api/v1/catalog/variants/[variantId]', { params: { variantId: ctx.variant.id } });
+    expectOk(detail);
+    expect(detail.data.inherited.description).toBe(true);
+    expect(detail.data.description).toBe('Cotton');
+    const updatedVariant = await call('PATCH', '/api/v1/catalog/variants/[variantId]', { params: { variantId: ctx.variant.id }, body: { version: detail.data.version, description: 'Special edition' } });
+    expectOk(updatedVariant);
+    expect(updatedVariant.data.inherited.description).toBe(false);
+    expectOk(await call('PATCH', '/api/v1/catalog/products/[productId]', { params: { productId: parent.data.id }, body: { version: parent.data.version, description: 'Organic cotton' } }));
+    expect((await call('GET', '/api/v1/catalog/variants/[variantId]', { params: { variantId: ctx.variant.id } })).data.description).toBe('Special edition');
+
+    // Prices are exact decimals with an explicit currency; variants can override or inherit.
+    const putVariantPrices = await call('PUT', '/api/v1/catalog/variants/[variantId]/prices', { params: { variantId: ctx.variant.id }, body: { prices: [{ priceTypeId: ctx.baseType.id, currency: 'USD', amount: '24.9900' }] } });
+    expectOk(putVariantPrices);
+    expect(putVariantPrices.data.prices[0]).toMatchObject({ amount: '24.99', currency: 'USD', isBase: true });
+    expectOk(await call('GET', '/api/v1/catalog/variants/[variantId]/prices', { params: { variantId: ctx.variant.id } }));
+    expectOk(await call('PUT', '/api/v1/catalog/variants/[variantId]/media', { params: { variantId: ctx.variant.id }, body: { media: [] } }));
+    expectOk(await call('GET', '/api/v1/catalog/variants/[variantId]/media', { params: { variantId: ctx.variant.id } }));
+    expectError(await call('PUT', '/api/v1/catalog/products/[productId]/media', { params: { productId: parent.data.id }, body: { media: [{ fileId: MISSING_ID }] } }), 503, 'FILES_UNAVAILABLE');
+    expectOk(await call('PUT', '/api/v1/catalog/products/[productId]/media', { params: { productId: parent.data.id }, body: { media: [] } }));
+    expectOk(await call('GET', '/api/v1/catalog/products/[productId]/media', { params: { productId: parent.data.id } }));
+
+    const simple = await call('POST', '/api/v1/catalog/products', {
+      body: { type: 'SIMPLE_PRODUCT', name: `Widget ${RUN}`, sku: `WID-${RUN}`, primaryUnitId: unit('PIECE').id, categoryIds: [ctx.childCategory.id], customFields: { [ctx.material.code]: 'Steel' }, prices: [{ priceTypeId: ctx.baseType.id, currency: 'USD', amount: '19.99' }], taxable: true, taxRate: '10' },
+    });
+    expectOk(simple);
+    ctx.simple = simple.data;
+    expect(simple.data.customFields[ctx.material.code]).toBe('Steel');
+    expectError(await call('POST', '/api/v1/catalog/products', { body: { type: 'SIMPLE_PRODUCT', name: 'dup', sku: `wid-${RUN}` } }), 409, 'PRODUCT_SKU_CONFLICT');
+    const prices = await call('PUT', '/api/v1/catalog/products/[productId]/prices', { params: { productId: simple.data.id }, body: { prices: [{ priceTypeId: ctx.baseType.id, currency: 'USD', amount: '19.99' }, { priceTypeId: ctx.retailType.id, currency: 'EUR', amount: '18.5' }] } });
+    expectOk(prices);
+    expect(prices.data.prices).toHaveLength(2);
+    expectOk(await call('GET', '/api/v1/catalog/products/[productId]/prices', { params: { productId: simple.data.id } }));
+    expectError(await call('PUT', '/api/v1/catalog/products/[productId]/prices', { params: { productId: simple.data.id }, body: { prices: [{ priceTypeId: MISSING_ID, currency: 'USD', amount: '1' }] } }), 404, 'PRICE_TYPE_NOT_FOUND');
+
+    const ratio = await call('POST', '/api/v1/catalog/products/[productId]/unit-ratios', { params: { productId: simple.data.id }, body: { unitId: unit('BOX').id, ratio: '12' } });
+    expectOk(ratio);
+    expect(ratio.data.description).toBe('1 Box = 12 Piece');
+    expectError(await call('POST', '/api/v1/catalog/products/[productId]/unit-ratios', { params: { productId: simple.data.id }, body: { unitId: unit('KILOGRAM').id, ratio: '0' } }), 400, 'UNIT_RATIO_INVALID');
+    expectOk(await call('GET', '/api/v1/catalog/products/[productId]/unit-ratios', { params: { productId: simple.data.id } }));
+    expectOk(await call('PATCH', '/api/v1/catalog/products/[productId]/unit-ratios/[ratioId]', { params: { productId: simple.data.id, ratioId: ratio.data.id }, body: { ratio: '24' } }));
+
+    const search = await call('GET', '/api/v1/catalog/products', { query: { search: `Widget ${RUN}`, type: 'SIMPLE_PRODUCT', categoryId: ctx.category.id, [`prop.${ctx.material.code}`]: 'steel', minPrice: '10', maxPrice: '20', currency: 'USD', sortBy: 'name' } });
+    expectOk(search);
+    expect(search.data.map((p: any) => p.id)).toEqual([simple.data.id]);
+    expect(search.body.meta).toMatchObject({ total: 1 });
+    expectError(await call('GET', '/api/v1/catalog/products', { query: { sortBy: 'password' } }), 400, 'CATALOG_QUERY_INVALID');
+    expectError(await call('GET', '/api/v1/catalog/products', { query: { 'prop.nope': 'x' } }), 400, 'CATALOG_QUERY_FIELD_NOT_ALLOWED');
+    const picker = await call('GET', '/api/v1/catalog/products', { query: { purpose: 'picker', search: `Widget ${RUN}` } });
+    expect(picker.data.map((p: any) => p.id)).toContain(simple.data.id);
+
+    // Archive a used product, keep it out of the picker, delete an unused one.
+    const variantArchived = await call('POST', '/api/v1/catalog/variants/[variantId]/archive', { params: { variantId: ctx.variant.id }, body: {} });
+    expectOk(variantArchived);
+    expect(variantArchived.data.state).toBe('ARCHIVED');
+    expectOk(await call('POST', '/api/v1/catalog/variants/[variantId]/reactivate', { params: { variantId: ctx.variant.id }, body: {} }));
+    const parentArchived = await call('POST', '/api/v1/catalog/products/[productId]/archive', { params: { productId: parent.data.id }, body: {} });
+    expect(parentArchived.data.state).toBe('ARCHIVED');
+    expectError(await call('POST', '/api/v1/catalog/variants/[variantId]/reactivate', { params: { variantId: ctx.variant.id }, body: {} }), 409, 'PRODUCT_PARENT_ARCHIVED');
+    expectOk(await call('POST', '/api/v1/catalog/products/[productId]/reactivate', { params: { productId: parent.data.id }, body: {} }));
+    expectOk(await call('DELETE', '/api/v1/catalog/variants/[variantId]', { params: { variantId: ctx.variant.id } }));
+    expectOk(await call('DELETE', '/api/v1/catalog/products/[productId]/unit-ratios/[ratioId]', { params: { productId: simple.data.id, ratioId: ratio.data.id } }));
+    const scratch = await call('POST', '/api/v1/catalog/products', { body: { type: 'SERVICE', name: `Consulting ${RUN}` } });
+    expectOk(scratch);
+    expectOk(await call('DELETE', '/api/v1/catalog/products/[productId]', { params: { productId: scratch.data.id } }));
+  });
+
+  it('stores commercial rows as snapshots with server totals and enforces overrides and isolation', async () => {
+    const deal = await call('POST', '/api/v1/crm/deals', { body: { title: `Rows deal ${RUN}`, companyId: ctx.company.id } });
+    expectOk(deal);
+    const path = { entityType: 'deals', entityId: deal.data.id };
+    const empty = await call('GET', '/api/v1/crm/[entityType]/[entityId]/product-rows', { params: path });
+    expectOk(empty);
+    expect(empty.data).toMatchObject({ version: 0, rows: [] });
+    const saved = await call('PUT', '/api/v1/crm/[entityType]/[entityId]/product-rows', {
+      params: path,
+      headers: { 'idempotency-key': `rows-${RUN}` },
+      body: { rows: [{ productId: ctx.simple.id, quantity: '3', total: '1' }, { name: 'Setup fee', quantity: '1', unitName: 'job', unitPrice: '99.999', currency: 'USD', tax: { taxable: true, rate: '10' } }] },
+    });
+    expectOk(saved);
+    expect(saved.data.rows[0]).toMatchObject({ name: `Widget ${RUN}`, unitPrice: '19.99', subtotal: '59.97', taxAmount: '6', total: '65.97' });
+    expect(saved.data.rows[1]).toMatchObject({ isManual: true, total: '110' });
+    expect(saved.data.totals.total).toBe('175.97');
+    // Master changes never rewrite the stored snapshot (values round-trip through Postgres NUMERIC).
+    expectOk(await call('PUT', '/api/v1/catalog/products/[productId]/prices', { params: { productId: ctx.simple.id }, body: { prices: [{ priceTypeId: ctx.baseType.id, currency: 'USD', amount: '999' }] } }));
+    const reread = await call('GET', '/api/v1/crm/[entityType]/[entityId]/product-rows', { params: path });
+    expect(reread.data.rows[0].unitPrice).toBe('19.99');
+    expect(reread.data.rows[0].name).toBe(`Widget ${RUN}`);
+    expectError(await call('PUT', '/api/v1/crm/[entityType]/[entityId]/product-rows', { params: path, body: { rows: [], expectedVersion: 0 } }), 409, 'CATALOG_VERSION_CONFLICT');
+    expectError(await call('PUT', '/api/v1/crm/[entityType]/[entityId]/product-rows', { params: path, body: { rows: [{ productId: MISSING_ID, quantity: '1' }], expectedVersion: 1 } }), 404, 'PRODUCT_NOT_FOUND');
+    expectError(await call('GET', '/api/v1/crm/[entityType]/[entityId]/product-rows', { params: { entityType: 'estimates', entityId: deal.data.id } }), 400, 'PRODUCT_ROW_OWNER_UNSUPPORTED');
+    // A foreign workspace cannot read them even with a valid id.
+    const foreign = await api('POST', '/api/v1/workspaces', { token: ws.owner.token, body: { name: `Rows foreign ${RUN}` } });
+    expectError(await api('GET', '/api/v1/crm/[entityType]/[entityId]/product-rows', { token: ws.owner.token, workspaceId: foreign.data.id, params: path }), 404, 'PRODUCT_ROW_OWNER_NOT_FOUND');
+    const { prisma } = await import('@/src/server/prisma-client');
+    const rows = await prisma.commercialProductRow.findMany({ where: { ownerId: deal.data.id } });
+    expect(rows).toHaveLength(2);
+    expect(rows[0].unitPrice.toFixed()).toMatch(/^\d/);
+  });
+
+  it('enforces catalog invariants in the database as well', async () => {
+    const { prisma } = await import('@/src/server/prisma-client');
+    const product = await prisma.catalogProduct.findFirstOrThrow({ where: { id: ctx.simple.id } });
+    const base = { workspaceId: product.workspaceId, catalogId: product.catalogId, type: 'SIMPLE_PRODUCT' as const, name: 'db dup' };
+    // SKU uniqueness (case-normalized key) and the shape check are database constraints too.
+    await expect(prisma.catalogProduct.create({ data: { ...base, sku: 'X', skuKey: product.skuKey } })).rejects.toThrow();
+    await expect(prisma.catalogProduct.create({ data: { ...base, sku: null, skuKey: null } })).rejects.toThrow();
+    await expect(prisma.catalogProductUnitRatio.create({ data: { workspaceId: product.workspaceId, productId: product.id, unitId: MISSING_ID, baseUnitId: '11111111-1111-4111-8111-111111111111', ratio: '0' } })).rejects.toThrow();
+    await expect(prisma.catalogProductPrice.create({ data: { workspaceId: product.workspaceId, productId: product.id, priceTypeId: MISSING_ID, amount: '-1', currency: 'USD' } })).rejects.toThrow();
+    await expect(prisma.catalogProductPrice.create({ data: { workspaceId: product.workspaceId, productId: product.id, priceTypeId: MISSING_ID, amount: '1', currency: 'usd' } })).rejects.toThrow();
+    // A duplicate current price key is rejected regardless of the application.
+    const price = await prisma.catalogProductPrice.findFirstOrThrow({ where: { productId: product.id } });
+    await expect(prisma.catalogProductPrice.create({ data: { workspaceId: price.workspaceId, productId: price.productId, priceTypeId: price.priceTypeId, currency: price.currency, amount: '5' } })).rejects.toThrow();
+  });
+});
+
+describe('Automation Rules & Triggers API', () => {
+  beforeEach(() => resetRateLimits());
+  const call = (method: any, template: string, options: Record<string, unknown> = {}) => api(method, template, authed(options));
+  const TOKEN = 'test-job-token-0123456789';
+  const runJobs = () => api('POST', '/api/v1/internal/crm/jobs/[job]', { params: { job: 'automation-run' }, headers: { 'x-internal-job-token': TOKEN }, body: {} });
+  const followUp = { actionCode: 'activities.create_activity', config: { typeCode: 'FOLLOW_UP', subject: 'Follow up {{target.title}}' } };
+  const newDeal = async (title: string) => {
+    const created = await call('POST', '/api/v1/crm/deals', { body: { title, companyId: ctx.company.id } });
+    expectOk(created);
+    return created.data;
+  };
+  const stageOf = (name?: string) => ctx.dealStages.filter((s: any) => s.semanticType === 'PROGRESS');
+
+  beforeAll(() => {
+    process.env.INTERNAL_JOB_TOKEN = TOKEN;
+  });
+  afterAll(() => {
+    delete process.env.INTERNAL_JOB_TOKEN;
+  });
+
+  it('exposes registry-driven metadata for targets, triggers, actions and conditions', async () => {
+    const targets = await call('GET', '/api/v1/crm/automation/targets');
+    expectOk(targets);
+    expect(targets.data.map((t: any) => t.targetType)).toEqual(expect.arrayContaining(['LEAD', 'DEAL', 'CONTACT', 'COMPANY', 'ACTIVITY']));
+    expect(targets.data.find((t: any) => t.targetType === 'DEAL')).toMatchObject({ supportsStages: true });
+    const triggers = await call('GET', '/api/v1/crm/automation/trigger-types');
+    expect(triggers.data.map((t: any) => t.code)).toEqual(expect.arrayContaining(['crm.stage.entered', 'crm.field.changed', 'manual.execute', 'activity.overdue']));
+    const actions = await call('GET', '/api/v1/crm/automation/action-types');
+    expectOk(actions);
+    const codes = actions.data.map((a: any) => a.code);
+    expect(codes).toEqual(expect.arrayContaining(['crm.update_fields', 'crm.move_stage', 'activities.create_activity', 'tasks.create_task', 'integrations.call_webhook']));
+    // Modules that are not connected (Notifications, Communication, Documents) are not offered.
+    expect(codes).not.toContain('notifications.notify_user');
+    const meta = await call('GET', '/api/v1/crm/automation/condition-metadata', { query: { targetType: 'DEAL', triggerCode: 'crm.stage.entered' } });
+    expectOk(meta);
+    expect(meta.data.operatorsByType.NUMBER).toContain('GTE');
+    expect(meta.data.operands.find((o: any) => o.ref === 'target.amount').operators).toContain('CHANGED');
+    expect(meta.data.limits).toMatchObject({ maxDepth: 5, maxNodes: 50 });
+  });
+
+  it('runs the rule lifecycle over HTTP: draft, edit, publish, revisions, pause/enable/disable and validation errors', async () => {
+    const stage = stageOf()[0];
+    const created = await call('POST', '/api/v1/crm/automation/rules', { body: { name: `Stage rule ${RUN}`, targetType: 'DEAL', trigger: { code: 'crm.stage.entered', config: { stageId: stage.id } }, actions: [followUp] } });
+    expectOk(created);
+    ctx.rule = created.data;
+    expect(created.data).toMatchObject({ state: 'DRAFT', version: 1 });
+    expectOk(await call('GET', '/api/v1/crm/automation/rules', { query: { state: 'DRAFT' } }));
+    expectOk(await call('GET', '/api/v1/crm/automation/rules/[ruleId]', { params: { ruleId: ctx.rule.id } }));
+    const bad = await call('POST', '/api/v1/crm/automation/rules', { body: { name: 'bad', targetType: 'DEAL', trigger: { code: 'nope' }, actions: [{ actionCode: 'nope' }] } });
+    expectError(await call('POST', '/api/v1/crm/automation/rules/[ruleId]/publish', { params: { ruleId: bad.data.id }, body: { version: 1 } }), 400, 'AUTOMATION_RULE_NOT_PUBLISHABLE');
+    const patched = await call('PATCH', '/api/v1/crm/automation/rules/[ruleId]', { params: { ruleId: ctx.rule.id }, body: { version: 1, priority: 5 } });
+    expectOk(patched);
+    expectError(await call('PATCH', '/api/v1/crm/automation/rules/[ruleId]', { params: { ruleId: ctx.rule.id }, body: { version: 1, priority: 6 } }), 409, 'AUTOMATION_RULE_VERSION_CONFLICT');
+    expectError(await call('PATCH', '/api/v1/crm/automation/rules/[ruleId]', { params: { ruleId: ctx.rule.id }, body: { version: 2, state: 'ACTIVE' } }), 400, 'AUTOMATION_FIELD_NOT_UPDATABLE');
+    const published = await call('POST', '/api/v1/crm/automation/rules/[ruleId]/publish', { params: { ruleId: ctx.rule.id }, body: { version: 2 } });
+    expectOk(published);
+    expect(published.data).toMatchObject({ state: 'ACTIVE', activeRevisionNumber: 1 });
+    ctx.rule = published.data;
+    const revisions = await call('GET', '/api/v1/crm/automation/rules/[ruleId]/revisions', { params: { ruleId: ctx.rule.id } });
+    expectOk(revisions);
+    const revision = await call('GET', '/api/v1/crm/automation/rules/[ruleId]/revisions/[revisionId]', { params: { ruleId: ctx.rule.id, revisionId: revisions.data[0].id } });
+    expectOk(revision);
+    expect(revision.data.actions).toHaveLength(1);
+    const dry = await call('POST', '/api/v1/crm/automation/rules/[ruleId]/dry-run', { params: { ruleId: ctx.rule.id }, body: { targetId: ctx.deal.id } });
+    expectOk(dry);
+    expect(dry.data).toMatchObject({ sideEffectsExecuted: false, matched: true });
+    expectOk(await call('POST', '/api/v1/crm/automation/rules/[ruleId]/pause', { params: { ruleId: ctx.rule.id }, body: {} }));
+    expectOk(await call('POST', '/api/v1/crm/automation/rules/[ruleId]/enable', { params: { ruleId: ctx.rule.id }, body: {} }));
+    expectOk(await call('POST', '/api/v1/crm/automation/rules/[ruleId]/disable', { params: { ruleId: ctx.rule.id }, body: {} }));
+    expectOk(await call('POST', '/api/v1/crm/automation/rules/[ruleId]/enable', { params: { ruleId: ctx.rule.id }, body: {} }));
+    expectError(await call('GET', '/api/v1/crm/automation/rules/[ruleId]', { params: { ruleId: MISSING_ID } }), 404, 'AUTOMATION_RULE_NOT_FOUND');
+    // Published revisions are immutable in the database itself.
+    const { prisma } = await import('@/src/server/prisma-client');
+    await expect(prisma.automationRuleRevision.update({ where: { id: revisions.data[0].id }, data: { triggerCode: 'manual.execute' } })).rejects.toThrow(/AUTOMATION_REVISION_IMMUTABLE/);
+    await expect(prisma.automationRuleRevision.delete({ where: { id: revisions.data[0].id } })).rejects.toThrow(/AUTOMATION_REVISION_IMMUTABLE/);
+    const revisionAction = await prisma.automationAction.findFirstOrThrow({ where: { revisionId: revisions.data[0].id } });
+    await expect(prisma.automationAction.update({ where: { id: revisionAction.id }, data: { actionCode: 'crm.update_fields' } })).rejects.toThrow(/AUTOMATION_REVISION_IMMUTABLE/);
+    const draftRule = await call('POST', '/api/v1/crm/automation/rules', { body: { name: 'disposable', targetType: 'DEAL', trigger: { code: 'manual.execute', config: {} }, actions: [followUp] } });
+    expectOk(await call('DELETE', '/api/v1/crm/automation/rules/[ruleId]', { params: { ruleId: draftRule.data.id } }));
+  });
+
+  it('turns a domain event into a job, executes it through the scheduler endpoint and exposes logs, retry and cancel', async () => {
+    const deal = await newDeal(`Auto deal ${RUN}`);
+    const stage = stageOf()[0];
+    const moved = await call('POST', '/api/v1/crm/deals/[id]/transition', { params: { id: deal.id }, body: { expectedVersion: deal.version, targetPipelineId: ctx.dealPipeline.id, targetStageId: stage.id } });
+    expectOk(moved);
+    const pending = await call('GET', '/api/v1/crm/automation/jobs', { query: { ruleId: ctx.rule.id, status: 'PENDING' } });
+    expectOk(pending);
+    expect(pending.data.some((job: any) => job.target.id === deal.id)).toBe(true);
+    expectError(await api('POST', '/api/v1/internal/crm/jobs/[job]', { params: { job: 'automation-run' }, headers: { 'x-internal-job-token': 'wrong' }, body: {} }), 401, 'UNAUTHENTICATED');
+    const ran = await runJobs();
+    expectOk(ran);
+    expect(ran.data.claimed).toBeGreaterThanOrEqual(1);
+    const list = await call('GET', '/api/v1/crm/automation/executions', { query: { ruleId: ctx.rule.id, targetId: deal.id } });
+    expectOk(list);
+    expect(list.data).toHaveLength(1);
+    expect(JSON.stringify(list.data[0])).toContain('"status":"SUCCEEDED"');
+    const detail = await call('GET', '/api/v1/crm/automation/executions/[executionId]', { params: { executionId: list.data[0].id } });
+    expectOk(detail);
+    expect(detail.data.actions[0]).toMatchObject({ status: 'SUCCEEDED', attemptCount: 1 });
+    const { prisma } = await import('@/src/server/prisma-client');
+    const activity = await prisma.crmActivity.findFirst({ where: { workspaceId: ws.owner.workspaceId, subject: `Follow up Auto deal ${RUN}` } });
+    expect(activity).toBeTruthy();
+    // The job is durable and finished; redelivery of the scheduler tick changes nothing.
+    expect((await runJobs()).data.claimed).toBe(0);
+    expect(await prisma.automationExecution.count({ where: { ruleId: ctx.rule.id, targetId: deal.id } })).toBe(1);
+    // Cursor pagination is deterministic.
+    const page1 = await call('GET', '/api/v1/crm/automation/executions', { query: { limit: '1' } });
+    expectOk(page1);
+    if (page1.body.meta.hasMore) expectOk(await call('GET', '/api/v1/crm/automation/executions', { query: { limit: '1', cursor: page1.body.meta.nextCursor } }));
+
+    // A permanent failure can be retried by an authorized user; a delayed pending job can be cancelled.
+    const failing = await call('POST', '/api/v1/crm/automation/rules', { body: { name: `Failing ${RUN}`, targetType: 'DEAL', trigger: { code: 'manual.execute', config: {} }, actions: [{ actionCode: 'crm.set_responsible', config: { userId: MISSING_ID } }] } });
+    expectOk(await call('POST', '/api/v1/crm/automation/rules/[ruleId]/publish', { params: { ruleId: failing.data.id }, body: { version: 1 } }));
+    const manual = await call('POST', '/api/v1/crm/automation/rules/[ruleId]/execute', { params: { ruleId: failing.data.id }, body: { targetId: deal.id, idempotencyKey: `m-${RUN}` } });
+    expectOk(manual);
+    expect(manual.data.execution).toMatchObject({ status: 'FAILED_FINAL', isManual: true });
+    const retried = await call('POST', '/api/v1/crm/automation/executions/[executionId]/retry', { params: { executionId: manual.data.execution.id } });
+    expectOk(retried);
+    expect(retried.data).toMatchObject({ status: 'PENDING', retryCount: 1 });
+    await runJobs();
+    expect((await call('GET', '/api/v1/crm/automation/executions/[executionId]', { params: { executionId: manual.data.execution.id } })).data.status).toBe('FAILED_FINAL');
+    expectError(await call('POST', '/api/v1/crm/automation/executions/[executionId]/retry', { params: { executionId: MISSING_ID } }), 404, 'AUTOMATION_EXECUTION_NOT_FOUND');
+
+    const delayed = await call('POST', '/api/v1/crm/automation/rules', { body: { name: `Delayed ${RUN}`, targetType: 'DEAL', trigger: { code: 'manual.execute', config: {} }, timing: { mode: 'DELAY', delayMinutes: 30 }, actions: [followUp] } });
+    expectOk(await call('POST', '/api/v1/crm/automation/rules/[ruleId]/publish', { params: { ruleId: delayed.data.id }, body: { version: 1 } }));
+    // Manual runs ignore configured delays; use an event-driven delayed rule for the cancel path.
+    const stage2 = stageOf()[1] ?? stage;
+    const delayedRule = await call('POST', '/api/v1/crm/automation/rules', { body: { name: `Delayed stage ${RUN}`, targetType: 'DEAL', trigger: { code: 'crm.stage.entered', config: { stageId: stage2.id } }, timing: { mode: 'DELAY', delayMinutes: 30 }, actions: [followUp] } });
+    expectOk(await call('POST', '/api/v1/crm/automation/rules/[ruleId]/publish', { params: { ruleId: delayedRule.data.id }, body: { version: 1 } }));
+    const deal2 = await newDeal(`Delayed deal ${RUN}`);
+    expectOk(await call('POST', '/api/v1/crm/deals/[id]/transition', { params: { id: deal2.id }, body: { expectedVersion: deal2.version, targetPipelineId: ctx.dealPipeline.id, targetStageId: stage2.id } }));
+    const jobs = await call('GET', '/api/v1/crm/automation/jobs', { query: { ruleId: delayedRule.data.id } });
+    expect(jobs.data).toHaveLength(1);
+    const cancelled = await call('POST', '/api/v1/crm/automation/jobs/[jobId]/cancel', { params: { jobId: jobs.data[0].id } });
+    expectOk(cancelled);
+    expect(cancelled.data.status).toBe('CANCELLED');
+    expectError(await call('POST', '/api/v1/crm/automation/jobs/[jobId]/cancel', { params: { jobId: jobs.data[0].id } }), 409, 'AUTOMATION_JOB_NOT_CANCELLABLE');
+    expectOk(await call('POST', '/api/v1/internal/crm/jobs/[job]', { params: { job: 'automation-ingest' }, headers: { 'x-internal-job-token': TOKEN }, body: {} }));
+  });
+
+  it('registers custom extensions, issues integration credentials and accepts an authenticated custom trigger', async () => {
+    const trigger = await call('POST', '/api/v1/crm/automation/extensions', { body: { kind: 'TRIGGER', code: `carrier_${RUN}`, installationId: 'carrier-app', name: 'Carrier update', targetTypes: ['DEAL'], payloadSchema: { type: 'object', required: ['carrier'], properties: { carrier: { type: 'string', maxLength: 30 } } } } });
+    expectOk(trigger);
+    expectError(await call('POST', '/api/v1/crm/automation/extensions', { body: { kind: 'TRIGGER', code: `carrier_${RUN}`, installationId: 'x', name: 'dup', targetTypes: ['DEAL'] } }), 409, 'AUTOMATION_EXTENSION_CODE_CONFLICT');
+    expectOk(await call('GET', '/api/v1/crm/automation/extensions'));
+    expectOk(await call('PATCH', '/api/v1/crm/automation/extensions/[extensionId]', { params: { extensionId: trigger.data.id }, body: { name: 'Carrier updates' } }));
+    const credential = await call('POST', '/api/v1/crm/automation/integrations', { body: { installationId: 'carrier-app', name: 'Carrier app key' } });
+    expectOk(credential);
+    expect(credential.data.secret).toContain('.');
+    const listed = await call('GET', '/api/v1/crm/automation/integrations');
+    expectOk(listed);
+    expect(JSON.stringify(listed.data)).not.toContain(credential.data.secret);
+
+    const rule = await call('POST', '/api/v1/crm/automation/rules', { body: { name: `Carrier rule ${RUN}`, targetType: 'DEAL', trigger: { code: `ext.carrier_${RUN}`, config: {} }, actions: [{ actionCode: 'activities.create_activity', config: { typeCode: 'FOLLOW_UP', subject: 'Carrier {{trigger.payload.carrier}}' } }] } });
+    expectOk(await call('POST', '/api/v1/crm/automation/rules/[ruleId]/publish', { params: { ruleId: rule.data.id }, body: { version: 1 } }));
+    const deal = await newDeal(`Carrier deal ${RUN}`);
+    const invoke = (body: Record<string, unknown>, key = credential.data.secret) => api('POST', '/api/v1/crm/automation/custom-triggers/[triggerCode]/execute', { params: { triggerCode: `carrier_${RUN}` }, headers: { 'x-automation-integration-key': key }, body });
+    expectError(await invoke({ targetId: deal.id, eventId: 'e1', payload: { carrier: 'x' } }, 'bad.key'), 401, 'UNAUTHENTICATED');
+    expectError(await invoke({ targetId: deal.id, eventId: 'e1', payload: { carrier: 'x'.repeat(99) } }), 400, 'AUTOMATION_TRIGGER_PAYLOAD_INVALID');
+    expectError(await invoke({ targetId: MISSING_ID, eventId: 'e1', payload: { carrier: 'DHL' } }), 404, 'AUTOMATION_TARGET_NOT_FOUND');
+    const accepted = await invoke({ targetId: deal.id, eventId: 'e1', payload: { carrier: 'DHL' } });
+    expectOk(accepted);
+    expect(accepted.data).toMatchObject({ accepted: true, jobsCreated: 1 });
+    expect((await invoke({ targetId: deal.id, eventId: 'e1', payload: { carrier: 'DHL' } })).data.duplicate).toBe(true);
+    await runJobs();
+    const { prisma } = await import('@/src/server/prisma-client');
+    expect(await prisma.crmActivity.count({ where: { subject: 'Carrier DHL' } })).toBe(1);
+
+    expectOk(await call('POST', '/api/v1/crm/automation/extensions/[extensionId]/disable', { params: { extensionId: trigger.data.id } }));
+    expectError(await invoke({ targetId: deal.id, eventId: 'e2', payload: { carrier: 'DHL' } }), 404, 'AUTOMATION_TRIGGER_NOT_SUPPORTED');
+    expectError(await call('DELETE', '/api/v1/crm/automation/extensions/[extensionId]', { params: { extensionId: trigger.data.id } }), 409, 'AUTOMATION_EXTENSION_IN_USE');
+    expectOk(await call('POST', '/api/v1/crm/automation/extensions/[extensionId]/enable', { params: { extensionId: trigger.data.id } }));
+    expectOk(await call('POST', '/api/v1/crm/automation/integrations/[credentialId]/revoke', { params: { credentialId: credential.data.id } }));
+    expectError(await invoke({ targetId: deal.id, eventId: 'e3', payload: { carrier: 'DHL' } }), 401, 'UNAUTHENTICATED');
+    const spare = await call('POST', '/api/v1/crm/automation/extensions', { body: { kind: 'TRIGGER', code: `spare_${RUN}`, installationId: 'carrier-app', name: 'Spare', targetTypes: ['DEAL'] } });
+    expectOk(await call('DELETE', '/api/v1/crm/automation/extensions/[extensionId]', { params: { extensionId: spare.data.id } }));
+  });
+
+  it('keeps Automation permission-gated and workspace-scoped', async () => {
+    const outsider = await register('automation-outsider');
+    expectError(await api('GET', '/api/v1/crm/automation/rules', { token: outsider.token, workspaceId: ws.owner.workspaceId }), 403);
+    const foreignRules = await api('GET', '/api/v1/crm/automation/rules', { token: outsider.token, workspaceId: outsider.workspaceId });
+    expectOk(foreignRules);
+    expect(foreignRules.data).toHaveLength(0);
+    expectError(await api('GET', '/api/v1/crm/automation/rules/[ruleId]', { token: outsider.token, workspaceId: outsider.workspaceId, params: { ruleId: ctx.rule.id } }), 404, 'AUTOMATION_RULE_NOT_FOUND');
+    expectError(await api('POST', '/api/v1/crm/automation/rules/[ruleId]/execute', { token: outsider.token, workspaceId: outsider.workspaceId, params: { ruleId: ctx.rule.id }, body: { targetId: ctx.deal.id } }), 404, 'AUTOMATION_RULE_NOT_FOUND');
+    expectError(await api('GET', '/api/v1/catalog/products/[productId]', { token: outsider.token, workspaceId: outsider.workspaceId, params: { productId: ctx.simple.id } }), 404, 'PRODUCT_NOT_FOUND');
   });
 });
 

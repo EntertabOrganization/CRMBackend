@@ -774,22 +774,27 @@ model CrmStageHistory {
 }
 
 model OutboxEvent {
-  id             String    @id @default(uuid()) @db.Uuid
-  workspaceId    String    @map("workspace_id") @db.Uuid
-  eventType      String    @map("event_type")
-  entityType     String    @map("entity_type")
-  entityId       String    @map("entity_id") @db.Uuid
-  actorUserId    String?   @map("actor_user_id") @db.Uuid
-  occurredAt     DateTime  @default(now()) @map("occurred_at")
-  payload        Json
-  eventVersion   Int       @default(1) @map("event_version")
-  correlationId  String?   @map("correlation_id")
-  causationId    String?   @map("causation_id")
-  idempotencyKey String?   @map("idempotency_key")
-  projectedAt    DateTime? @map("projected_at")
+  id                    String    @id @default(uuid()) @db.Uuid
+  workspaceId           String    @map("workspace_id") @db.Uuid
+  eventType             String    @map("event_type")
+  entityType            String    @map("entity_type")
+  entityId              String    @map("entity_id") @db.Uuid
+  actorUserId           String?   @map("actor_user_id") @db.Uuid
+  occurredAt            DateTime  @default(now()) @map("occurred_at")
+  payload               Json
+  eventVersion          Int       @default(1) @map("event_version")
+  correlationId         String?   @map("correlation_id")
+  causationId           String?   @map("causation_id")
+  idempotencyKey        String?   @map("idempotency_key")
+  projectedAt           DateTime? @map("projected_at")
+  /// Set once the Automation consumer has matched the event against active Rules (independent of Timeline projection).
+  automationProcessedAt DateTime? @map("automation_processed_at")
+  /// Depth of the Automation chain that produced the event (0 = originated outside Automation).
+  automationDepth       Int       @default(0) @map("automation_depth")
 
   @@index([workspaceId, eventType, occurredAt])
   @@index([projectedAt, occurredAt])
+  @@index([automationProcessedAt, occurredAt])
   @@map("outbox_events")
 }
 
@@ -1215,4 +1220,588 @@ model CrmTimelineCommentMention {
 
   @@unique([commentId, userId])
   @@map("crm_timeline_comment_mentions")
+}
+
+// ---------------------------------------------------------------------------
+// Automation Rules & Triggers
+// ---------------------------------------------------------------------------
+
+enum AutomationRuleState {
+  DRAFT
+  ACTIVE
+  PAUSED
+  DISABLED
+  ARCHIVED
+}
+
+enum AutomationRevisionState {
+  DRAFT
+  PUBLISHED
+  SUPERSEDED
+}
+
+enum AutomationJobStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  SKIPPED
+  CANCELLED
+}
+
+enum AutomationExecutionStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  SUCCEEDED_WITH_ERRORS
+  FAILED_RETRYABLE
+  FAILED_FINAL
+  SKIPPED_CONDITION
+  SKIPPED_STALE
+  CANCELLED
+}
+
+enum AutomationActionStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  SKIPPED
+}
+
+/// Stable logical identity of an automation. Configuration lives in revisions; this row only carries operational state.
+model AutomationRule {
+  id               String              @id @default(uuid()) @db.Uuid
+  workspaceId      String              @map("workspace_id") @db.Uuid
+  name             String
+  description      String?
+  targetType       String              @map("target_type")
+  priority         Int                 @default(100)
+  state            AutomationRuleState @default(DRAFT)
+  activeRevisionId String?             @map("active_revision_id") @db.Uuid
+  draftRevisionId  String?             @map("draft_revision_id") @db.Uuid
+  version          Int                 @default(1)
+  createdByUserId  String              @map("created_by_user_id") @db.Uuid
+  updatedByUserId  String?             @map("updated_by_user_id") @db.Uuid
+  createdAt        DateTime            @default(now()) @map("created_at")
+  updatedAt        DateTime            @updatedAt @map("updated_at")
+
+  @@index([workspaceId, state, targetType])
+  @@index([workspaceId, priority])
+  @@map("automation_rules")
+}
+
+/// Configuration of a rule at one point in time. PUBLISHED / SUPERSEDED revisions are immutable (enforced by a DB trigger).
+model AutomationRuleRevision {
+  id                String                  @id @default(uuid()) @db.Uuid
+  workspaceId       String                  @map("workspace_id") @db.Uuid
+  ruleId            String                  @map("rule_id") @db.Uuid
+  revisionNumber    Int                     @map("revision_number")
+  state             AutomationRevisionState @default(DRAFT)
+  triggerCode       String?                 @map("trigger_code")
+  triggerConfig     Json                    @default("{}") @map("trigger_config")
+  conditionTree     Json?                   @map("condition_tree")
+  conditionsVersion Int                     @default(1) @map("conditions_version")
+  timing            Json                    @default("{\"mode\":\"IMMEDIATE\"}")
+  executionPolicy   Json                    @default("{}") @map("execution_policy")
+  configHash        String?                 @map("config_hash")
+  publishedAt       DateTime?               @map("published_at")
+  publishedByUserId String?                 @map("published_by_user_id") @db.Uuid
+  supersededAt      DateTime?               @map("superseded_at")
+  createdByUserId   String                  @map("created_by_user_id") @db.Uuid
+  createdAt         DateTime                @default(now()) @map("created_at")
+  updatedAt         DateTime                @updatedAt @map("updated_at")
+
+  @@unique([ruleId, revisionNumber])
+  @@index([workspaceId, ruleId, state])
+  @@map("automation_rule_revisions")
+}
+
+model AutomationAction {
+  id              String   @id @default(uuid()) @db.Uuid
+  workspaceId     String   @map("workspace_id") @db.Uuid
+  revisionId      String   @map("revision_id") @db.Uuid
+  actionCode      String   @map("action_code")
+  sortOrder       Int      @map("sort_order")
+  name            String?
+  config          Json     @default("{}")
+  continueOnError Boolean  @default(false) @map("continue_on_error")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@unique([revisionId, sortOrder])
+  @@index([workspaceId, revisionId])
+  @@map("automation_actions")
+}
+
+/// Durable unit of (possibly delayed) work, pinned to the rule revision that produced it.
+model AutomationJob {
+  id                String              @id @default(uuid()) @db.Uuid
+  workspaceId       String              @map("workspace_id") @db.Uuid
+  ruleId            String              @map("rule_id") @db.Uuid
+  ruleRevisionId    String              @map("rule_revision_id") @db.Uuid
+  targetType        String              @map("target_type")
+  targetId          String              @map("target_id") @db.Uuid
+  sourceEventId     String              @map("source_event_id")
+  triggerCode       String              @map("trigger_code")
+  timingMode        String              @map("timing_mode")
+  scheduledAt       DateTime            @map("scheduled_at")
+  status            AutomationJobStatus @default(PENDING)
+  attempts          Int                 @default(0)
+  maxAttempts       Int                 @default(3) @map("max_attempts")
+  idempotencyKey    String              @map("idempotency_key")
+  correlationId     String              @map("correlation_id")
+  causationId       String?             @map("causation_id")
+  depth             Int                 @default(0)
+  triggerContext    Json                @map("trigger_context")
+  initiatorType     String?             @map("initiator_type")
+  initiatorId       String?             @map("initiator_id") @db.Uuid
+  identityKind      String              @map("identity_kind")
+  executionId       String?             @map("execution_id") @db.Uuid
+  leaseExpiresAt    DateTime?           @map("lease_expires_at")
+  claimedBy         String?             @map("claimed_by")
+  lastErrorCode     String?             @map("last_error_code")
+  cancelledAt       DateTime?           @map("cancelled_at")
+  cancelledByUserId String?             @map("cancelled_by_user_id") @db.Uuid
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  @@unique([workspaceId, idempotencyKey])
+  @@index([status, scheduledAt])
+  @@index([workspaceId, status])
+  @@index([workspaceId, ruleId])
+  @@index([workspaceId, targetType, targetId])
+  @@map("automation_jobs")
+}
+
+model AutomationExecution {
+  id               String                    @id @default(uuid()) @db.Uuid
+  workspaceId      String                    @map("workspace_id") @db.Uuid
+  ruleId           String                    @map("rule_id") @db.Uuid
+  ruleRevisionId   String                    @map("rule_revision_id") @db.Uuid
+  ruleName         String                    @map("rule_name")
+  revisionNumber   Int                       @map("revision_number")
+  jobId            String?                   @map("job_id") @db.Uuid
+  targetType       String                    @map("target_type")
+  targetId         String                    @map("target_id") @db.Uuid
+  targetTitle      String?                   @map("target_title")
+  sourceEventId    String                    @map("source_event_id")
+  triggerCode      String                    @map("trigger_code")
+  timingMode       String                    @map("timing_mode")
+  status           AutomationExecutionStatus @default(PENDING)
+  initiatorType    String?                   @map("initiator_type")
+  initiatorId      String?                   @map("initiator_id") @db.Uuid
+  identityKind     String                    @map("identity_kind")
+  identityUserId   String?                   @map("identity_user_id") @db.Uuid
+  correlationId    String                    @map("correlation_id")
+  causationId      String?                   @map("causation_id")
+  depth            Int                       @default(0)
+  conditionOutcome Json?                     @map("condition_outcome")
+  skipReason       String?                   @map("skip_reason")
+  errorCode        String?                   @map("error_code")
+  errorSummary     String?                   @map("error_summary")
+  retryCount       Int                       @default(0) @map("retry_count")
+  isManual         Boolean                   @default(false) @map("is_manual")
+  startedAt        DateTime                  @map("started_at")
+  completedAt      DateTime?                 @map("completed_at")
+  createdAt        DateTime                  @default(now()) @map("created_at")
+  updatedAt        DateTime                  @updatedAt @map("updated_at")
+
+  @@unique([workspaceId, ruleRevisionId, sourceEventId, targetId])
+  @@index([workspaceId, ruleId, startedAt])
+  @@index([workspaceId, targetType, targetId, startedAt])
+  @@index([workspaceId, status, startedAt])
+  @@index([workspaceId, correlationId])
+  @@map("automation_executions")
+}
+
+model AutomationActionExecution {
+  id              String                 @id @default(uuid()) @db.Uuid
+  workspaceId     String                 @map("workspace_id") @db.Uuid
+  executionId     String                 @map("execution_id") @db.Uuid
+  actionId        String                 @map("action_id") @db.Uuid
+  actionCode      String                 @map("action_code")
+  actionOrder     Int                    @map("action_order")
+  status          AutomationActionStatus @default(PENDING)
+  attemptCount    Int                    @default(0) @map("attempt_count")
+  idempotencyKey  String                 @map("idempotency_key")
+  continueOnError Boolean                @default(false) @map("continue_on_error")
+  retryable       Boolean                @default(false)
+  errorCode       String?                @map("error_code")
+  errorMessage    String?                @map("error_message")
+  result          Json?
+  attempts        Json                   @default("[]")
+  startedAt       DateTime?              @map("started_at")
+  completedAt     DateTime?              @map("completed_at")
+  createdAt       DateTime               @default(now()) @map("created_at")
+  updatedAt       DateTime               @updatedAt @map("updated_at")
+
+  @@unique([executionId, actionOrder])
+  @@index([workspaceId, executionId])
+  @@map("automation_action_executions")
+}
+
+/// Append-only diagnostics (why a rule matched/skipped/was blocked). Separate from Audit.
+model AutomationLog {
+  id            String   @id @default(uuid()) @db.Uuid
+  workspaceId   String   @map("workspace_id") @db.Uuid
+  ruleId        String?  @map("rule_id") @db.Uuid
+  executionId   String?  @map("execution_id") @db.Uuid
+  jobId         String?  @map("job_id") @db.Uuid
+  level         String
+  code          String
+  message       String
+  data          Json?
+  correlationId String?  @map("correlation_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([workspaceId, executionId, createdAt])
+  @@index([workspaceId, ruleId, createdAt])
+  @@map("automation_logs")
+}
+
+/// Registered custom Trigger/Action types. Holds typed schemas and a secret REFERENCE, never a secret.
+model AutomationExtensionDefinition {
+  id              String   @id @default(uuid()) @db.Uuid
+  workspaceId     String   @map("workspace_id") @db.Uuid
+  installationId  String   @map("installation_id")
+  kind            String
+  code            String
+  name            String
+  description     String?
+  schemaVersion   Int      @default(1) @map("schema_version")
+  targetTypes     Json     @default("[]") @map("target_types")
+  configSchema    Json?    @map("config_schema")
+  payloadSchema   Json?    @map("payload_schema")
+  handler         Json?
+  permissions     Json     @default("[]")
+  enabled         Boolean  @default(true)
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  updatedByUserId String?  @map("updated_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([workspaceId, kind, code])
+  @@index([workspaceId, kind, enabled])
+  @@map("automation_extension_definitions")
+}
+
+/// Credential an installed application uses to invoke custom triggers. Only a hash of the secret is stored.
+model AutomationIntegrationCredential {
+  id              String    @id @default(uuid()) @db.Uuid
+  workspaceId     String    @map("workspace_id") @db.Uuid
+  installationId  String    @map("installation_id")
+  name            String
+  secretHash      String    @map("secret_hash")
+  triggerCodes    Json      @default("[]") @map("trigger_codes")
+  isActive        Boolean   @default(true) @map("is_active")
+  lastUsedAt      DateTime? @map("last_used_at")
+  createdByUserId String    @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at")
+  revokedAt       DateTime? @map("revoked_at")
+
+  @@index([workspaceId, installationId])
+  @@map("automation_integration_credentials")
+}
+
+// ---------------------------------------------------------------------------
+// Products & Catalog
+// ---------------------------------------------------------------------------
+
+enum CatalogProductType {
+  SIMPLE_PRODUCT
+  PRODUCT_WITH_VARIANTS
+  VARIANT
+  SERVICE
+}
+
+enum CatalogProductState {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+/// One row per workspace: the default Catalog and the base Price Type. A single row makes "exactly one" true by construction.
+model CatalogSettings {
+  id               String   @id @default(uuid()) @db.Uuid
+  workspaceId      String   @unique @map("workspace_id") @db.Uuid
+  defaultCatalogId String?  @map("default_catalog_id") @db.Uuid
+  basePriceTypeId  String?  @map("base_price_type_id") @db.Uuid
+  version          Int      @default(1)
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@map("catalog_settings")
+}
+
+model Catalog {
+  id              String   @id @default(uuid()) @db.Uuid
+  workspaceId     String   @map("workspace_id") @db.Uuid
+  name            String
+  normalizedName  String   @map("normalized_name")
+  code            String?
+  description     String?
+  isActive        Boolean  @default(true) @map("is_active")
+  sortOrder       Int      @default(0) @map("sort_order")
+  version         Int      @default(1)
+  createdByUserId String?  @map("created_by_user_id") @db.Uuid
+  updatedByUserId String?  @map("updated_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([workspaceId, normalizedName])
+  @@unique([workspaceId, code])
+  @@index([workspaceId, isActive, sortOrder])
+  @@map("catalogs")
+}
+
+model CatalogCategory {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  catalogId   String   @map("catalog_id") @db.Uuid
+  parentId    String?  @map("parent_id") @db.Uuid
+  name        String
+  code        String?
+  description String?
+  sortOrder   Int      @default(0) @map("sort_order")
+  isActive    Boolean  @default(true) @map("is_active")
+  version     Int      @default(1)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([catalogId, code])
+  @@index([workspaceId, catalogId, parentId, sortOrder])
+  @@map("catalog_categories")
+}
+
+/// Product membership in a category. The primary category is CatalogProduct.primaryCategoryId (one column = exactly one primary).
+model CatalogProductCategory {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  productId   String   @map("product_id") @db.Uuid
+  categoryId  String   @map("category_id") @db.Uuid
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([productId, categoryId])
+  @@index([workspaceId, categoryId])
+  @@map("catalog_product_categories")
+}
+
+/// Products, parents, Variants and Services share one table; type + parentId carry the hierarchy.
+model CatalogProduct {
+  id                String              @id @default(uuid()) @db.Uuid
+  workspaceId       String              @map("workspace_id") @db.Uuid
+  catalogId         String              @map("catalog_id") @db.Uuid
+  type              CatalogProductType
+  parentId          String?             @map("parent_id") @db.Uuid
+  name              String
+  sku               String?
+  /// Normalized SKU (trimmed, case-insensitive) that carries the workspace-wide uniqueness.
+  skuKey            String?             @map("sku_key")
+  description       String?
+  shortDescription  String?             @map("short_description")
+  state             CatalogProductState @default(ACTIVE)
+  archiveCause      String?             @map("archive_cause")
+  archivedAt        DateTime?           @map("archived_at")
+  archivedByUserId  String?             @map("archived_by_user_id") @db.Uuid
+  primaryCategoryId String?             @map("primary_category_id") @db.Uuid
+  primaryUnitId     String?             @map("primary_unit_id") @db.Uuid
+  taxable           Boolean             @default(false)
+  taxRate           Decimal?            @map("tax_rate") @db.Decimal(9, 4)
+  taxIncluded       Boolean             @default(false) @map("tax_included")
+  taxCode           String?             @map("tax_code")
+  weight            Decimal?            @db.Decimal(28, 8)
+  length            Decimal?            @db.Decimal(28, 8)
+  width             Decimal?            @db.Decimal(28, 8)
+  height            Decimal?            @db.Decimal(28, 8)
+  barcode           String?
+  /// Parent only: ordered list of property (custom field) ids that define the Variant matrix.
+  variantAxes       Json                @default("[]") @map("variant_axes")
+  /// Variant only: deterministic normalized combination of axis option ids.
+  axisKey           String?             @map("axis_key")
+  axisValues        Json?               @map("axis_values")
+  /// Variant only: names of inheritable attributes the Variant explicitly overrides (everything else resolves from the parent).
+  overrides         Json                @default("[]")
+  version           Int                 @default(1)
+  createdByUserId   String?             @map("created_by_user_id") @db.Uuid
+  updatedByUserId   String?             @map("updated_by_user_id") @db.Uuid
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  @@unique([workspaceId, skuKey])
+  @@unique([parentId, axisKey])
+  @@index([workspaceId, catalogId, type, state])
+  @@index([workspaceId, parentId])
+  @@index([workspaceId, state, name])
+  @@map("catalog_products")
+}
+
+model CatalogUnit {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  code        String
+  name        String
+  symbol      String?
+  precision   Int      @default(6)
+  isActive    Boolean  @default(true) @map("is_active")
+  isSystem    Boolean  @default(false) @map("is_system")
+  sortOrder   Int      @default(0) @map("sort_order")
+  version     Int      @default(1)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([workspaceId, code])
+  @@index([workspaceId, isActive, sortOrder])
+  @@map("catalog_units")
+}
+
+/// 1 unit = ratio * baseUnit, for one Product. Ratio must be > 0.
+model CatalogProductUnitRatio {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  productId   String   @map("product_id") @db.Uuid
+  unitId      String   @map("unit_id") @db.Uuid
+  baseUnitId  String   @map("base_unit_id") @db.Uuid
+  ratio       Decimal  @db.Decimal(28, 8)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([productId, unitId])
+  @@index([workspaceId, productId])
+  @@map("catalog_product_unit_ratios")
+}
+
+model CatalogPriceType {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  code        String
+  name        String
+  isActive    Boolean  @default(true) @map("is_active")
+  sortOrder   Int      @default(0) @map("sort_order")
+  version     Int      @default(1)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([workspaceId, code])
+  @@index([workspaceId, isActive, sortOrder])
+  @@map("catalog_price_types")
+}
+
+model CatalogProductPrice {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  productId   String   @map("product_id") @db.Uuid
+  priceTypeId String   @map("price_type_id") @db.Uuid
+  amount      Decimal  @db.Decimal(28, 8)
+  currency    String
+  version     Int      @default(1)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([productId, priceTypeId, currency])
+  @@index([workspaceId, productId])
+  @@index([workspaceId, priceTypeId])
+  @@map("catalog_product_prices")
+}
+
+/// Catalog-specific metadata layered over a shared Custom Field (entityType PRODUCT). Field validation/storage stay in the field engine.
+model CatalogPropertyProfile {
+  id                String   @id @default(uuid()) @db.Uuid
+  workspaceId       String   @map("workspace_id") @db.Uuid
+  fieldId           String   @unique @map("field_id") @db.Uuid
+  appliesTo         String   @default("BOTH") @map("applies_to")
+  variantAxis       Boolean  @default(false) @map("variant_axis")
+  filterable        Boolean  @default(false)
+  searchable        Boolean  @default(false)
+  displayOnCard     Boolean  @default(false) @map("display_on_card")
+  displayInList     Boolean  @default(false) @map("display_in_list")
+  storefrontVisible Boolean  @default(false) @map("storefront_visible")
+  categoryIds       Json     @default("[]") @map("category_ids")
+  allowedTypes      Json     @default("[]") @map("allowed_types")
+  sortOrder         Int      @default(0) @map("sort_order")
+  version           Int      @default(1)
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@index([workspaceId, variantAxis])
+  @@map("catalog_property_profiles")
+}
+
+/// Image/file bindings. Bytes live in Files; only references are stored here.
+model CatalogProductMedia {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  productId   String   @map("product_id") @db.Uuid
+  fileId      String   @map("file_id") @db.Uuid
+  altText     String?  @map("alt_text")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([productId, fileId])
+  @@index([workspaceId, productId, sortOrder])
+  @@map("catalog_product_media")
+}
+
+/// Commercial Product Row: a self-contained snapshot. Product references are for navigation/reporting only.
+model CommercialProductRow {
+  id                    String   @id @default(uuid()) @db.Uuid
+  workspaceId           String   @map("workspace_id") @db.Uuid
+  ownerType             String   @map("owner_type")
+  ownerId               String   @map("owner_id") @db.Uuid
+  productId             String?  @map("product_id") @db.Uuid
+  parentProductId       String?  @map("parent_product_id") @db.Uuid
+  isManual              Boolean  @default(false) @map("is_manual")
+  nameSnapshot          String   @map("name_snapshot")
+  skuSnapshot           String?  @map("sku_snapshot")
+  variantSnapshot       String?  @map("variant_snapshot")
+  unitId                String?  @map("unit_id") @db.Uuid
+  unitCodeSnapshot      String?  @map("unit_code_snapshot")
+  unitNameSnapshot      String?  @map("unit_name_snapshot")
+  unitRatioSnapshot     Decimal? @map("unit_ratio_snapshot") @db.Decimal(28, 8)
+  baseUnitCodeSnapshot  String?  @map("base_unit_code_snapshot")
+  quantity              Decimal  @db.Decimal(28, 8)
+  priceTypeId           String?  @map("price_type_id") @db.Uuid
+  priceTypeCodeSnapshot String?  @map("price_type_code_snapshot")
+  unitPrice             Decimal  @map("unit_price") @db.Decimal(28, 8)
+  currency              String
+  discountType          String   @default("NONE") @map("discount_type")
+  discountValue         Decimal  @default(0) @map("discount_value") @db.Decimal(28, 8)
+  discountAmount        Decimal  @default(0) @map("discount_amount") @db.Decimal(28, 8)
+  taxable               Boolean  @default(false)
+  taxRate               Decimal  @default(0) @map("tax_rate") @db.Decimal(9, 4)
+  taxIncluded           Boolean  @default(false) @map("tax_included")
+  taxCodeSnapshot       String?  @map("tax_code_snapshot")
+  subtotal              Decimal  @db.Decimal(28, 8)
+  taxAmount             Decimal  @map("tax_amount") @db.Decimal(28, 8)
+  total                 Decimal  @db.Decimal(28, 8)
+  priceOverridden       Boolean  @default(false) @map("price_overridden")
+  discountOverridden    Boolean  @default(false) @map("discount_overridden")
+  taxOverridden         Boolean  @default(false) @map("tax_overridden")
+  sortOrder             Int      @default(0) @map("sort_order")
+  version               Int      @default(1)
+  createdByUserId       String?  @map("created_by_user_id") @db.Uuid
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@index([workspaceId, ownerType, ownerId, sortOrder])
+  @@index([workspaceId, productId])
+  @@map("commercial_product_rows")
+}
+
+/// Version + totals of one owner's row set (optimistic concurrency for atomic replace).
+model CommercialRowSet {
+  id              String   @id @default(uuid()) @db.Uuid
+  workspaceId     String   @map("workspace_id") @db.Uuid
+  ownerType       String   @map("owner_type")
+  ownerId         String   @map("owner_id") @db.Uuid
+  version         Int      @default(1)
+  currency        String?
+  subtotal        Decimal  @default(0) @db.Decimal(28, 8)
+  taxTotal        Decimal  @default(0) @map("tax_total") @db.Decimal(28, 8)
+  total           Decimal  @default(0) @db.Decimal(28, 8)
+  updatedByUserId String?  @map("updated_by_user_id") @db.Uuid
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([workspaceId, ownerType, ownerId])
+  @@map("commercial_row_sets")
 }

@@ -23,7 +23,8 @@ export class UserService {
         .filter((membership) => workspaceIds.has(membership.workspaceId) && !membership.isDeleted)
         .map((membership) => membership.userId),
     ]);
-    return this.store.state.users.filter((user) => !user.isDeleted && visibleUserIds.has(user.id)).map(safeUser);
+    // The Automation service identity is an internal principal, never a person to list, assign or invite.
+    return this.store.state.users.filter((user) => !user.isDeleted && user.meta?.service !== 'AUTOMATION' && visibleUserIds.has(user.id)).map(safeUser);
   }
 
   get(requester: User, id: string, workspaceId?: string) {

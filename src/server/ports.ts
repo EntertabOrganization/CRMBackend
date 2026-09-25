@@ -83,3 +83,93 @@ export interface TaskPort {
 }
 
 export class AdapterUnavailableError extends Error {}
+
+// ---- Automation adapters --------------------------------------------------------------------------------------------
+// Notifications, Communication, Documents and the secret store are owned by other modules. Automation talks to them only
+// through these ports; until a module is wired, the matching Action stays unavailable instead of being faked.
+
+export type PortResult = { reference?: string | null };
+
+export interface NotificationPort {
+  notifyUsers(input: {
+    workspaceId: string;
+    actorUserId: string;
+    recipientUserIds: string[];
+    title: string;
+    message: string;
+    link?: string | null;
+    idempotencyKey: string;
+  }): Promise<PortResult> | PortResult;
+}
+
+export interface CommunicationPort {
+  send(input: {
+    workspaceId: string;
+    actorUserId: string;
+    channel: 'EMAIL' | 'MESSAGE';
+    to: string[];
+    subject: string | null;
+    body: string;
+    target: { type: string; id: string };
+    idempotencyKey: string;
+  }): Promise<PortResult> | PortResult;
+}
+
+export interface DocumentPort {
+  generate(input: {
+    workspaceId: string;
+    actorUserId: string;
+    templateId: string;
+    name: string | null;
+    target: { type: string; id: string };
+    idempotencyKey: string;
+  }): Promise<PortResult & { fileId?: string | null }> | (PortResult & { fileId?: string | null });
+}
+
+/** Secure credential store. Rules hold only a reference name; the value is resolved at call time and never persisted or logged. */
+export interface SecretPort {
+  resolve(workspaceId: string, ref: string): string | null;
+}
+
+export class UnconfiguredSecretPort implements SecretPort {
+  resolve(): string | null {
+    return null;
+  }
+}
+
+export class InMemorySecretPort implements SecretPort {
+  private readonly secrets = new Map<string, string>();
+
+  set(workspaceId: string, ref: string, value: string) {
+    this.secrets.set(`${workspaceId}:${ref}`, value);
+  }
+
+  resolve(workspaceId: string, ref: string) {
+    return this.secrets.get(`${workspaceId}:${ref}`) ?? null;
+  }
+}
+
+/** Test doubles that record what Automation asked the owning modules to do. */
+export class RecordingNotificationPort implements NotificationPort {
+  readonly sent: Array<Parameters<NotificationPort['notifyUsers']>[0]> = [];
+  notifyUsers(input: Parameters<NotificationPort['notifyUsers']>[0]) {
+    if (!this.sent.some((item) => item.idempotencyKey === input.idempotencyKey)) this.sent.push(input);
+    return { reference: input.idempotencyKey };
+  }
+}
+
+export class RecordingCommunicationPort implements CommunicationPort {
+  readonly sent: Array<Parameters<CommunicationPort['send']>[0]> = [];
+  send(input: Parameters<CommunicationPort['send']>[0]) {
+    if (!this.sent.some((item) => item.idempotencyKey === input.idempotencyKey)) this.sent.push(input);
+    return { reference: input.idempotencyKey };
+  }
+}
+
+export class RecordingDocumentPort implements DocumentPort {
+  readonly generated: Array<Parameters<DocumentPort['generate']>[0]> = [];
+  generate(input: Parameters<DocumentPort['generate']>[0]) {
+    if (!this.generated.some((item) => item.idempotencyKey === input.idempotencyKey)) this.generated.push(input);
+    return { reference: input.idempotencyKey, fileId: null };
+  }
+}
