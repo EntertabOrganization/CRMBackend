@@ -1,0 +1,181 @@
+{
+  "pack": "TrueCRM Data, Integration, Intelligence & Analytics Codex Pack",
+  "version": "1.0",
+  "entrypoint": "Agent.md",
+  "module_count": 4,
+  "modules": [
+    {
+      "name": "Duplicates, Merge & Data Quality",
+      "root": "DataQuality",
+      "specifications": [
+        "DataQuality/data-quality.md",
+        "DataQuality/duplicates.md",
+        "DataQuality/merge.md",
+        "DataQuality/overview.md"
+      ],
+      "testing": [
+        "Testing/DataQuality/data-quality.spec.ts",
+        "Testing/DataQuality/duplicates.spec.ts",
+        "Testing/DataQuality/merge-relations.spec.ts",
+        "Testing/DataQuality/merge.e2e-spec.ts"
+      ]
+    },
+    {
+      "name": "Import, Export, API & Integrations",
+      "root": "Integrations",
+      "specifications": [
+        "Integrations/api.md",
+        "Integrations/import-export.md",
+        "Integrations/integrations-sync.md",
+        "Integrations/overview.md",
+        "Integrations/webhooks.md"
+      ],
+      "testing": [
+        "Testing/Integrations/api-batch.spec.ts",
+        "Testing/Integrations/api.e2e-spec.ts",
+        "Testing/Integrations/export.spec.ts",
+        "Testing/Integrations/import-undo.spec.ts",
+        "Testing/Integrations/import.e2e-spec.ts",
+        "Testing/Integrations/import.spec.ts",
+        "Testing/Integrations/sync-conflicts.spec.ts",
+        "Testing/Integrations/sync.e2e-spec.ts",
+        "Testing/Integrations/webhooks.e2e-spec.ts"
+      ]
+    },
+    {
+      "name": "Sales Intelligence & Attribution",
+      "root": "SalesIntelligence",
+      "specifications": [
+        "SalesIntelligence/advertising-costs.md",
+        "SalesIntelligence/attribution.md",
+        "SalesIntelligence/overview.md",
+        "SalesIntelligence/tracking-sources.md"
+      ],
+      "testing": [
+        "Testing/SalesIntelligence/advertising-costs.spec.ts",
+        "Testing/SalesIntelligence/attribution-revenue.spec.ts",
+        "Testing/SalesIntelligence/attribution.spec.ts",
+        "Testing/SalesIntelligence/tracking.spec.ts",
+        "Testing/SalesIntelligence/visitor-identity.spec.ts"
+      ]
+    },
+    {
+      "name": "Analytics, Reports & Dashboards",
+      "root": "Analytics",
+      "specifications": [
+        "Analytics/analytics-model.md",
+        "Analytics/dashboards.md",
+        "Analytics/kpi-scheduled-bi.md",
+        "Analytics/overview.md",
+        "Analytics/reports.md"
+      ],
+      "testing": [
+        "Testing/Analytics/analytics-model.spec.ts",
+        "Testing/Analytics/bi-access.e2e-spec.ts",
+        "Testing/Analytics/dashboards.spec.ts",
+        "Testing/Analytics/kpi-schedule-bi.spec.ts",
+        "Testing/Analytics/metrics.spec.ts",
+        "Testing/Analytics/reports.e2e-spec.ts",
+        "Testing/Analytics/scheduled-reports.e2e-spec.ts"
+      ]
+    }
+  ],
+  "cross_module_specifications": [
+    "CrossModule/audit-retention-security.md",
+    "CrossModule/shared-contracts.md"
+  ],
+  "cross_module_testing": [
+    "Testing/CrossModule/audit-retention-security.spec.ts",
+    "Testing/CrossModule/entitlements.e2e-spec.ts",
+    "Testing/CrossModule/jobs-idempotency.e2e-spec.ts",
+    "Testing/CrossModule/tenant-permission-isolation.e2e-spec.ts"
+  ],
+  "support_documentation": [
+    "Coverage/confirmed-decisions.md",
+    "Coverage/requirement-matrix.md",
+    "Sources/source-map.md"
+  ],
+  "testing_readme": "Testing/README.md",
+  "goal_examples": [
+    "Complete Data Quality",
+    "Complete Import and Export",
+    "Complete API and Integrations",
+    "Complete Sales Intelligence",
+    "Complete Analytics",
+    "Complete Modules 13-16"
+  ],
+  "source_priority": [
+    "Latest explicit human instruction",
+    "Confirmed decisions Q1-Q74",
+    "This specification pack",
+    "TrueCRM PRD/BRD/System Architecture",
+    "Existing repository behavior when non-conflicting",
+    "Bitrix24 behavioral reference"
+  ],
+  "root_files": [
+    "Agent.md",
+    "README.md",
+    "manifest.json"
+  ],
+  "specification_file_count": 20,
+  "testing_file_count": 29,
+  "support_file_count": 3,
+  "all_generated_files": [
+    "Agent.md",
+    "Analytics/analytics-model.md",
+    "Analytics/dashboards.md",
+    "Analytics/kpi-scheduled-bi.md",
+    "Analytics/overview.md",
+    "Analytics/reports.md",
+    "Coverage/confirmed-decisions.md",
+    "Coverage/requirement-matrix.md",
+    "CrossModule/audit-retention-security.md",
+    "CrossModule/shared-contracts.md",
+    "DataQuality/data-quality.md",
+    "DataQuality/duplicates.md",
+    "DataQuality/merge.md",
+    "DataQuality/overview.md",
+    "Integrations/api.md",
+    "Integrations/import-export.md",
+    "Integrations/integrations-sync.md",
+    "Integrations/overview.md",
+    "Integrations/webhooks.md",
+    "README.md",
+    "SalesIntelligence/advertising-costs.md",
+    "SalesIntelligence/attribution.md",
+    "SalesIntelligence/overview.md",
+    "SalesIntelligence/tracking-sources.md",
+    "Sources/source-map.md",
+    "Testing/Analytics/analytics-model.spec.ts",
+    "Testing/Analytics/bi-access.e2e-spec.ts",
+    "Testing/Analytics/dashboards.spec.ts",
+    "Testing/Analytics/kpi-schedule-bi.spec.ts",
+    "Testing/Analytics/metrics.spec.ts",
+    "Testing/Analytics/reports.e2e-spec.ts",
+    "Testing/Analytics/scheduled-reports.e2e-spec.ts",
+    "Testing/CrossModule/audit-retention-security.spec.ts",
+    "Testing/CrossModule/entitlements.e2e-spec.ts",
+    "Testing/CrossModule/jobs-idempotency.e2e-spec.ts",
+    "Testing/CrossModule/tenant-permission-isolation.e2e-spec.ts",
+    "Testing/DataQuality/data-quality.spec.ts",
+    "Testing/DataQuality/duplicates.spec.ts",
+    "Testing/DataQuality/merge-relations.spec.ts",
+    "Testing/DataQuality/merge.e2e-spec.ts",
+    "Testing/Integrations/api-batch.spec.ts",
+    "Testing/Integrations/api.e2e-spec.ts",
+    "Testing/Integrations/export.spec.ts",
+    "Testing/Integrations/import-undo.spec.ts",
+    "Testing/Integrations/import.e2e-spec.ts",
+    "Testing/Integrations/import.spec.ts",
+    "Testing/Integrations/sync-conflicts.spec.ts",
+    "Testing/Integrations/sync.e2e-spec.ts",
+    "Testing/Integrations/webhooks.e2e-spec.ts",
+    "Testing/README.md",
+    "Testing/SalesIntelligence/advertising-costs.spec.ts",
+    "Testing/SalesIntelligence/attribution-revenue.spec.ts",
+    "Testing/SalesIntelligence/attribution.spec.ts",
+    "Testing/SalesIntelligence/tracking.spec.ts",
+    "Testing/SalesIntelligence/visitor-identity.spec.ts",
+    "manifest.json"
+  ]
+}
