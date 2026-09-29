@@ -28,5 +28,9 @@ describe('Estimates service contract', () => {
     await runContractScenario('estimate acceptance revision');
   });
 
+  it('enforces record scopes on commercial mutations', async () => {
+    await runContractScenario('commercial mutation record scope');
+  });
+
 });
 

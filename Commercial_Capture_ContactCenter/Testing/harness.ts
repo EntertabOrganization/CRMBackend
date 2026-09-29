@@ -1,32 +1,1011 @@
-import { createHmac } from 'crypto';
-import { actorOf, addMember, expectAppError, fullApp, otherTenant } from '@/tests/support/domain';
+import { createHmac } from "crypto";
+import {
+  actorOf,
+  addMember,
+  expectAppError,
+  fullApp,
+  otherTenant,
+} from "@/tests/support/domain";
 
-async function fixture(){const f=await fullApp();const actor=actorOf(f.app,f.user,f.workspace.id);const seller=f.app.crmCore.createCompany(f.user,f.workspace.id,{name:'Seller'});const buyer=f.app.crmCore.createCompany(f.user,f.workspace.id,{name:'Buyer'});const preset=f.app.commercialPack.requisites.createPreset(actor,{countryCode:'EG',entityTypeCode:'COMPANY',name:'Preset',fields:[{code:'legalName',label:'Legal name',type:'TEXT',required:true}]});const sr=f.app.commercialPack.requisites.create(actor,'COMPANY',seller.id,{presetId:preset.id,name:'Seller',values:{legalName:'Seller Legal'}});const br=f.app.commercialPack.requisites.create(actor,'COMPANY',buyer.id,{presetId:preset.id,name:'Buyer',values:{legalName:'Buyer Legal'}});const sa=f.app.commercialPack.requisites.addAddress(actor,sr.id,{type:'LEGAL',countryCode:'EG',line1:'Seller address',isDefaultForType:true});const ba=f.app.commercialPack.requisites.addAddress(actor,br.id,{type:'BILLING',countryCode:'EG',line1:'Buyer address',isDefaultForType:true});const bank=f.app.commercialPack.requisites.addBank(actor,sr.id,{name:'Bank',countryCode:'EG',currencyCode:'USD',accountNumber:'EG12345678',isDefault:true});f.app.commercialPack.requisites.configureSeller(actor,{companyId:seller.id,isWorkspaceDefault:true,preferredRequisiteId:sr.id,preferredBankAccountId:bank.id});return{...f,actor,seller,buyer,preset,sr,br,bank,parties:{buyer:{ownerType:'COMPANY' as const,ownerId:buyer.id,requisiteId:br.id,addressId:ba.id},seller:{ownerType:'COMPANY' as const,ownerId:seller.id,requisiteId:sr.id,addressId:sa.id,bankAccountId:bank.id}}};}
+async function fixture() {
+  const f = await fullApp();
+  const actor = actorOf(f.app, f.user, f.workspace.id);
+  const seller = f.app.crmCore.createCompany(f.user, f.workspace.id, {
+    name: "Seller",
+  });
+  const buyer = f.app.crmCore.createCompany(f.user, f.workspace.id, {
+    name: "Buyer",
+  });
+  const preset = f.app.commercialPack.requisites.createPreset(actor, {
+    countryCode: "EG",
+    entityTypeCode: "COMPANY",
+    name: "Preset",
+    fields: [
+      { code: "legalName", label: "Legal name", type: "TEXT", required: true },
+    ],
+  });
+  const sr = f.app.commercialPack.requisites.create(
+    actor,
+    "COMPANY",
+    seller.id,
+    {
+      presetId: preset.id,
+      name: "Seller",
+      values: { legalName: "Seller Legal" },
+    },
+  );
+  const br = f.app.commercialPack.requisites.create(
+    actor,
+    "COMPANY",
+    buyer.id,
+    {
+      presetId: preset.id,
+      name: "Buyer",
+      values: { legalName: "Buyer Legal" },
+    },
+  );
+  const sa = f.app.commercialPack.requisites.addAddress(actor, sr.id, {
+    type: "LEGAL",
+    countryCode: "EG",
+    line1: "Seller address",
+    isDefaultForType: true,
+  });
+  const ba = f.app.commercialPack.requisites.addAddress(actor, br.id, {
+    type: "BILLING",
+    countryCode: "EG",
+    line1: "Buyer address",
+    isDefaultForType: true,
+  });
+  const bank = f.app.commercialPack.requisites.addBank(actor, sr.id, {
+    name: "Bank",
+    countryCode: "EG",
+    currencyCode: "USD",
+    accountNumber: "EG12345678",
+    isDefault: true,
+  });
+  f.app.commercialPack.requisites.configureSeller(actor, {
+    companyId: seller.id,
+    isWorkspaceDefault: true,
+    preferredRequisiteId: sr.id,
+    preferredBankAccountId: bank.id,
+  });
+  return {
+    ...f,
+    actor,
+    seller,
+    buyer,
+    preset,
+    sr,
+    br,
+    bank,
+    parties: {
+      buyer: {
+        ownerType: "COMPANY" as const,
+        ownerId: buyer.id,
+        requisiteId: br.id,
+        addressId: ba.id,
+      },
+      seller: {
+        ownerType: "COMPANY" as const,
+        ownerId: seller.id,
+        requisiteId: sr.id,
+        addressId: sa.id,
+        bankAccountId: bank.id,
+      },
+    },
+  };
+}
 
-async function requisiteScenario(s:string){const f=await fixture();const snap=f.app.commercialPack.requisites.createSnapshot(f.actor,'SELLER',f.parties.seller);expect(snap.legalName).toBe('Seller Legal');if(/permission|visibility|bank view/i.test(s)){const m=await addMember(f.app,f.user,f.workspace.id,'r',[['requisite.read','WORKSPACE']]);await expectAppError(()=>f.app.commercialPack.requisites.listBanks(actorOf(f.app,m.user,f.workspace.id),f.sr.id),'PERMISSION_DENIED');}if(/cross|ownership|tenant/i.test(s)){const t=await otherTenant(f.app);await expectAppError(()=>f.app.commercialPack.requisites.get(actorOf(f.app,t.user,t.workspace.id),f.sr.id),'REQUISITE_NOT_FOUND');}if(/snapshot|histor|regenerat|master edit|address edit/i.test(s)){f.app.commercialPack.requisites.update(f.actor,f.sr.id,{values:{legalName:'Changed'}});expect(snap.legalName).toBe('Seller Legal');}if(/archive/i.test(s)){f.app.commercialPack.requisites.archiveBank(f.actor,f.sr.id,f.bank.id);await expectAppError(()=>f.app.commercialPack.requisites.createSnapshot(f.actor,'SELLER',f.parties.seller),'BANK_DATA_REFERENCED');}expect(f.app.store.state.auditLogs.length).toBeGreaterThan(0);}
-
-async function commercialScenario(s:string){const f=await fixture();if(/recurring/i.test(s)){const mode=/auto-issue|issue modes/i.test(s)?'AUTO_ISSUE_SEND':'DRAFT_ONLY';const rule=f.app.commercialPack.commerce.createRecurringRule(f.actor,{name:'Monthly',active:true,customerCompanyId:f.buyer.id,sellerCompanyId:f.seller.id,currencyCode:'USD',ianaTimezone:'Africa/Cairo',startOn:'2026-01-01',nextRunAt:new Date('2026-10-01T00:00:00Z'),issueMode:mode,template:{lines:[{description:'Monthly service',quantity:'1',unitPrice:'10'}],parties:f.parties}});const a=f.app.commercialPack.commerce.runRecurring(f.actor,rule.id,'2026-10',new Date('2026-10-01T00:00:00Z'));const b=f.app.commercialPack.commerce.runRecurring(f.actor,rule.id,'2026-10',new Date('2026-10-01T00:00:00Z'));expect(b.id).toBe(a.id);expect(f.app.store.state.recurringOccurrences.filter(x=>x.ruleId===rule.id)).toHaveLength(1);expect(a.semanticStatus).toBe(mode==='AUTO_ISSUE_SEND'?'ISSUED':'DRAFT');return;}const estimate=f.app.commercialPack.commerce.createEstimate(f.actor,{subject:'Quote',stageId:'draft',sellerCompanyId:f.seller.id,customerCompanyId:f.buyer.id,currencyCode:'USD',lines:[{description:'Line',quantity:'2',unitPrice:'50',taxRate:'10'}]});expect(estimate.revisions[0].grandTotal).toBe('110');f.app.commercialPack.commerce.sendEstimate(f.actor,estimate.id,f.parties);const first=structuredClone(estimate.revisions[0]);f.app.commercialPack.commerce.updateEstimate(f.actor,estimate.id,{lines:[{description:'Revision',quantity:'1',unitPrice:'80'}]});expect(estimate.revisions[0]).toEqual(first);f.app.commercialPack.commerce.sendEstimate(f.actor,estimate.id,f.parties);f.app.commercialPack.commerce.acceptEstimate(f.actor,estimate.id,2);const invoice=f.app.commercialPack.commerce.convertEstimate(f.actor,estimate.id,{idempotencyKey:'convert'});expect(f.app.commercialPack.commerce.convertEstimate(f.actor,estimate.id,{idempotencyKey:'convert'}).id).toBe(invoice.id);f.app.commercialPack.commerce.issueInvoice(f.actor,invoice.id,f.parties);if(/overdue/i.test(s)){invoice.dueDate='2000-01-01';expect(f.app.commercialPack.commerce.getInvoice(f.actor,invoice.id).isOverdue).toBe(true);}if(/payment|allocation|refund|credit|settlement|void/i.test(s)){const p=f.app.commercialPack.commerce.recordManualPayment(f.actor,{customerCompanyId:f.buyer.id,amount:'100',currencyCode:'USD',allocations:[{invoiceId:invoice.id,amount:'80'}]});expect(invoice.semanticStatus).toBe('PAID');expect(p.unappliedAmount).toBe('20');if(/refund/i.test(s)){const r=f.app.commercialPack.commerce.requestRefund(f.actor,p.id,{amount:'10',currencyCode:'USD',idempotencyKey:'r'});expect(r.status).toBe('SUCCEEDED');expect(f.app.commercialPack.commerce.requestRefund(f.actor,p.id,{amount:'10',currencyCode:'USD',idempotencyKey:'r'}).id).toBe(r.id);}}if(/provider|callback|redirect/i.test(s)){const second=f.app.commercialPack.commerce.createInvoice(f.actor,{sellerCompanyId:f.seller.id,customerCompanyId:f.buyer.id,currencyCode:'USD',lines:[{description:'Online',quantity:'1',unitPrice:'5'}]});f.app.commercialPack.commerce.issueInvoice(f.actor,second.id,f.parties);const a=await f.app.commercialPack.commerce.createProviderAttempt(f.actor,{providerKey:'stripe',invoiceIds:[second.id],idempotencyKey:'a',merchantId:'stripe-test-merchant'});const raw=JSON.stringify({eventId:'e',eventType:'PAYMENT_SUCCEEDED',transactionId:a.providerTransactionId,status:'SUCCEEDED',amount:'5',currencyCode:'USD',merchantId:'stripe-test-merchant'});const sig=createHmac('sha256','test-stripe-secret').update(raw).digest('hex');expect((await f.app.commercialPack.commerce.handleProviderWebhook('stripe','c',{'x-provider-signature':sig},raw)).duplicate).toBe(false);expect((await f.app.commercialPack.commerce.handleProviderWebhook('stripe','c',{'x-provider-signature':sig},raw)).duplicate).toBe(true);expect(f.app.commercialPack.commerce.browserReturn().settled).toBe(false);}if(/cross|tenant|IDOR/i.test(s)){const t=await otherTenant(f.app);await expectAppError(()=>f.app.commercialPack.commerce.getInvoice(actorOf(f.app,t.user,t.workspace.id),invoice.id),'INVOICE_NOT_FOUND');}expect(f.app.store.state.outboxEvents.length).toBeGreaterThan(0);}
-
-async function formScenario(s:string){const f=await fixture();f.app.crm.bootstrapDefaults(f.workspace.id);
-  if(/AUTHENTICATED|RESTRICTED_TOKEN/i.test(s)){
-    const fields=[{key:'name',label:'Name',type:'TEXT',page:1,order:1,required:true}];
-    const authenticated=f.app.commercialPack.forms.create(f.actor,{name:'Members',mode:'SUBMISSION_ONLY',accessMode:'AUTHENTICATED',fields,captureRecipe:[]});
-    f.app.commercialPack.forms.publish(f.actor,authenticated.id);
-    await expectAppError(()=>f.app.commercialPack.forms.publicSchema(authenticated.publicKey),'FORM_ACCESS_DENIED');
-    expect(f.app.commercialPack.forms.publicSchema(authenticated.publicKey,f.user.id).name).toBe('Members');
-    const restricted=f.app.commercialPack.forms.create(f.actor,{name:'Token',mode:'SUBMISSION_ONLY',accessMode:'RESTRICTED_TOKEN',restrictedToken:'secret',restrictedTokenExpiresAt:new Date(Date.now()+60000),fields,captureRecipe:[]});
-    f.app.commercialPack.forms.publish(f.actor,restricted.id);
-    await expectAppError(()=>f.app.commercialPack.forms.publicSchema(restricted.publicKey,undefined,'wrong'),'FORM_TOKEN_INVALID_OR_EXPIRED');
-    expect(f.app.commercialPack.forms.publicSchema(restricted.publicKey,undefined,'secret').name).toBe('Token');
-    const expired=f.app.commercialPack.forms.create(f.actor,{name:'Expired',mode:'SUBMISSION_ONLY',accessMode:'RESTRICTED_TOKEN',restrictedToken:'old',restrictedTokenExpiresAt:new Date(Date.now()-1),fields,captureRecipe:[]});
-    f.app.commercialPack.forms.publish(f.actor,expired.id);
-    await expectAppError(()=>f.app.commercialPack.forms.publicSchema(expired.publicKey,undefined,'old'),'FORM_TOKEN_INVALID_OR_EXPIRED');
+async function requisiteScenario(s: string) {
+  const f = await fixture();
+  const snap = f.app.commercialPack.requisites.createSnapshot(
+    f.actor,
+    "SELLER",
+    f.parties.seller,
+  );
+  expect(snap.legalName).toBe("Seller Legal");
+  if (/requisite and bank record scopes/i.test(s)) {
+    const member = await addMember(
+      f.app,
+      f.user,
+      f.workspace.id,
+      "scoped-requisites",
+      [
+        ["requisite.create", "OWN"],
+        ["requisite.read", "OWN"],
+        ["requisite.update", "OWN"],
+        ["requisite.set_default", "OWN"],
+        ["requisite.archive", "OWN"],
+        ["requisite.restore", "OWN"],
+        ["bank_data.create", "OWN"],
+        ["bank_data.view", "OWN"],
+        ["bank_data.update", "OWN"],
+        ["bank_data.set_default", "OWN"],
+        ["bank_data.archive", "OWN"],
+        ["bank_data.restore", "OWN"],
+      ],
+    );
+    const scoped = actorOf(f.app, member.user, f.workspace.id);
+    expect(f.app.commercialPack.requisites.list(scoped)).toHaveLength(0);
+    await expectAppError(
+      () => f.app.commercialPack.requisites.get(scoped, f.sr.id),
+      "PERMISSION_DENIED",
+    );
+    await expectAppError(
+      () =>
+        f.app.commercialPack.requisites.create(
+          scoped,
+          "COMPANY",
+          f.buyer.id,
+          { presetId: f.preset.id, name: "Forbidden" },
+        ),
+      "PERMISSION_DENIED",
+    );
+    await expectAppError(
+      () =>
+        f.app.commercialPack.requisites.update(scoped, f.sr.id, {
+          name: "Forbidden",
+        }),
+      "PERMISSION_DENIED",
+    );
+    await expectAppError(
+      () =>
+        f.app.commercialPack.requisites.addAddress(scoped, f.sr.id, {
+          type: "OTHER",
+          countryCode: "EG",
+          line1: "Forbidden",
+          isDefaultForType: false,
+        }),
+      "PERMISSION_DENIED",
+    );
+    await expectAppError(
+      () =>
+        f.app.commercialPack.requisites.getBank(
+          scoped,
+          f.sr.id,
+          f.bank.id,
+        ),
+      "PERMISSION_DENIED",
+    );
+    await expectAppError(
+      () =>
+        f.app.commercialPack.requisites.updateBank(
+          scoped,
+          f.sr.id,
+          f.bank.id,
+          { name: "Forbidden" },
+        ),
+      "PERMISSION_DENIED",
+    );
     return;
   }
-  const form=f.app.commercialPack.forms.create(f.actor,{name:'Form',mode:/SUBMISSION_ONLY|form modes/i.test(s)?'SUBMISSION_ONLY':'CRM_CAPTURE',accessMode:'PUBLIC',fields:[{key:'firstName',label:'First',type:'TEXT',page:1,order:1,required:true},{key:'lastName',label:'Last',type:'TEXT',page:1,order:2,required:true},{key:'email',label:'Email',type:'EMAIL',page:1,order:3,required:true}],captureRecipe:/SUBMISSION_ONLY|form modes/i.test(s)?[]:[{key:'contact',entityType:'CONTACT',duplicateStrategy:'MATCH_OR_CREATE',mappings:{firstName:'firstName',lastName:'lastName',email:'email'}}]});f.app.commercialPack.forms.publish(f.actor,form.id);const live=f.app.commercialPack.forms.publicSchema(form.publicKey);expect(live.fields).toHaveLength(3);f.app.commercialPack.forms.updateDraft(f.actor,form.id,{fields:[...live.fields,{key:'phone',label:'Phone',type:'PHONE',page:1,order:4,required:false}]});expect(f.app.commercialPack.forms.publicSchema(form.publicKey).fields).toHaveLength(3);if(/resume/i.test(s)){const expired=f.app.commercialPack.forms.createDraft(form.publicKey,-1);await expectAppError(()=>f.app.commercialPack.forms.updateDraftSubmission(expired.submission.id,expired.resumeToken,{firstName:'A'}),'FORM_TOKEN_INVALID_OR_EXPIRED');const active=f.app.commercialPack.forms.createDraft(form.publicKey);f.app.commercialPack.forms.updateDraftSubmission(active.submission.id,active.resumeToken,{firstName:'A',lastName:'B',email:'a@b.com'});f.app.commercialPack.forms.finalizeDraft(active.submission.id,active.resumeToken);await expectAppError(()=>f.app.commercialPack.forms.updateDraftSubmission(active.submission.id,active.resumeToken,{}),'FORM_TOKEN_INVALID_OR_EXPIRED');return;}if(/upload/i.test(s)){const clean=f.app.commercialPack.forms.registerUpload(f.workspace.id,form.id,{mimeType:'text/plain',size:10,ownerToken:'x',status:'CLEAN'});const foreign=f.app.commercialPack.forms.registerUpload(f.workspace.id,crypto.randomUUID(),{mimeType:'text/plain',size:10,ownerToken:'x',status:'CLEAN'});expect(f.app.commercialPack.forms.submit(form.publicKey,{firstName:'A',lastName:'B',email:'a@b.com'},{fileIds:[clean.id],uploadOwnerToken:'x'}).fileIds).toEqual([clean.id]);await expectAppError(()=>f.app.commercialPack.forms.submit(form.publicKey,{firstName:'A',lastName:'B',email:'a@b.com'},{fileIds:[foreign.id]}),'CROSS_WORKSPACE_REFERENCE');return;}if(/consent/i.test(s)){const consent=f.app.commercialPack.forms.create(f.actor,{name:'Consent',mode:'SUBMISSION_ONLY',accessMode:'PUBLIC',fields:[{key:'consent',label:'Consent',type:'CONSENT',page:1,order:1,required:true,agreement:{id:'terms',version:'v1'}}]});f.app.commercialPack.forms.publish(f.actor,consent.id);const evidence=f.app.commercialPack.forms.submit(consent.publicKey,{consent:true}).consentEvidence[0];expect(evidence.agreementVersion).toBe('v1');return;}if(/validation|invalid mapping|conditional/i.test(s))await expectAppError(()=>f.app.commercialPack.forms.submit(form.publicKey,{unknown:'x'}),'FORM_VALIDATION_FAILED');else{const sub=f.app.commercialPack.forms.submit(form.publicKey,{firstName:'A',lastName:'B',email:'a@b.com'},{idempotencyKey:'k'});expect(f.app.commercialPack.forms.submit(form.publicKey,{firstName:'A',lastName:'B',email:'a@b.com'},{idempotencyKey:'k'}).id).toBe(sub.id);if(form.mode==='CRM_CAPTURE'){expect(f.app.store.state.crmContacts).toHaveLength(0);f.app.commercialPack.forms.processSubmission(sub.id);expect(sub.processingStatus).toBe('SUCCEEDED');f.app.commercialPack.forms.processSubmission(sub.id);expect(f.app.store.state.crmFormEntityBindings.filter(x=>x.submissionId===sub.id)).toHaveLength(1);}}if(/unpublish/i.test(s)){f.app.commercialPack.forms.unpublish(f.actor,form.id);await expectAppError(()=>f.app.commercialPack.forms.submit(form.publicKey,{firstName:'A',lastName:'B',email:'a@b.com'}),'FORM_NOT_PUBLISHED');}}
+  if (/permission|visibility|bank view/i.test(s)) {
+    const m = await addMember(f.app, f.user, f.workspace.id, "r", [
+      ["requisite.read", "WORKSPACE"],
+    ]);
+    await expectAppError(
+      () =>
+        f.app.commercialPack.requisites.listBanks(
+          actorOf(f.app, m.user, f.workspace.id),
+          f.sr.id,
+        ),
+      "PERMISSION_DENIED",
+    );
+  }
+  if (/cross|ownership|tenant/i.test(s)) {
+    const t = await otherTenant(f.app);
+    await expectAppError(
+      () =>
+        f.app.commercialPack.requisites.get(
+          actorOf(f.app, t.user, t.workspace.id),
+          f.sr.id,
+        ),
+      "REQUISITE_NOT_FOUND",
+    );
+  }
+  if (/snapshot|histor|regenerat|master edit|address edit/i.test(s)) {
+    f.app.commercialPack.requisites.update(f.actor, f.sr.id, {
+      values: { legalName: "Changed" },
+    });
+    expect(snap.legalName).toBe("Seller Legal");
+  }
+  if (/archive/i.test(s)) {
+    f.app.commercialPack.requisites.archiveBank(f.actor, f.sr.id, f.bank.id);
+    await expectAppError(
+      () =>
+        f.app.commercialPack.requisites.createSnapshot(
+          f.actor,
+          "SELLER",
+          f.parties.seller,
+        ),
+      "BANK_DATA_REFERENCED",
+    );
+  }
+  expect(f.app.store.state.auditLogs.length).toBeGreaterThan(0);
+}
 
-async function contactScenario(s:string){const f=await fixture();const agent=await addMember(f.app,f.user,f.workspace.id,'agent',[['conversation.read','WORKSPACE'],['conversation.respond','WORKSPACE'],['conversation.assign','WORKSPACE'],['conversation.transfer','WORKSPACE'],['conversation.close','WORKSPACE'],['conversation.reopen','WORKSPACE'],['conversation.ai_assist','WORKSPACE']]);const aa=actorOf(f.app,agent.user,f.workspace.id);const cc=f.app.commercialPack.contactCenter;const channel=cc.createChannel(f.actor,{name:'Support',type:'WEB_CHAT'});const conn=cc.createConnection(f.actor,{channelId:channel.id,providerKey:'webchat',secretReference:'secret'});expect(JSON.stringify(conn)).not.toContain('"secret"');const queue=cc.createQueue(f.actor,{name:'Queue',channelId:channel.id,routingMode:/broadcast/i.test(s)?'BROADCAST':'ROUND_ROBIN',maxConcurrentPerAgent:2,reopenWindowMinutes:5});cc.addQueueMember(f.actor,queue.id,{userId:agent.user.id});const raw=JSON.stringify({eventId:'e1',externalIdentity:'x@example.com',externalMessageId:'m1',eventType:'MESSAGE',text:'Hi'}),sig=createHmac('sha256','test-webchat-secret').update(raw).digest('hex');const inbound:any=await cc.inbound(conn.id,{'x-channel-signature':sig},raw);const duplicate:any=await cc.inbound(conn.id,{'x-channel-signature':sig},raw);expect(duplicate.duplicate).toBe(true);const c=inbound.conversation!;if(queue.routingMode==='BROADCAST')cc.claim(aa,c.id);expect(c.currentAssigneeUserId).toBe(agent.user.id);const msg=await cc.respond(aa,c.id,{text:'Reply',clientMessageId:'client'});expect((await cc.respond(aa,c.id,{text:'Reply',clientMessageId:'client'})).id).toBe(msg.id);if(/transfer/i.test(s)){cc.addQueueMember(f.actor,queue.id,{userId:f.user.id,order:2});cc.transfer(aa,c.id,{toUserId:f.user.id,reason:'Escalate'});expect(f.app.store.state.conversationTransfers).toHaveLength(1);expect(f.app.store.state.conversationMessages.length).toBe(2);}if(/SLA|business time/i.test(s)){expect(cc.businessDue(new Date('2026-09-25T16:30:00Z'),120,{timezone:'UTC',workingDays:[1,2,3,4,5],startHour:9,endHour:17,holidays:[]}).toISOString()).toBe('2026-09-28T10:30:00.000Z');}if(/cross|IDOR|unauthorized/i.test(s)){const t=await otherTenant(f.app);await expectAppError(()=>cc.get(actorOf(f.app,t.user,t.workspace.id),c.id),'CONVERSATION_NOT_FOUND');}}
+async function commercialScenario(s: string) {
+  const f = await fixture();
+  if (/recurring/i.test(s)) {
+    const mode = /auto-issue|issue modes/i.test(s)
+      ? "AUTO_ISSUE_SEND"
+      : "DRAFT_ONLY";
+    const rule = f.app.commercialPack.commerce.createRecurringRule(f.actor, {
+      name: "Monthly",
+      active: true,
+      customerCompanyId: f.buyer.id,
+      sellerCompanyId: f.seller.id,
+      currencyCode: "USD",
+      ianaTimezone: "Africa/Cairo",
+      startOn: "2026-01-01",
+      nextRunAt: new Date("2026-10-01T00:00:00Z"),
+      issueMode: mode,
+      template: {
+        lines: [
+          { description: "Monthly service", quantity: "1", unitPrice: "10" },
+        ],
+        parties: f.parties,
+      },
+    });
+    const a = f.app.commercialPack.commerce.runRecurring(
+      f.actor,
+      rule.id,
+      "2026-10",
+      new Date("2026-10-01T00:00:00Z"),
+    );
+    const b = f.app.commercialPack.commerce.runRecurring(
+      f.actor,
+      rule.id,
+      "2026-10",
+      new Date("2026-10-01T00:00:00Z"),
+    );
+    expect(b.id).toBe(a.id);
+    expect(
+      f.app.store.state.recurringOccurrences.filter(
+        (x) => x.ruleId === rule.id,
+      ),
+    ).toHaveLength(1);
+    expect(a.semanticStatus).toBe(
+      mode === "AUTO_ISSUE_SEND" ? "ISSUED" : "DRAFT",
+    );
+    return;
+  }
+  const estimate = f.app.commercialPack.commerce.createEstimate(f.actor, {
+    subject: "Quote",
+    stageId: "draft",
+    sellerCompanyId: f.seller.id,
+    customerCompanyId: f.buyer.id,
+    currencyCode: "USD",
+    lines: [
+      { description: "Line", quantity: "2", unitPrice: "50", taxRate: "10" },
+    ],
+  });
+  expect(estimate.revisions[0].grandTotal).toBe("110");
+  if (/record scope/i.test(s)) {
+    const member = await addMember(
+      f.app,
+      f.user,
+      f.workspace.id,
+      "scoped-commercial",
+      [
+        ["estimate.update", "OWN"],
+        ["estimate.send", "OWN"],
+        ["estimate.accept", "OWN"],
+        ["estimate.decline", "OWN"],
+        ["estimate.archive", "OWN"],
+        ["estimate.restore", "OWN"],
+        ["estimate.convert", "OWN"],
+        ["invoice.create", "OWN"],
+        ["invoice.issue", "OWN"],
+        ["payment.create_attempt", "OWN"],
+        ["payment.record", "OWN"],
+        ["payment.allocate", "OWN"],
+        ["payment.reverse_allocation", "OWN"],
+      ],
+    );
+    const scoped = actorOf(f.app, member.user, f.workspace.id);
+    await expectAppError(
+      () =>
+        f.app.commercialPack.commerce.updateEstimate(scoped, estimate.id, {
+          subject: "Forbidden",
+        }),
+      "PERMISSION_DENIED",
+    );
+    await expectAppError(
+      () =>
+        f.app.commercialPack.commerce.sendEstimate(
+          scoped,
+          estimate.id,
+          f.parties,
+        ),
+      "PERMISSION_DENIED",
+    );
+    f.app.commercialPack.commerce.sendEstimate(f.actor, estimate.id, f.parties);
+    await expectAppError(
+      () =>
+        f.app.commercialPack.commerce.acceptEstimate(scoped, estimate.id, 1),
+      "PERMISSION_DENIED",
+    );
+    await expectAppError(
+      () =>
+        f.app.commercialPack.commerce.declineEstimate(scoped, estimate.id, 1),
+      "PERMISSION_DENIED",
+    );
+    await expectAppError(
+      () => f.app.commercialPack.commerce.archiveEstimate(scoped, estimate.id),
+      "PERMISSION_DENIED",
+    );
+    await expectAppError(
+      () => f.app.commercialPack.commerce.restoreEstimate(scoped, estimate.id),
+      "PERMISSION_DENIED",
+    );
+    f.app.commercialPack.commerce.acceptEstimate(f.actor, estimate.id, 1);
+    await expectAppError(
+      () =>
+        f.app.commercialPack.commerce.convertEstimate(scoped, estimate.id, {
+          idempotencyKey: "forbidden",
+        }),
+      "PERMISSION_DENIED",
+    );
+    const invoice = f.app.commercialPack.commerce.convertEstimate(
+      f.actor,
+      estimate.id,
+      { idempotencyKey: "owner" },
+    );
+    await expectAppError(
+      () =>
+        f.app.commercialPack.commerce.issueInvoice(
+          scoped,
+          invoice.id,
+          f.parties,
+        ),
+      "PERMISSION_DENIED",
+    );
+    f.app.commercialPack.commerce.issueInvoice(f.actor, invoice.id, f.parties);
+    await expectAppError(
+      () =>
+        f.app.commercialPack.commerce.createProviderAttempt(scoped, {
+          providerKey: "stripe",
+          invoiceIds: [invoice.id],
+          idempotencyKey: "forbidden",
+        }),
+      "PERMISSION_DENIED",
+    );
+    await expectAppError(
+      () =>
+        f.app.commercialPack.commerce.recordManualPayment(scoped, {
+          customerCompanyId: f.buyer.id,
+          amount: "10",
+          currencyCode: "USD",
+          allocations: [{ invoiceId: invoice.id, amount: "10" }],
+        }),
+      "PERMISSION_DENIED",
+    );
+    const payment = f.app.commercialPack.commerce.recordManualPayment(f.actor, {
+      customerCompanyId: f.buyer.id,
+      amount: "10",
+      currencyCode: "USD",
+    });
+    await expectAppError(
+      () =>
+        f.app.commercialPack.commerce.allocate(
+          scoped,
+          payment.id,
+          invoice.id,
+          "5",
+        ),
+      "PERMISSION_DENIED",
+    );
+    const allocation = f.app.commercialPack.commerce.allocate(
+      f.actor,
+      payment.id,
+      invoice.id,
+      "5",
+    );
+    await expectAppError(
+      () =>
+        f.app.commercialPack.commerce.reverseAllocation(
+          scoped,
+          payment.id,
+          allocation.id,
+          "Forbidden",
+        ),
+      "PERMISSION_DENIED",
+    );
+    return;
+  }
+  f.app.commercialPack.commerce.sendEstimate(f.actor, estimate.id, f.parties);
+  const first = structuredClone(estimate.revisions[0]);
+  f.app.commercialPack.commerce.updateEstimate(f.actor, estimate.id, {
+    lines: [{ description: "Revision", quantity: "1", unitPrice: "80" }],
+  });
+  expect(estimate.revisions[0]).toEqual(first);
+  f.app.commercialPack.commerce.sendEstimate(f.actor, estimate.id, f.parties);
+  f.app.commercialPack.commerce.acceptEstimate(f.actor, estimate.id, 2);
+  const invoice = f.app.commercialPack.commerce.convertEstimate(
+    f.actor,
+    estimate.id,
+    { idempotencyKey: "convert" },
+  );
+  expect(
+    f.app.commercialPack.commerce.convertEstimate(f.actor, estimate.id, {
+      idempotencyKey: "convert",
+    }).id,
+  ).toBe(invoice.id);
+  f.app.commercialPack.commerce.issueInvoice(f.actor, invoice.id, f.parties);
+  if (/overdue/i.test(s)) {
+    invoice.dueDate = "2000-01-01";
+    expect(
+      f.app.commercialPack.commerce.getInvoice(f.actor, invoice.id).isOverdue,
+    ).toBe(true);
+  }
+  if (/payment|allocation|refund|credit|settlement|void/i.test(s)) {
+    const p = f.app.commercialPack.commerce.recordManualPayment(f.actor, {
+      customerCompanyId: f.buyer.id,
+      amount: "100",
+      currencyCode: "USD",
+      allocations: [{ invoiceId: invoice.id, amount: "80" }],
+    });
+    expect(invoice.semanticStatus).toBe("PAID");
+    expect(p.unappliedAmount).toBe("20");
+    if (/refund/i.test(s)) {
+      const r = f.app.commercialPack.commerce.requestRefund(f.actor, p.id, {
+        amount: "10",
+        currencyCode: "USD",
+        idempotencyKey: "r",
+      });
+      expect(r.status).toBe("SUCCEEDED");
+      expect(
+        f.app.commercialPack.commerce.requestRefund(f.actor, p.id, {
+          amount: "10",
+          currencyCode: "USD",
+          idempotencyKey: "r",
+        }).id,
+      ).toBe(r.id);
+    }
+  }
+  if (/provider|callback|redirect/i.test(s)) {
+    const second = f.app.commercialPack.commerce.createInvoice(f.actor, {
+      sellerCompanyId: f.seller.id,
+      customerCompanyId: f.buyer.id,
+      currencyCode: "USD",
+      lines: [{ description: "Online", quantity: "1", unitPrice: "5" }],
+    });
+    f.app.commercialPack.commerce.issueInvoice(f.actor, second.id, f.parties);
+    const a = await f.app.commercialPack.commerce.createProviderAttempt(
+      f.actor,
+      {
+        providerKey: "stripe",
+        invoiceIds: [second.id],
+        idempotencyKey: "a",
+        merchantId: "stripe-test-merchant",
+      },
+    );
+    const raw = JSON.stringify({
+      eventId: "e",
+      eventType: "PAYMENT_SUCCEEDED",
+      transactionId: a.providerTransactionId,
+      status: "SUCCEEDED",
+      amount: "5",
+      currencyCode: "USD",
+      merchantId: "stripe-test-merchant",
+    });
+    const sig = createHmac("sha256", "test-stripe-secret")
+      .update(raw)
+      .digest("hex");
+    expect(
+      (
+        await f.app.commercialPack.commerce.handleProviderWebhook(
+          "stripe",
+          "c",
+          { "x-provider-signature": sig },
+          raw,
+        )
+      ).duplicate,
+    ).toBe(false);
+    expect(
+      (
+        await f.app.commercialPack.commerce.handleProviderWebhook(
+          "stripe",
+          "c",
+          { "x-provider-signature": sig },
+          raw,
+        )
+      ).duplicate,
+    ).toBe(true);
+    expect(f.app.commercialPack.commerce.browserReturn().settled).toBe(false);
+  }
+  if (/cross|tenant|IDOR/i.test(s)) {
+    const t = await otherTenant(f.app);
+    await expectAppError(
+      () =>
+        f.app.commercialPack.commerce.getInvoice(
+          actorOf(f.app, t.user, t.workspace.id),
+          invoice.id,
+        ),
+      "INVOICE_NOT_FOUND",
+    );
+  }
+  expect(f.app.store.state.outboxEvents.length).toBeGreaterThan(0);
+}
 
-export async function runContractScenario(scenario:string){if(/requisite|bank|seller|snapshot|legal|preset|address/i.test(scenario))return requisiteScenario(scenario);if(/form|submission|capture|duplicate|consent|resume|upload/i.test(scenario))return formScenario(scenario);if(/conversation|channel|routing|SLA|customer identity|AI|message/i.test(scenario))return contactScenario(scenario);return commercialScenario(scenario);}
+async function formScenario(s: string) {
+  const f = await fixture();
+  f.app.crm.bootstrapDefaults(f.workspace.id);
+  if (/AUTHENTICATED|RESTRICTED_TOKEN/i.test(s)) {
+    const fields = [
+      {
+        key: "name",
+        label: "Name",
+        type: "TEXT",
+        page: 1,
+        order: 1,
+        required: true,
+      },
+    ];
+    const authenticated = f.app.commercialPack.forms.create(f.actor, {
+      name: "Members",
+      mode: "SUBMISSION_ONLY",
+      accessMode: "AUTHENTICATED",
+      fields,
+      captureRecipe: [],
+    });
+    f.app.commercialPack.forms.publish(f.actor, authenticated.id);
+    await expectAppError(
+      () => f.app.commercialPack.forms.publicSchema(authenticated.publicKey),
+      "FORM_ACCESS_DENIED",
+    );
+    expect(
+      f.app.commercialPack.forms.publicSchema(
+        authenticated.publicKey,
+        f.user.id,
+      ).name,
+    ).toBe("Members");
+    const restricted = f.app.commercialPack.forms.create(f.actor, {
+      name: "Token",
+      mode: "SUBMISSION_ONLY",
+      accessMode: "RESTRICTED_TOKEN",
+      restrictedToken: "secret",
+      restrictedTokenExpiresAt: new Date(Date.now() + 60000),
+      fields,
+      captureRecipe: [],
+    });
+    f.app.commercialPack.forms.publish(f.actor, restricted.id);
+    await expectAppError(
+      () =>
+        f.app.commercialPack.forms.publicSchema(
+          restricted.publicKey,
+          undefined,
+          "wrong",
+        ),
+      "FORM_TOKEN_INVALID_OR_EXPIRED",
+    );
+    expect(
+      f.app.commercialPack.forms.publicSchema(
+        restricted.publicKey,
+        undefined,
+        "secret",
+      ).name,
+    ).toBe("Token");
+    const expired = f.app.commercialPack.forms.create(f.actor, {
+      name: "Expired",
+      mode: "SUBMISSION_ONLY",
+      accessMode: "RESTRICTED_TOKEN",
+      restrictedToken: "old",
+      restrictedTokenExpiresAt: new Date(Date.now() - 1),
+      fields,
+      captureRecipe: [],
+    });
+    await expectAppError(
+      () => f.app.commercialPack.forms.publish(f.actor, expired.id),
+      "FORM_ACCESS_CONFIGURATION_INVALID",
+    );
+    return;
+  }
+  const form = f.app.commercialPack.forms.create(f.actor, {
+    name: "Form",
+    mode: /SUBMISSION_ONLY|form modes/i.test(s)
+      ? "SUBMISSION_ONLY"
+      : "CRM_CAPTURE",
+    accessMode: "PUBLIC",
+    fields: [
+      {
+        key: "firstName",
+        label: "First",
+        type: "TEXT",
+        page: 1,
+        order: 1,
+        required: true,
+      },
+      {
+        key: "lastName",
+        label: "Last",
+        type: "TEXT",
+        page: 1,
+        order: 2,
+        required: true,
+      },
+      {
+        key: "email",
+        label: "Email",
+        type: "EMAIL",
+        page: 1,
+        order: 3,
+        required: true,
+      },
+    ],
+    captureRecipe: /SUBMISSION_ONLY|form modes/i.test(s)
+      ? []
+      : [
+          {
+            key: "contact",
+            entityType: "CONTACT",
+            duplicateStrategy: "MATCH_OR_CREATE",
+            mappings: {
+              firstName: "firstName",
+              lastName: "lastName",
+              email: "email",
+            },
+          },
+        ],
+  });
+  if (/form permissions/i.test(s)) {
+    const member = await addMember(
+      f.app,
+      f.user,
+      f.workspace.id,
+      "scoped-forms",
+      [
+        ["form.read", "OWN"],
+        ["form.update", "OWN"],
+        ["form.publish", "OWN"],
+        ["form.unpublish", "OWN"],
+        ["form.archive", "OWN"],
+        ["form.read_submission", "OWN"],
+      ],
+    );
+    const scoped = actorOf(f.app, member.user, f.workspace.id);
+    expect(f.app.commercialPack.forms.list(scoped)).toHaveLength(0);
+    await expectAppError(
+      () => f.app.commercialPack.forms.get(scoped, form.id),
+      "PERMISSION_DENIED",
+    );
+    await expectAppError(
+      () =>
+        f.app.commercialPack.forms.updateDraft(scoped, form.id, {
+          name: "Forbidden",
+        }),
+      "PERMISSION_DENIED",
+    );
+    await expectAppError(
+      () => f.app.commercialPack.forms.publish(scoped, form.id),
+      "PERMISSION_DENIED",
+    );
+    f.app.commercialPack.forms.publish(f.actor, form.id);
+    const submission = f.app.commercialPack.forms.submit(form.publicKey, {
+      firstName: "A",
+      lastName: "B",
+      email: "a@b.com",
+    });
+    await expectAppError(
+      () =>
+        f.app.commercialPack.forms.getSubmission(
+          scoped,
+          form.id,
+          submission.id,
+        ),
+      "PERMISSION_DENIED",
+    );
+    await expectAppError(
+      () => f.app.commercialPack.forms.unpublish(scoped, form.id),
+      "PERMISSION_DENIED",
+    );
+    await expectAppError(
+      () => f.app.commercialPack.forms.archive(scoped, form.id),
+      "PERMISSION_DENIED",
+    );
+    return;
+  }
+  f.app.commercialPack.forms.publish(f.actor, form.id);
+  const live = f.app.commercialPack.forms.publicSchema(form.publicKey);
+  expect(live.fields).toHaveLength(3);
+  f.app.commercialPack.forms.updateDraft(f.actor, form.id, {
+    fields: [
+      ...live.fields,
+      {
+        key: "phone",
+        label: "Phone",
+        type: "PHONE",
+        page: 1,
+        order: 4,
+        required: false,
+      },
+    ],
+  });
+  expect(
+    f.app.commercialPack.forms.publicSchema(form.publicKey).fields,
+  ).toHaveLength(3);
+  if (/resume/i.test(s)) {
+    const expired = f.app.commercialPack.forms.createDraft(form.publicKey, -1);
+    await expectAppError(
+      () =>
+        f.app.commercialPack.forms.updateDraftSubmission(
+          expired.submission.id,
+          expired.resumeToken,
+          { firstName: "A" },
+        ),
+      "FORM_TOKEN_INVALID_OR_EXPIRED",
+    );
+    const active = f.app.commercialPack.forms.createDraft(form.publicKey);
+    f.app.commercialPack.forms.updateDraftSubmission(
+      active.submission.id,
+      active.resumeToken,
+      { firstName: "A", lastName: "B", email: "a@b.com" },
+    );
+    f.app.commercialPack.forms.finalizeDraft(
+      active.submission.id,
+      active.resumeToken,
+    );
+    await expectAppError(
+      () =>
+        f.app.commercialPack.forms.updateDraftSubmission(
+          active.submission.id,
+          active.resumeToken,
+          {},
+        ),
+      "FORM_TOKEN_INVALID_OR_EXPIRED",
+    );
+    return;
+  }
+  if (/upload/i.test(s)) {
+    const clean = f.app.commercialPack.forms.registerUpload(
+      f.workspace.id,
+      form.id,
+      { mimeType: "text/plain", size: 10, ownerToken: "x", status: "CLEAN" },
+    );
+    const foreign = f.app.commercialPack.forms.registerUpload(
+      f.workspace.id,
+      crypto.randomUUID(),
+      { mimeType: "text/plain", size: 10, ownerToken: "x", status: "CLEAN" },
+    );
+    expect(
+      f.app.commercialPack.forms.submit(
+        form.publicKey,
+        { firstName: "A", lastName: "B", email: "a@b.com" },
+        { fileIds: [clean.id], uploadOwnerToken: "x" },
+      ).fileIds,
+    ).toEqual([clean.id]);
+    await expectAppError(
+      () =>
+        f.app.commercialPack.forms.submit(
+          form.publicKey,
+          { firstName: "A", lastName: "B", email: "a@b.com" },
+          { fileIds: [foreign.id] },
+        ),
+      "CROSS_WORKSPACE_REFERENCE",
+    );
+    return;
+  }
+  if (/consent/i.test(s)) {
+    const consent = f.app.commercialPack.forms.create(f.actor, {
+      name: "Consent",
+      mode: "SUBMISSION_ONLY",
+      accessMode: "PUBLIC",
+      fields: [
+        {
+          key: "consent",
+          label: "Consent",
+          type: "CONSENT",
+          page: 1,
+          order: 1,
+          required: true,
+          agreement: { id: "terms", version: "v1" },
+        },
+      ],
+    });
+    f.app.commercialPack.forms.publish(f.actor, consent.id);
+    const evidence = f.app.commercialPack.forms.submit(consent.publicKey, {
+      consent: true,
+    }).consentEvidence[0];
+    expect(evidence.agreementVersion).toBe("v1");
+    return;
+  }
+  if (/validation|invalid mapping|conditional/i.test(s))
+    await expectAppError(
+      () => f.app.commercialPack.forms.submit(form.publicKey, { unknown: "x" }),
+      "FORM_VALIDATION_FAILED",
+    );
+  else {
+    const sub = f.app.commercialPack.forms.submit(
+      form.publicKey,
+      { firstName: "A", lastName: "B", email: "a@b.com" },
+      { idempotencyKey: "k" },
+    );
+    expect(
+      f.app.commercialPack.forms.submit(
+        form.publicKey,
+        { firstName: "A", lastName: "B", email: "a@b.com" },
+        { idempotencyKey: "k" },
+      ).id,
+    ).toBe(sub.id);
+    if (form.mode === "CRM_CAPTURE") {
+      expect(f.app.store.state.crmContacts).toHaveLength(0);
+      f.app.commercialPack.forms.processSubmission(sub.id);
+      expect(sub.processingStatus).toBe("SUCCEEDED");
+      f.app.commercialPack.forms.processSubmission(sub.id);
+      expect(
+        f.app.store.state.crmFormEntityBindings.filter(
+          (x) => x.submissionId === sub.id,
+        ),
+      ).toHaveLength(1);
+    }
+  }
+  if (/unpublish/i.test(s)) {
+    f.app.commercialPack.forms.unpublish(f.actor, form.id);
+    await expectAppError(
+      () =>
+        f.app.commercialPack.forms.submit(form.publicKey, {
+          firstName: "A",
+          lastName: "B",
+          email: "a@b.com",
+        }),
+      "FORM_NOT_PUBLISHED",
+    );
+  }
+}
 
+async function contactScenario(s: string) {
+  const f = await fixture();
+  const agent = await addMember(f.app, f.user, f.workspace.id, "agent", [
+    ["conversation.read", "WORKSPACE"],
+    ["conversation.respond", "WORKSPACE"],
+    ["conversation.assign", "WORKSPACE"],
+    ["conversation.transfer", "WORKSPACE"],
+    ["conversation.close", "WORKSPACE"],
+    ["conversation.reopen", "WORKSPACE"],
+    ["conversation.ai_assist", "WORKSPACE"],
+  ]);
+  const aa = actorOf(f.app, agent.user, f.workspace.id);
+  const cc = f.app.commercialPack.contactCenter;
+  const channel = cc.createChannel(f.actor, {
+    name: "Support",
+    type: "WEB_CHAT",
+  });
+  const conn = cc.createConnection(f.actor, {
+    channelId: channel.id,
+    providerKey: "webchat",
+    secretReference: "secret",
+  });
+  expect(JSON.stringify(conn)).not.toContain('"secret"');
+  const queue = cc.createQueue(f.actor, {
+    name: "Queue",
+    channelId: channel.id,
+    routingMode: /broadcast/i.test(s) ? "BROADCAST" : "ROUND_ROBIN",
+    maxConcurrentPerAgent: 2,
+    reopenWindowMinutes: 5,
+  });
+  cc.addQueueMember(f.actor, queue.id, { userId: agent.user.id });
+  const raw = JSON.stringify({
+      eventId: "e1",
+      externalIdentity: "x@example.com",
+      externalMessageId: "m1",
+      eventType: "MESSAGE",
+      text: "Hi",
+    }),
+    sig = createHmac("sha256", "test-webchat-secret").update(raw).digest("hex");
+  const inbound: any = await cc.inbound(
+    conn.id,
+    { "x-channel-signature": sig },
+    raw,
+  );
+  const duplicate: any = await cc.inbound(
+    conn.id,
+    { "x-channel-signature": sig },
+    raw,
+  );
+  expect(duplicate.duplicate).toBe(true);
+  const c = inbound.conversation!;
+  if (queue.routingMode === "BROADCAST") cc.claim(aa, c.id);
+  expect(c.currentAssigneeUserId).toBe(agent.user.id);
+  const msg = await cc.respond(aa, c.id, {
+    text: "Reply",
+    clientMessageId: "client",
+  });
+  expect(
+    (await cc.respond(aa, c.id, { text: "Reply", clientMessageId: "client" }))
+      .id,
+  ).toBe(msg.id);
+  if (/transfer/i.test(s)) {
+    cc.addQueueMember(f.actor, queue.id, { userId: f.user.id, order: 2 });
+    const expectedVersion = c.version;
+    cc.transfer(aa, c.id, {
+      toUserId: f.user.id,
+      reason: "Escalate",
+      expectedVersion,
+    });
+    await expectAppError(
+      () =>
+        cc.transfer(aa, c.id, {
+          toUserId: f.user.id,
+          reason: "Stale retry",
+          expectedVersion,
+        }),
+      "CONCURRENCY_CONFLICT",
+    );
+    expect(f.app.store.state.conversationTransfers).toHaveLength(1);
+    expect(f.app.store.state.conversationMessages.length).toBe(2);
+  }
+  if (/SLA|business time/i.test(s)) {
+    expect(
+      cc
+        .businessDue(new Date("2026-09-25T16:30:00Z"), 120, {
+          timezone: "UTC",
+          workingDays: [1, 2, 3, 4, 5],
+          startHour: 9,
+          endHour: 17,
+          holidays: [],
+        })
+        .toISOString(),
+    ).toBe("2026-09-28T10:30:00.000Z");
+  }
+  if (/cross|IDOR|unauthorized/i.test(s)) {
+    const intruder = await addMember(
+      f.app,
+      f.user,
+      f.workspace.id,
+      "contact-intruder",
+      [
+        ["conversation.read", "WORKSPACE"],
+        ["conversation.respond", "WORKSPACE"],
+        ["conversation.assign", "WORKSPACE"],
+        ["conversation.transfer", "WORKSPACE"],
+        ["conversation.close", "WORKSPACE"],
+        ["conversation.reopen", "WORKSPACE"],
+        ["conversation.bind_crm", "WORKSPACE"],
+      ],
+    );
+    const unauthorized = actorOf(f.app, intruder.user, f.workspace.id);
+    await expectAppError(() => cc.get(unauthorized, c.id), "PERMISSION_DENIED");
+    await expectAppError(
+      () =>
+        cc.respond(unauthorized, c.id, {
+          text: "Forbidden",
+          clientMessageId: "forbidden",
+        }),
+      "PERMISSION_DENIED",
+    );
+    await expectAppError(
+      () => cc.assign(unauthorized, c.id, intruder.user.id),
+      "PERMISSION_DENIED",
+    );
+    await expectAppError(
+      () => cc.transfer(unauthorized, c.id, { toUserId: intruder.user.id }),
+      "PERMISSION_DENIED",
+    );
+    await expectAppError(() => cc.close(unauthorized, c.id), "PERMISSION_DENIED");
+    await expectAppError(() => cc.reopen(unauthorized, c.id), "PERMISSION_DENIED");
+    await expectAppError(
+      () => cc.bindCrm(unauthorized, c.id, {}),
+      "PERMISSION_DENIED",
+    );
+    const t = await otherTenant(f.app);
+    await expectAppError(
+      () => cc.get(actorOf(f.app, t.user, t.workspace.id), c.id),
+      "CONVERSATION_NOT_FOUND",
+    );
+  }
+}
 
+export async function runContractScenario(scenario: string) {
+  if (/requisite|bank|seller|snapshot|legal|preset|address/i.test(scenario))
+    return requisiteScenario(scenario);
+  if (/form|submission|capture|duplicate|consent|resume|upload/i.test(scenario))
+    return formScenario(scenario);
+  if (
+    /conversation|channel|routing|SLA|customer identity|AI|message/i.test(
+      scenario,
+    )
+  )
+    return contactScenario(scenario);
+  return commercialScenario(scenario);
+}

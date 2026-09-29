@@ -1,73 +1,1027 @@
-import type { ActorContext } from '../access-service';
-import { AppError, badRequest, conflict, notFound } from '../errors';
-import { isValidCurrency } from '../catalog/money';
-import type { InMemoryStore } from '../store';
-import type { BankAccount, CommercialRole, Requisite, RequisiteAddress, RequisitePreset, SellerCompanyBinding } from './types';
-import { CommercialSupport } from './support';
+import type { ActorContext } from "../access-service";
+import { AppError, badRequest, conflict, notFound } from "../errors";
+import { isValidCurrency } from "../catalog/money";
+import type { InMemoryStore } from "../store";
+import type {
+  BankAccount,
+  CommercialRole,
+  Requisite,
+  RequisiteAddress,
+  RequisitePreset,
+  SellerCompanyBinding,
+} from "./types";
+import { CommercialSupport } from "./support";
 
-type Access = { requireScope(actor: ActorContext, key: string): unknown; scopeFor(actor:ActorContext,key:string):unknown; crmRecord(workspaceId:string,type:string,id:string): unknown };
+type Access = {
+  requireScope(actor: ActorContext, key: string): unknown;
+  scopeFor(actor: ActorContext, key: string): unknown;
+  crmRecord(workspaceId: string, type: string, id: string): unknown;
+};
 
 export class RequisiteService {
   readonly support: CommercialSupport;
-  constructor(private readonly store: InMemoryStore, private readonly access: Access) { this.support = new CommercialSupport(store, access); }
+  constructor(
+    private readonly store: InMemoryStore,
+    private readonly access: Access,
+  ) {
+    this.support = new CommercialSupport(store, access);
+  }
 
   createPreset(actor: ActorContext, input: Partial<RequisitePreset>) {
-    this.support.require(actor, 'requisite_preset.manage');
-    const preset: RequisitePreset = { id:this.store.id(), workspaceId:actor.workspaceId, countryCode:this.support.text(input.countryCode,'countryCode',2).toUpperCase(), entityTypeCode:this.support.text(input.entityTypeCode,'entityTypeCode',40).toUpperCase(), name:this.support.text(input.name,'name'), active:true, version:1, fields:Array.isArray(input.fields) ? structuredClone(input.fields) : [] };
-    this.store.state.requisitePresets.push(preset); this.support.audit(actor,'REQUISITE_PRESET.CREATED','RequisitePreset',preset.id,null,preset); return preset;
+    this.support.require(actor, "requisite_preset.manage");
+    const fields = Array.isArray(input.fields)
+      ? structuredClone(input.fields)
+      : [];
+    this.validatePresetDefinition(fields);
+    const preset: RequisitePreset = {
+      id: this.store.id(),
+      workspaceId: actor.workspaceId,
+      countryCode: this.support
+        .text(input.countryCode, "countryCode", 2)
+        .toUpperCase(),
+      entityTypeCode: this.support
+        .text(input.entityTypeCode, "entityTypeCode", 40)
+        .toUpperCase(),
+      name: this.support.text(input.name, "name"),
+      active: true,
+      version: 1,
+      fields,
+    };
+    this.store.state.requisitePresets.push(preset);
+    this.support.audit(
+      actor,
+      "REQUISITE_PRESET.CREATED",
+      "RequisitePreset",
+      preset.id,
+      null,
+      preset,
+    );
+    return preset;
   }
-  listPresets(actor:ActorContext){this.support.require(actor,'requisite.read');return this.store.state.requisitePresets.filter(x=>x.active&&(x.workspaceId===null||x.workspaceId===actor.workspaceId));}
-  updatePreset(actor:ActorContext,id:string,input:Partial<Pick<RequisitePreset,'name'|'active'|'fields'>>){this.support.require(actor,'requisite_preset.manage');const preset=this.store.state.requisitePresets.find(x=>x.id===id&&x.workspaceId===actor.workspaceId);if(!preset)throw new AppError('REQUISITE_PRESET_NOT_FOUND','Workspace preset was not found.',404);if(input.name!==undefined)preset.name=this.support.text(input.name,'name');if(input.active!==undefined)preset.active=input.active;if(input.fields!==undefined)preset.fields=structuredClone(input.fields);preset.version++;this.support.audit(actor,'REQUISITE_PRESET.UPDATED','RequisitePreset',preset.id,null,{version:preset.version,active:preset.active});return preset;}
+  listPresets(actor: ActorContext) {
+    this.support.require(actor, "requisite.read");
+    return this.store.state.requisitePresets.filter(
+      (x) =>
+        x.active &&
+        (x.workspaceId === null || x.workspaceId === actor.workspaceId),
+    );
+  }
+  updatePreset(
+    actor: ActorContext,
+    id: string,
+    input: Partial<Pick<RequisitePreset, "name" | "active" | "fields">>,
+  ) {
+    this.support.require(actor, "requisite_preset.manage");
+    const preset = this.store.state.requisitePresets.find(
+      (x) => x.id === id && x.workspaceId === actor.workspaceId,
+    );
+    if (!preset)
+      throw new AppError(
+        "REQUISITE_PRESET_NOT_FOUND",
+        "Workspace preset was not found.",
+        404,
+      );
+    if (input.name !== undefined)
+      preset.name = this.support.text(input.name, "name");
+    if (input.active !== undefined) preset.active = input.active;
+    if (input.fields !== undefined) {
+      this.validatePresetDefinition(input.fields);
+      for (const field of input.fields.filter((x) => x.required))
+        if (
+          this.store.state.requisites.some(
+            (x) =>
+              x.workspaceId === actor.workspaceId &&
+              x.presetId === preset.id &&
+              x.active &&
+              (x.values[field.code] === undefined ||
+                x.values[field.code] === null ||
+                x.values[field.code] === ""),
+          )
+        )
+          throw conflict(
+            "REQUISITE_PRESET_MIGRATION_REQUIRED",
+            `Existing Requisites require a backfill for ${field.code}.`,
+          );
+      preset.fields = structuredClone(input.fields);
+    }
+    preset.version++;
+    this.support.audit(
+      actor,
+      "REQUISITE_PRESET.UPDATED",
+      "RequisitePreset",
+      preset.id,
+      null,
+      { version: preset.version, active: preset.active },
+    );
+    return preset;
+  }
 
-  create(actor: ActorContext, ownerType:'CONTACT'|'COMPANY', ownerId:string, input: { presetId:string; name:string; values?:Record<string,unknown>; isDefault?:boolean }) {
-    this.support.require(actor, 'requisite.create');
-    if (!this.access.crmRecord(actor.workspaceId, ownerType, ownerId)) throw new AppError('CROSS_WORKSPACE_REFERENCE','Owner was not found in this workspace.',404);
+  create(
+    actor: ActorContext,
+    ownerType: "CONTACT" | "COMPANY",
+    ownerId: string,
+    input: {
+      presetId: string;
+      name: string;
+      values?: Record<string, unknown>;
+      isDefault?: boolean;
+    },
+  ) {
+    const owner = this.access.crmRecord(actor.workspaceId, ownerType, ownerId) as
+      | { responsibleUserId?: string | null }
+      | undefined;
+    if (!owner)
+      throw new AppError(
+        "CROSS_WORKSPACE_REFERENCE",
+        "Owner was not found in this workspace.",
+        404,
+      );
+    this.support.requireRecord(
+      actor,
+      "requisite.create",
+      owner.responsibleUserId,
+    );
     const preset = this.preset(actor.workspaceId, input.presetId);
-    const values = structuredClone(input.values ?? {}); this.validatePreset(preset, values);
-    const now = new Date(); const makeDefault = input.isDefault === true || !this.store.state.requisites.some(r=>r.workspaceId===actor.workspaceId&&r.ownerType===ownerType&&r.ownerId===ownerId&&r.active&&r.isDefault);
-    if (makeDefault) this.clearRequisiteDefaults(actor.workspaceId, ownerType, ownerId);
-    const row: Requisite = { id:this.store.id(), workspaceId:actor.workspaceId, ownerType, ownerId, presetId:preset.id, name:this.support.text(input.name,'name'), countryCode:preset.countryCode, entityTypeCode:preset.entityTypeCode, values, isDefault:makeDefault, active:true, referenced:false, createdAt:now, updatedAt:now, version:1 };
-    this.store.state.requisites.push(row); this.support.audit(actor,'REQUISITE.CREATED','Requisite',row.id,null,{...row,values}); this.support.event(actor,'REQUISITE_CREATED','REQUISITE',row.id,{ownerType,ownerId}); return row;
+    const values = structuredClone(input.values ?? {});
+    this.validatePreset(preset, values);
+    const now = new Date();
+    const makeDefault =
+      input.isDefault === true ||
+      !this.store.state.requisites.some(
+        (r) =>
+          r.workspaceId === actor.workspaceId &&
+          r.ownerType === ownerType &&
+          r.ownerId === ownerId &&
+          r.active &&
+          r.isDefault,
+      );
+    if (makeDefault)
+      this.clearRequisiteDefaults(actor.workspaceId, ownerType, ownerId);
+    const row: Requisite = {
+      id: this.store.id(),
+      workspaceId: actor.workspaceId,
+      ownerType,
+      ownerId,
+      presetId: preset.id,
+      name: this.support.text(input.name, "name"),
+      countryCode: preset.countryCode,
+      entityTypeCode: preset.entityTypeCode,
+      values,
+      isDefault: makeDefault,
+      active: true,
+      referenced: false,
+      createdAt: now,
+      updatedAt: now,
+      version: 1,
+    };
+    this.store.state.requisites.push(row);
+    this.support.audit(actor, "REQUISITE.CREATED", "Requisite", row.id, null, {
+      ...row,
+      values,
+    });
+    this.support.event(actor, "REQUISITE_CREATED", "REQUISITE", row.id, {
+      ownerType,
+      ownerId,
+    });
+    return row;
   }
 
-  list(actor:ActorContext) { return this.store.state.requisites.filter(r=>r.workspaceId===actor.workspaceId&&this.support.canReadRecord(actor,'requisite.read',this.ownerResponsible(r))); }
-  get(actor:ActorContext,id:string) { const r=this.find(actor.workspaceId,id); if(!r) throw new AppError('REQUISITE_NOT_FOUND','Requisite was not found.',404); this.support.requireRecord(actor,'requisite.read',this.ownerResponsible(r)); return r; }
-  update(actor:ActorContext,id:string,input:{name?:string;values?:Record<string,unknown>}) {
-    this.support.require(actor,'requisite.update'); const r=this.getInternal(actor.workspaceId,id); const before=structuredClone(r);
-    if(input.name!==undefined) r.name=this.support.text(input.name,'name'); if(input.values!==undefined){ const preset=this.preset(actor.workspaceId,r.presetId); this.validatePreset(preset,input.values); r.values=structuredClone(input.values); }
-    r.version++; r.updatedAt=new Date(); this.support.audit(actor,'REQUISITE.UPDATED','Requisite',id,before,r); this.support.event(actor,'REQUISITE_UPDATED','REQUISITE',id,{version:r.version}); return r;
+  list(actor: ActorContext) {
+    return this.store.state.requisites.filter(
+      (r) =>
+        r.workspaceId === actor.workspaceId &&
+        this.support.canReadRecord(
+          actor,
+          "requisite.read",
+          this.ownerResponsible(r),
+        ),
+    );
   }
-  setDefault(actor:ActorContext,id:string){ this.support.require(actor,'requisite.set_default'); const r=this.getInternal(actor.workspaceId,id); if(!r.active) throw conflict('REQUISITE_INACTIVE','Archived requisite cannot be default.'); this.clearRequisiteDefaults(actor.workspaceId,r.ownerType,r.ownerId); r.isDefault=true; r.updatedAt=new Date(); this.support.audit(actor,'REQUISITE.DEFAULT_CHANGED','Requisite',id,null,{isDefault:true}); this.support.event(actor,'REQUISITE_DEFAULT_CHANGED','REQUISITE',id); return r; }
-  archive(actor:ActorContext,id:string){ this.support.require(actor,'requisite.archive'); const r=this.getInternal(actor.workspaceId,id); r.active=false;r.isDefault=false;r.updatedAt=new Date();this.support.audit(actor,'REQUISITE.ARCHIVED','Requisite',id,null,{active:false,referenced:r.referenced});this.support.event(actor,'REQUISITE_ARCHIVED','REQUISITE',id);return r; }
-  restore(actor:ActorContext,id:string){ this.support.require(actor,'requisite.restore');const r=this.getInternal(actor.workspaceId,id);r.active=true;r.updatedAt=new Date();this.support.audit(actor,'REQUISITE.RESTORED','Requisite',id,null,{active:true});this.support.event(actor,'REQUISITE_RESTORED','REQUISITE',id);return r; }
+  get(actor: ActorContext, id: string) {
+    const r = this.find(actor.workspaceId, id);
+    if (!r)
+      throw new AppError(
+        "REQUISITE_NOT_FOUND",
+        "Requisite was not found.",
+        404,
+      );
+    this.support.requireRecord(
+      actor,
+      "requisite.read",
+      this.ownerResponsible(r),
+    );
+    return r;
+  }
+  update(
+    actor: ActorContext,
+    id: string,
+    input: { name?: string; values?: Record<string, unknown> },
+  ) {
+    const r = this.getInternal(actor.workspaceId, id);
+    this.support.requireRecord(
+      actor,
+      "requisite.update",
+      this.ownerResponsible(r),
+    );
+    const before = structuredClone(r);
+    if (input.name !== undefined)
+      r.name = this.support.text(input.name, "name");
+    if (input.values !== undefined) {
+      const preset = this.preset(actor.workspaceId, r.presetId);
+      this.validatePreset(preset, input.values);
+      r.values = structuredClone(input.values);
+    }
+    r.version++;
+    r.updatedAt = new Date();
+    this.support.audit(actor, "REQUISITE.UPDATED", "Requisite", id, before, r);
+    this.support.event(actor, "REQUISITE_UPDATED", "REQUISITE", id, {
+      version: r.version,
+    });
+    return r;
+  }
+  setDefault(actor: ActorContext, id: string) {
+    const r = this.getInternal(actor.workspaceId, id);
+    this.support.requireRecord(
+      actor,
+      "requisite.set_default",
+      this.ownerResponsible(r),
+    );
+    if (!r.active)
+      throw conflict(
+        "REQUISITE_INACTIVE",
+        "Archived requisite cannot be default.",
+      );
+    this.clearRequisiteDefaults(actor.workspaceId, r.ownerType, r.ownerId);
+    r.isDefault = true;
+    r.updatedAt = new Date();
+    this.support.audit(
+      actor,
+      "REQUISITE.DEFAULT_CHANGED",
+      "Requisite",
+      id,
+      null,
+      { isDefault: true },
+    );
+    this.support.event(actor, "REQUISITE_DEFAULT_CHANGED", "REQUISITE", id);
+    return r;
+  }
+  archive(actor: ActorContext, id: string) {
+    const r = this.getInternal(actor.workspaceId, id);
+    this.support.requireRecord(
+      actor,
+      "requisite.archive",
+      this.ownerResponsible(r),
+    );
+    r.active = false;
+    r.isDefault = false;
+    r.updatedAt = new Date();
+    this.support.audit(actor, "REQUISITE.ARCHIVED", "Requisite", id, null, {
+      active: false,
+      referenced: r.referenced,
+    });
+    this.support.event(actor, "REQUISITE_ARCHIVED", "REQUISITE", id);
+    return r;
+  }
+  restore(actor: ActorContext, id: string) {
+    const r = this.getInternal(actor.workspaceId, id);
+    this.support.requireRecord(
+      actor,
+      "requisite.restore",
+      this.ownerResponsible(r),
+    );
+    r.active = true;
+    r.updatedAt = new Date();
+    this.support.audit(actor, "REQUISITE.RESTORED", "Requisite", id, null, {
+      active: true,
+    });
+    this.support.event(actor, "REQUISITE_RESTORED", "REQUISITE", id);
+    return r;
+  }
 
-  addAddress(actor:ActorContext,requisiteId:string,input:Omit<RequisiteAddress,'id'|'workspaceId'|'requisiteId'|'createdAt'|'updatedAt'|'active'>){ this.support.require(actor,'requisite.update'); const r=this.getInternal(actor.workspaceId,requisiteId); if(!r.active) throw conflict('REQUISITE_INACTIVE','Requisite is archived.'); const now=new Date(); if(input.isDefaultForType) this.store.state.requisiteAddresses.filter(a=>a.workspaceId===actor.workspaceId&&a.requisiteId===r.id&&a.type===input.type).forEach(a=>a.isDefaultForType=false); const row:RequisiteAddress={...input,id:this.store.id(),workspaceId:actor.workspaceId,requisiteId:r.id,active:true,createdAt:now,updatedAt:now}; this.store.state.requisiteAddresses.push(row);this.support.audit(actor,'REQUISITE_ADDRESS.CREATED','RequisiteAddress',row.id,null,row);return row; }
-  setAddressDefault(actor:ActorContext,requisiteId:string,addressId:string){this.support.require(actor,'requisite.update');this.getInternal(actor.workspaceId,requisiteId);const a=this.store.state.requisiteAddresses.find(x=>x.id===addressId&&x.requisiteId===requisiteId&&x.workspaceId===actor.workspaceId);if(!a)throw new AppError('CROSS_WORKSPACE_REFERENCE','Address was not found for requisite.',404);this.store.state.requisiteAddresses.filter(x=>x.requisiteId===requisiteId&&x.type===a.type).forEach(x=>x.isDefaultForType=false);a.isDefaultForType=true;this.support.audit(actor,'REQUISITE_ADDRESS.DEFAULT_CHANGED','RequisiteAddress',a.id,null,{isDefaultForType:true});return a;}
-  listAddresses(actor:ActorContext,requisiteId:string){this.support.require(actor,'requisite.read');this.getInternal(actor.workspaceId,requisiteId);return this.store.state.requisiteAddresses.filter(x=>x.workspaceId===actor.workspaceId&&x.requisiteId===requisiteId);}
-  updateAddress(actor:ActorContext,requisiteId:string,addressId:string,input:Partial<Pick<RequisiteAddress,'type'|'countryCode'|'region'|'city'|'postalCode'|'line1'|'line2'>>){this.support.require(actor,'requisite.update');this.getInternal(actor.workspaceId,requisiteId);const a=this.store.state.requisiteAddresses.find(x=>x.id===addressId&&x.requisiteId===requisiteId&&x.workspaceId===actor.workspaceId);if(!a)throw new AppError('CROSS_WORKSPACE_REFERENCE','Address was not found for requisite.',404);const before=structuredClone(a);Object.assign(a,structuredClone(input),{updatedAt:new Date()});this.support.audit(actor,'REQUISITE_ADDRESS.UPDATED','RequisiteAddress',a.id,before,a);return a;}
-  archiveAddress(actor:ActorContext,requisiteId:string,addressId:string){this.support.require(actor,'requisite.update');const a=this.updateAddress(actor,requisiteId,addressId,{});a.active=false;a.isDefaultForType=false;this.support.audit(actor,'REQUISITE_ADDRESS.ARCHIVED','RequisiteAddress',a.id,null,{active:false});return a;}
+  addAddress(
+    actor: ActorContext,
+    requisiteId: string,
+    input: Omit<
+      RequisiteAddress,
+      | "id"
+      | "workspaceId"
+      | "requisiteId"
+      | "createdAt"
+      | "updatedAt"
+      | "active"
+    >,
+  ) {
+    const r = this.getInternal(actor.workspaceId, requisiteId);
+    this.support.requireRecord(
+      actor,
+      "requisite.update",
+      this.ownerResponsible(r),
+    );
+    if (!r.active)
+      throw conflict("REQUISITE_INACTIVE", "Requisite is archived.");
+    const now = new Date();
+    if (input.isDefaultForType)
+      this.store.state.requisiteAddresses
+        .filter(
+          (a) =>
+            a.workspaceId === actor.workspaceId &&
+            a.requisiteId === r.id &&
+            a.type === input.type,
+        )
+        .forEach((a) => (a.isDefaultForType = false));
+    const row: RequisiteAddress = {
+      ...input,
+      id: this.store.id(),
+      workspaceId: actor.workspaceId,
+      requisiteId: r.id,
+      active: true,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.store.state.requisiteAddresses.push(row);
+    this.support.audit(
+      actor,
+      "REQUISITE_ADDRESS.CREATED",
+      "RequisiteAddress",
+      row.id,
+      null,
+      row,
+    );
+    return row;
+  }
+  setAddressDefault(
+    actor: ActorContext,
+    requisiteId: string,
+    addressId: string,
+  ) {
+    const r = this.getInternal(actor.workspaceId, requisiteId);
+    this.support.requireRecord(
+      actor,
+      "requisite.update",
+      this.ownerResponsible(r),
+    );
+    const a = this.store.state.requisiteAddresses.find(
+      (x) =>
+        x.id === addressId &&
+        x.requisiteId === requisiteId &&
+        x.workspaceId === actor.workspaceId,
+    );
+    if (!a)
+      throw new AppError(
+        "CROSS_WORKSPACE_REFERENCE",
+        "Address was not found for requisite.",
+        404,
+      );
+    this.store.state.requisiteAddresses
+      .filter((x) => x.requisiteId === requisiteId && x.type === a.type)
+      .forEach((x) => (x.isDefaultForType = false));
+    a.isDefaultForType = true;
+    this.support.audit(
+      actor,
+      "REQUISITE_ADDRESS.DEFAULT_CHANGED",
+      "RequisiteAddress",
+      a.id,
+      null,
+      { isDefaultForType: true },
+    );
+    return a;
+  }
+  listAddresses(actor: ActorContext, requisiteId: string) {
+    const r = this.getInternal(actor.workspaceId, requisiteId);
+    this.support.requireRecord(
+      actor,
+      "requisite.read",
+      this.ownerResponsible(r),
+    );
+    return this.store.state.requisiteAddresses.filter(
+      (x) =>
+        x.workspaceId === actor.workspaceId && x.requisiteId === requisiteId,
+    );
+  }
+  updateAddress(
+    actor: ActorContext,
+    requisiteId: string,
+    addressId: string,
+    input: Partial<
+      Pick<
+        RequisiteAddress,
+        | "type"
+        | "countryCode"
+        | "region"
+        | "city"
+        | "postalCode"
+        | "line1"
+        | "line2"
+      >
+    >,
+  ) {
+    const r = this.getInternal(actor.workspaceId, requisiteId);
+    this.support.requireRecord(
+      actor,
+      "requisite.update",
+      this.ownerResponsible(r),
+    );
+    const a = this.store.state.requisiteAddresses.find(
+      (x) =>
+        x.id === addressId &&
+        x.requisiteId === requisiteId &&
+        x.workspaceId === actor.workspaceId,
+    );
+    if (!a)
+      throw new AppError(
+        "CROSS_WORKSPACE_REFERENCE",
+        "Address was not found for requisite.",
+        404,
+      );
+    const before = structuredClone(a);
+    Object.assign(a, structuredClone(input), { updatedAt: new Date() });
+    this.support.audit(
+      actor,
+      "REQUISITE_ADDRESS.UPDATED",
+      "RequisiteAddress",
+      a.id,
+      before,
+      a,
+    );
+    return a;
+  }
+  archiveAddress(actor: ActorContext, requisiteId: string, addressId: string) {
+    const a = this.updateAddress(actor, requisiteId, addressId, {});
+    a.active = false;
+    a.isDefaultForType = false;
+    this.support.audit(
+      actor,
+      "REQUISITE_ADDRESS.ARCHIVED",
+      "RequisiteAddress",
+      a.id,
+      null,
+      { active: false },
+    );
+    return a;
+  }
 
-  addBank(actor:ActorContext,requisiteId:string,input:{name:string;countryCode:string;currencyCode?:string|null;bankName?:string|null;accountHolderName?:string|null;accountNumber:string;swiftBic?:string|null;routingData?:Record<string,string>;isDefault?:boolean}){this.support.require(actor,'bank_data.create');const r=this.getInternal(actor.workspaceId,requisiteId);if(!r.active)throw conflict('REQUISITE_INACTIVE','Requisite is archived.');if(input.currencyCode&&!isValidCurrency(input.currencyCode.toUpperCase()))throw badRequest('BANK_DATA_INVALID','currencyCode is invalid.');if(!/^[A-Za-z0-9 -]{4,64}$/.test(input.accountNumber))throw badRequest('BANK_DATA_INVALID','accountNumber is invalid.');const makeDefault=input.isDefault===true||!this.store.state.bankAccounts.some(b=>b.requisiteId===r.id&&b.active&&b.isDefault);if(makeDefault)this.clearBankDefaults(r.id,input.currencyCode??null);const now=new Date();const row:BankAccount={id:this.store.id(),workspaceId:actor.workspaceId,requisiteId:r.id,name:this.support.text(input.name,'name'),countryCode:this.support.text(input.countryCode,'countryCode',2).toUpperCase(),currencyCode:input.currencyCode?.toUpperCase()??null,bankName:input.bankName??null,accountHolderName:input.accountHolderName??null,accountNumber:input.accountNumber,swiftBic:input.swiftBic??null,routingData:structuredClone(input.routingData??{}),isDefault:makeDefault,active:true,createdAt:now,updatedAt:now};this.store.state.bankAccounts.push(row);this.support.audit(actor,'BANK_DATA.CREATED','BankAccount',row.id,null,{...row,accountNumber:this.mask(row.accountNumber)});return this.bankView(actor,row);}
-  listBanks(actor:ActorContext,requisiteId:string){const r=this.getInternal(actor.workspaceId,requisiteId);this.support.requireRecord(actor,'bank_data.view',this.ownerResponsible(r));this.support.audit(actor,'BANK_DATA.VIEWED','Requisite',requisiteId,null,null,{count:this.store.state.bankAccounts.filter(b=>b.requisiteId===requisiteId).length});return this.store.state.bankAccounts.filter(b=>b.workspaceId===actor.workspaceId&&b.requisiteId===requisiteId);}
-  updateBank(actor:ActorContext,requisiteId:string,bankId:string,input:Partial<Pick<BankAccount,'name'|'bankName'|'accountHolderName'|'accountNumber'|'swiftBic'|'routingData'>>){this.support.require(actor,'bank_data.update');const b=this.bank(actor.workspaceId,requisiteId,bankId);const before={...b,accountNumber:this.mask(b.accountNumber)};Object.assign(b,structuredClone(input),{updatedAt:new Date()});this.support.audit(actor,'BANK_DATA.UPDATED','BankAccount',b.id,before,{...b,accountNumber:this.mask(b.accountNumber)});return b;}
-  setBankDefault(actor:ActorContext,requisiteId:string,bankId:string){this.support.require(actor,'bank_data.set_default');const b=this.bank(actor.workspaceId,requisiteId,bankId);if(!b.active)throw conflict('BANK_DATA_REFERENCED','Archived bank cannot be default.');this.clearBankDefaults(requisiteId,b.currencyCode??null);b.isDefault=true;b.updatedAt=new Date();this.support.audit(actor,'BANK_DATA.DEFAULT_CHANGED','BankAccount',b.id,null,{isDefault:true});return b;}
-  archiveBank(actor:ActorContext,requisiteId:string,bankId:string){this.support.require(actor,'bank_data.archive');const b=this.bank(actor.workspaceId,requisiteId,bankId);b.active=false;b.isDefault=false;b.updatedAt=new Date();this.support.audit(actor,'BANK_DATA.ARCHIVED','BankAccount',b.id,null,{active:false});return b;}
-  restoreBank(actor:ActorContext,requisiteId:string,bankId:string){this.support.require(actor,'bank_data.restore');const b=this.bank(actor.workspaceId,requisiteId,bankId);b.active=true;b.updatedAt=new Date();this.support.audit(actor,'BANK_DATA.RESTORED','BankAccount',b.id,null,{active:true});return this.bankView(actor,b);}
-  getBank(actor:ActorContext,requisiteId:string,bankId:string){this.support.require(actor,'bank_data.view');return this.bank(actor.workspaceId,requisiteId,bankId);}
+  addBank(
+    actor: ActorContext,
+    requisiteId: string,
+    input: {
+      name: string;
+      countryCode: string;
+      currencyCode?: string | null;
+      bankName?: string | null;
+      accountHolderName?: string | null;
+      accountNumber: string;
+      swiftBic?: string | null;
+      routingData?: Record<string, string>;
+      isDefault?: boolean;
+    },
+  ) {
+    const r = this.getInternal(actor.workspaceId, requisiteId);
+    this.support.requireRecord(
+      actor,
+      "bank_data.create",
+      this.ownerResponsible(r),
+    );
+    if (!r.active)
+      throw conflict("REQUISITE_INACTIVE", "Requisite is archived.");
+    if (
+      input.currencyCode &&
+      !isValidCurrency(input.currencyCode.toUpperCase())
+    )
+      throw badRequest("BANK_DATA_INVALID", "currencyCode is invalid.");
+    if (!/^[A-Za-z0-9 -]{4,64}$/.test(input.accountNumber))
+      throw badRequest("BANK_DATA_INVALID", "accountNumber is invalid.");
+    const makeDefault =
+      input.isDefault === true ||
+      !this.store.state.bankAccounts.some(
+        (b) => b.requisiteId === r.id && b.active && b.isDefault,
+      );
+    if (makeDefault) this.clearBankDefaults(r.id, input.currencyCode ?? null);
+    const now = new Date();
+    const row: BankAccount = {
+      id: this.store.id(),
+      workspaceId: actor.workspaceId,
+      requisiteId: r.id,
+      name: this.support.text(input.name, "name"),
+      countryCode: this.support
+        .text(input.countryCode, "countryCode", 2)
+        .toUpperCase(),
+      currencyCode: input.currencyCode?.toUpperCase() ?? null,
+      bankName: input.bankName ?? null,
+      accountHolderName: input.accountHolderName ?? null,
+      accountNumber: input.accountNumber,
+      swiftBic: input.swiftBic ?? null,
+      routingData: structuredClone(input.routingData ?? {}),
+      isDefault: makeDefault,
+      active: true,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.store.state.bankAccounts.push(row);
+    this.support.audit(
+      actor,
+      "BANK_DATA.CREATED",
+      "BankAccount",
+      row.id,
+      null,
+      this.auditBank(row),
+    );
+    return this.bankView(actor, row);
+  }
+  listBanks(actor: ActorContext, requisiteId: string) {
+    const r = this.getInternal(actor.workspaceId, requisiteId);
+    this.support.requireRecord(
+      actor,
+      "bank_data.view",
+      this.ownerResponsible(r),
+    );
+    this.support.audit(
+      actor,
+      "BANK_DATA.VIEWED",
+      "Requisite",
+      requisiteId,
+      null,
+      null,
+      {
+        count: this.store.state.bankAccounts.filter(
+          (b) => b.requisiteId === requisiteId,
+        ).length,
+      },
+    );
+    return this.store.state.bankAccounts.filter(
+      (b) =>
+        b.workspaceId === actor.workspaceId && b.requisiteId === requisiteId,
+    );
+  }
+  updateBank(
+    actor: ActorContext,
+    requisiteId: string,
+    bankId: string,
+    input: Partial<
+      Pick<
+        BankAccount,
+        | "name"
+        | "bankName"
+        | "accountHolderName"
+        | "accountNumber"
+        | "swiftBic"
+        | "routingData"
+      >
+    >,
+  ) {
+    const r = this.getInternal(actor.workspaceId, requisiteId);
+    this.support.requireRecord(
+      actor,
+      "bank_data.update",
+      this.ownerResponsible(r),
+    );
+    if (
+      input.accountNumber !== undefined &&
+      !/^[A-Za-z0-9 -]{4,64}$/.test(input.accountNumber)
+    )
+      throw badRequest("BANK_DATA_INVALID", "accountNumber is invalid.");
+    if (
+      input.swiftBic !== undefined &&
+      input.swiftBic !== null &&
+      !/^[A-Za-z0-9]{8}([A-Za-z0-9]{3})?$/.test(input.swiftBic)
+    )
+      throw badRequest("BANK_DATA_INVALID", "swiftBic is invalid.");
+    if (
+      input.routingData &&
+      Object.entries(input.routingData).some(
+        ([key, value]) =>
+          !key || typeof value !== "string" || value.length > 128,
+      )
+    )
+      throw badRequest("BANK_DATA_INVALID", "routingData is invalid.");
+    const b = this.bank(actor.workspaceId, requisiteId, bankId);
+    const before = this.auditBank(b);
+    Object.assign(b, structuredClone(input), { updatedAt: new Date() });
+    this.support.audit(
+      actor,
+      "BANK_DATA.UPDATED",
+      "BankAccount",
+      b.id,
+      before,
+      this.auditBank(b),
+    );
+    return this.bankView(actor, b);
+  }
+  setBankDefault(actor: ActorContext, requisiteId: string, bankId: string) {
+    const r = this.getInternal(actor.workspaceId, requisiteId);
+    this.support.requireRecord(
+      actor,
+      "bank_data.set_default",
+      this.ownerResponsible(r),
+    );
+    const b = this.bank(actor.workspaceId, requisiteId, bankId);
+    if (!b.active)
+      throw conflict(
+        "BANK_DATA_REFERENCED",
+        "Archived bank cannot be default.",
+      );
+    this.clearBankDefaults(requisiteId, b.currencyCode ?? null);
+    b.isDefault = true;
+    b.updatedAt = new Date();
+    this.support.audit(
+      actor,
+      "BANK_DATA.DEFAULT_CHANGED",
+      "BankAccount",
+      b.id,
+      null,
+      { isDefault: true },
+    );
+    return this.bankView(actor, b);
+  }
+  archiveBank(actor: ActorContext, requisiteId: string, bankId: string) {
+    const r = this.getInternal(actor.workspaceId, requisiteId);
+    this.support.requireRecord(
+      actor,
+      "bank_data.archive",
+      this.ownerResponsible(r),
+    );
+    const b = this.bank(actor.workspaceId, requisiteId, bankId);
+    b.active = false;
+    b.isDefault = false;
+    b.updatedAt = new Date();
+    this.support.audit(actor, "BANK_DATA.ARCHIVED", "BankAccount", b.id, null, {
+      active: false,
+    });
+    return this.bankView(actor, b);
+  }
+  restoreBank(actor: ActorContext, requisiteId: string, bankId: string) {
+    const r = this.getInternal(actor.workspaceId, requisiteId);
+    this.support.requireRecord(
+      actor,
+      "bank_data.restore",
+      this.ownerResponsible(r),
+    );
+    const b = this.bank(actor.workspaceId, requisiteId, bankId);
+    b.active = true;
+    b.updatedAt = new Date();
+    this.support.audit(actor, "BANK_DATA.RESTORED", "BankAccount", b.id, null, {
+      active: true,
+    });
+    return this.bankView(actor, b);
+  }
+  getBank(actor: ActorContext, requisiteId: string, bankId: string) {
+    const r = this.getInternal(actor.workspaceId, requisiteId);
+    this.support.requireRecord(
+      actor,
+      "bank_data.view",
+      this.ownerResponsible(r),
+    );
+    return this.bank(actor.workspaceId, requisiteId, bankId);
+  }
 
-  configureSeller(actor:ActorContext,input:{companyId:string;isWorkspaceDefault?:boolean;contextKey?:string|null;priority?:number;preferredRequisiteId?:string|null;preferredBankAccountId?:string|null}){this.support.require(actor,'seller_company.manage');if(!this.access.crmRecord(actor.workspaceId,'COMPANY',input.companyId))throw new AppError('CROSS_WORKSPACE_REFERENCE','Seller company was not found.',404);if(input.preferredRequisiteId)this.validateChain(actor.workspaceId,input.companyId,input.preferredRequisiteId,input.preferredBankAccountId??null);if(input.isWorkspaceDefault)this.store.state.sellerCompanyBindings.filter(x=>x.workspaceId===actor.workspaceId&&!x.contextKey).forEach(x=>x.isWorkspaceDefault=false);const row:SellerCompanyBinding={id:this.store.id(),workspaceId:actor.workspaceId,companyId:input.companyId,active:true,isWorkspaceDefault:input.isWorkspaceDefault===true,contextKey:input.contextKey??null,priority:input.priority??0,preferredRequisiteId:input.preferredRequisiteId??null,preferredBankAccountId:input.preferredBankAccountId??null};this.store.state.sellerCompanyBindings.push(row);this.support.audit(actor,'SELLER_COMPANY.ENABLED','SellerCompanyBinding',row.id,null,row);this.support.event(actor,row.isWorkspaceDefault?'SELLER_COMPANY_DEFAULT_CHANGED':'SELLER_COMPANY_ENABLED','SELLER_COMPANY',row.id);return row;}
-  resolveSeller(workspaceId:string,contextKey?:string|null,explicitCompanyId?:string|null){const all=this.store.state.sellerCompanyBindings.filter(x=>x.workspaceId===workspaceId&&x.active);let found=explicitCompanyId?all.find(x=>x.companyId===explicitCompanyId):undefined;if(!found&&contextKey)found=all.filter(x=>x.contextKey===contextKey).sort((a,b)=>b.priority-a.priority||a.id.localeCompare(b.id))[0];found??=all.find(x=>x.isWorkspaceDefault&&!x.contextKey);if(!found)throw new AppError('SELLER_REQUIRED','No eligible seller company is configured.',409);return found;}
-  createSnapshot(actor:ActorContext,role:CommercialRole,input:{ownerType:'CONTACT'|'COMPANY';ownerId:string;requisiteId:string;addressId?:string|null;bankAccountId?:string|null}){this.support.require(actor,role==='SELLER'?'seller_company.read':'requisite.read');const r=this.getInternal(actor.workspaceId,input.requisiteId);if(r.ownerType!==input.ownerType||r.ownerId!==input.ownerId)throw new AppError('CROSS_WORKSPACE_REFERENCE','Requisite ownership chain is invalid.',404);const address=input.addressId?this.store.state.requisiteAddresses.find(a=>a.id===input.addressId&&a.workspaceId===actor.workspaceId&&a.requisiteId===r.id&&a.active):this.store.state.requisiteAddresses.find(a=>a.requisiteId===r.id&&a.active&&a.isDefaultForType);if(input.addressId&&!address)throw new AppError('CROSS_WORKSPACE_REFERENCE','Address ownership chain is invalid.',404);const bank=input.bankAccountId?this.bank(actor.workspaceId,r.id,input.bankAccountId):undefined;if(bank&&!bank.active)throw conflict('BANK_DATA_REFERENCED','Archived bank cannot be selected for a new document.');const row={id:this.store.id(),workspaceId:actor.workspaceId,role,sourceOwnerType:r.ownerType,sourceOwnerId:r.ownerId,sourceRequisiteId:r.id,sourceBankAccountId:bank?.id??null,countryCode:r.countryCode,entityTypeCode:r.entityTypeCode,legalName:String(r.values.legalName??r.name),legalValues:structuredClone(r.values),address:address?structuredClone(address):null,bank:bank?structuredClone({...bank,secretReference:undefined}):null,createdAt:new Date(),snapshotVersion:1} as const;this.store.state.commercialSnapshots.push(row);r.referenced=true;this.support.event(actor,'COMMERCIAL_IDENTITY_SNAPSHOT_CREATED','COMMERCIAL_SNAPSHOT',row.id,{role,sourceRequisiteId:r.id});return row;}
+  configureSeller(
+    actor: ActorContext,
+    input: {
+      companyId: string;
+      isWorkspaceDefault?: boolean;
+      contextKey?: string | null;
+      priority?: number;
+      preferredRequisiteId?: string | null;
+      preferredBankAccountId?: string | null;
+    },
+  ) {
+    this.support.require(actor, "seller_company.manage");
+    if (!this.access.crmRecord(actor.workspaceId, "COMPANY", input.companyId))
+      throw new AppError(
+        "CROSS_WORKSPACE_REFERENCE",
+        "Seller company was not found.",
+        404,
+      );
+    if (input.preferredRequisiteId)
+      this.validateChain(
+        actor.workspaceId,
+        input.companyId,
+        input.preferredRequisiteId,
+        input.preferredBankAccountId ?? null,
+      );
+    if (input.isWorkspaceDefault)
+      this.store.state.sellerCompanyBindings
+        .filter((x) => x.workspaceId === actor.workspaceId && !x.contextKey)
+        .forEach((x) => (x.isWorkspaceDefault = false));
+    const row: SellerCompanyBinding = {
+      id: this.store.id(),
+      workspaceId: actor.workspaceId,
+      companyId: input.companyId,
+      active: true,
+      isWorkspaceDefault: input.isWorkspaceDefault === true,
+      contextKey: input.contextKey ?? null,
+      priority: input.priority ?? 0,
+      preferredRequisiteId: input.preferredRequisiteId ?? null,
+      preferredBankAccountId: input.preferredBankAccountId ?? null,
+    };
+    this.store.state.sellerCompanyBindings.push(row);
+    this.support.audit(
+      actor,
+      "SELLER_COMPANY.ENABLED",
+      "SellerCompanyBinding",
+      row.id,
+      null,
+      row,
+    );
+    this.support.event(
+      actor,
+      row.isWorkspaceDefault
+        ? "SELLER_COMPANY_DEFAULT_CHANGED"
+        : "SELLER_COMPANY_ENABLED",
+      "SELLER_COMPANY",
+      row.id,
+    );
+    return row;
+  }
+  resolveSeller(
+    workspaceId: string,
+    contextKey?: string | null,
+    explicitCompanyId?: string | null,
+  ) {
+    const all = this.store.state.sellerCompanyBindings.filter(
+      (x) => x.workspaceId === workspaceId && x.active,
+    );
+    let found = explicitCompanyId
+      ? all.find((x) => x.companyId === explicitCompanyId)
+      : undefined;
+    if (!found && contextKey)
+      found = all
+        .filter((x) => x.contextKey === contextKey)
+        .sort((a, b) => b.priority - a.priority || a.id.localeCompare(b.id))[0];
+    found ??= all.find((x) => x.isWorkspaceDefault && !x.contextKey);
+    if (!found)
+      throw new AppError(
+        "SELLER_REQUIRED",
+        "No eligible seller company is configured.",
+        409,
+      );
+    return found;
+  }
+  createSnapshot(
+    actor: ActorContext,
+    role: CommercialRole,
+    input: {
+      ownerType: "CONTACT" | "COMPANY";
+      ownerId: string;
+      requisiteId: string;
+      addressId?: string | null;
+      bankAccountId?: string | null;
+    },
+  ) {
+    const r = this.getInternal(actor.workspaceId, input.requisiteId);
+    this.support.requireRecord(
+      actor,
+      role === "SELLER" ? "seller_company.read" : "requisite.read",
+      this.ownerResponsible(r),
+    );
+    if (r.ownerType !== input.ownerType || r.ownerId !== input.ownerId)
+      throw new AppError(
+        "CROSS_WORKSPACE_REFERENCE",
+        "Requisite ownership chain is invalid.",
+        404,
+      );
+    const address = input.addressId
+      ? this.store.state.requisiteAddresses.find(
+          (a) =>
+            a.id === input.addressId &&
+            a.workspaceId === actor.workspaceId &&
+            a.requisiteId === r.id &&
+            a.active,
+        )
+      : this.store.state.requisiteAddresses.find(
+          (a) => a.requisiteId === r.id && a.active && a.isDefaultForType,
+        );
+    if (input.addressId && !address)
+      throw new AppError(
+        "CROSS_WORKSPACE_REFERENCE",
+        "Address ownership chain is invalid.",
+        404,
+      );
+    const bank = input.bankAccountId
+      ? this.bank(actor.workspaceId, r.id, input.bankAccountId)
+      : undefined;
+    if (bank && !bank.active)
+      throw conflict(
+        "BANK_DATA_REFERENCED",
+        "Archived bank cannot be selected for a new document.",
+      );
+    const row = {
+      id: this.store.id(),
+      workspaceId: actor.workspaceId,
+      role,
+      sourceOwnerType: r.ownerType,
+      sourceOwnerId: r.ownerId,
+      sourceRequisiteId: r.id,
+      sourceBankAccountId: bank?.id ?? null,
+      countryCode: r.countryCode,
+      entityTypeCode: r.entityTypeCode,
+      legalName: String(r.values.legalName ?? r.name),
+      legalValues: structuredClone(r.values),
+      address: address ? structuredClone(address) : null,
+      bank: bank
+        ? structuredClone({ ...bank, secretReference: undefined })
+        : null,
+      createdAt: new Date(),
+      snapshotVersion: 1,
+    } as const;
+    this.store.state.commercialSnapshots.push(row);
+    r.referenced = true;
+    this.support.event(
+      actor,
+      "COMMERCIAL_IDENTITY_SNAPSHOT_CREATED",
+      "COMMERCIAL_SNAPSHOT",
+      row.id,
+      { role, sourceRequisiteId: r.id },
+    );
+    return row;
+  }
 
-  private preset(workspaceId:string,id:string){const p=this.store.state.requisitePresets.find(x=>x.id===id&&x.active&&(x.workspaceId===null||x.workspaceId===workspaceId));if(!p)throw new AppError('CROSS_WORKSPACE_REFERENCE','Preset was not found.',404);return p;}
-  private validatePreset(p:RequisitePreset,values:Record<string,unknown>){const allowed=new Set(p.fields.map(f=>f.code));for(const f of p.fields)if(f.required&&(values[f.code]===undefined||values[f.code]===null||values[f.code]===''))throw badRequest('REQUISITE_INVALID',`${f.code} is required.`,{field:f.code});for(const key of Object.keys(values))if(!allowed.has(key))throw badRequest('REQUISITE_INVALID',`${key} is not defined by the preset.`,{field:key});}
-  private find(workspaceId:string,id:string){return this.store.state.requisites.find(x=>x.id===id&&x.workspaceId===workspaceId);}
-  private getInternal(workspaceId:string,id:string){const r=this.find(workspaceId,id);if(!r)throw new AppError('REQUISITE_NOT_FOUND','Requisite was not found.',404);return r;}
-  private clearRequisiteDefaults(workspaceId:string,ownerType:string,ownerId:string){this.store.state.requisites.filter(r=>r.workspaceId===workspaceId&&r.ownerType===ownerType&&r.ownerId===ownerId).forEach(r=>r.isDefault=false);}
-  private clearBankDefaults(requisiteId:string,currency:string|null){this.store.state.bankAccounts.filter(b=>b.requisiteId===requisiteId&&(b.currencyCode??null)===currency).forEach(b=>b.isDefault=false);}
-  private bank(workspaceId:string,requisiteId:string,bankId:string){const b=this.store.state.bankAccounts.find(x=>x.id===bankId&&x.workspaceId===workspaceId&&x.requisiteId===requisiteId);if(!b)throw new AppError('CROSS_WORKSPACE_REFERENCE','Bank account was not found for requisite.',404);return b;}
-  private validateChain(workspaceId:string,companyId:string,requisiteId:string,bankId:string|null){const r=this.getInternal(workspaceId,requisiteId);if(r.ownerType!=='COMPANY'||r.ownerId!==companyId)throw new AppError('CROSS_WORKSPACE_REFERENCE','Seller requisite ownership chain is invalid.',404);if(bankId)this.bank(workspaceId,requisiteId,bankId);}
-  private ownerResponsible(r:Requisite){return (this.access.crmRecord(r.workspaceId,r.ownerType,r.ownerId) as {responsibleUserId?:string|null}|undefined)?.responsibleUserId;}
-  private mask(value:string){return value.length<=4?'****':`${'*'.repeat(Math.min(value.length-4,12))}${value.slice(-4)}`;}
-  private bankView(actor:ActorContext,row:BankAccount){return this.access.scopeFor(actor,'bank_data.view')?row:{...row,accountNumber:this.mask(row.accountNumber),swiftBic:null,routingData:{}};}
+  private preset(workspaceId: string, id: string) {
+    const p = this.store.state.requisitePresets.find(
+      (x) =>
+        x.id === id &&
+        x.active &&
+        (x.workspaceId === null || x.workspaceId === workspaceId),
+    );
+    if (!p)
+      throw new AppError(
+        "CROSS_WORKSPACE_REFERENCE",
+        "Preset was not found.",
+        404,
+      );
+    return p;
+  }
+  private validatePresetDefinition(fields: RequisitePreset["fields"]) {
+    const codes = new Set<string>();
+    for (const field of fields) {
+      if (
+        !field ||
+        typeof field.code !== "string" ||
+        !/^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(field.code) ||
+        codes.has(field.code) ||
+        typeof field.label !== "string" ||
+        !field.label.trim() ||
+        !["TEXT", "INTEGER", "DECIMAL", "BOOLEAN", "DATE", "EMAIL"].includes(
+          String(field.type).toUpperCase(),
+        ) ||
+        typeof field.required !== "boolean"
+      )
+        throw badRequest(
+          "REQUISITE_PRESET_INVALID",
+          "Preset field definition is invalid.",
+        );
+      codes.add(field.code);
+    }
+  }
+  private validatePreset(p: RequisitePreset, values: Record<string, unknown>) {
+    const allowed = new Set(p.fields.map((f) => f.code));
+    for (const f of p.fields) {
+      const value = values[f.code];
+      if (f.required && (value === undefined || value === null || value === ""))
+        throw badRequest("REQUISITE_INVALID", `${f.code} is required.`, {
+          field: f.code,
+        });
+      if (value === undefined || value === null || value === "") continue;
+      const type = f.type.toUpperCase();
+      const valid =
+        type === "TEXT"
+          ? typeof value === "string"
+          : type === "INTEGER"
+            ? (typeof value === "number" && Number.isInteger(value)) ||
+              (typeof value === "string" && /^-?\d+$/.test(value))
+            : type === "DECIMAL"
+              ? (typeof value === "number" && Number.isFinite(value)) ||
+                (typeof value === "string" && /^-?\d+(\.\d+)?$/.test(value))
+              : type === "BOOLEAN"
+                ? typeof value === "boolean"
+                : type === "DATE"
+                  ? typeof value === "string" &&
+                    /^\d{4}-\d{2}-\d{2}$/.test(value)
+                  : type === "EMAIL"
+                    ? typeof value === "string" &&
+                      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+                    : false;
+      if (!valid)
+        throw badRequest(
+          "REQUISITE_INVALID",
+          `${f.code} has an invalid ${type} value.`,
+          { field: f.code },
+        );
+    }
+    for (const key of Object.keys(values))
+      if (!allowed.has(key))
+        throw badRequest(
+          "REQUISITE_INVALID",
+          `${key} is not defined by the preset.`,
+          { field: key },
+        );
+  }
+  private find(workspaceId: string, id: string) {
+    return this.store.state.requisites.find(
+      (x) => x.id === id && x.workspaceId === workspaceId,
+    );
+  }
+  private getInternal(workspaceId: string, id: string) {
+    const r = this.find(workspaceId, id);
+    if (!r)
+      throw new AppError(
+        "REQUISITE_NOT_FOUND",
+        "Requisite was not found.",
+        404,
+      );
+    return r;
+  }
+  private clearRequisiteDefaults(
+    workspaceId: string,
+    ownerType: string,
+    ownerId: string,
+  ) {
+    this.store.state.requisites
+      .filter(
+        (r) =>
+          r.workspaceId === workspaceId &&
+          r.ownerType === ownerType &&
+          r.ownerId === ownerId,
+      )
+      .forEach((r) => (r.isDefault = false));
+  }
+  private clearBankDefaults(requisiteId: string, currency: string | null) {
+    this.store.state.bankAccounts
+      .filter(
+        (b) =>
+          b.requisiteId === requisiteId &&
+          (b.currencyCode ?? null) === currency,
+      )
+      .forEach((b) => (b.isDefault = false));
+  }
+  private bank(workspaceId: string, requisiteId: string, bankId: string) {
+    const b = this.store.state.bankAccounts.find(
+      (x) =>
+        x.id === bankId &&
+        x.workspaceId === workspaceId &&
+        x.requisiteId === requisiteId,
+    );
+    if (!b)
+      throw new AppError(
+        "CROSS_WORKSPACE_REFERENCE",
+        "Bank account was not found for requisite.",
+        404,
+      );
+    return b;
+  }
+  private validateChain(
+    workspaceId: string,
+    companyId: string,
+    requisiteId: string,
+    bankId: string | null,
+  ) {
+    const r = this.getInternal(workspaceId, requisiteId);
+    if (r.ownerType !== "COMPANY" || r.ownerId !== companyId)
+      throw new AppError(
+        "CROSS_WORKSPACE_REFERENCE",
+        "Seller requisite ownership chain is invalid.",
+        404,
+      );
+    if (bankId) this.bank(workspaceId, requisiteId, bankId);
+  }
+  private ownerResponsible(r: Requisite) {
+    return (
+      this.access.crmRecord(r.workspaceId, r.ownerType, r.ownerId) as
+        { responsibleUserId?: string | null } | undefined
+    )?.responsibleUserId;
+  }
+  private mask(value: string) {
+    return value.length <= 4
+      ? "****"
+      : `${"*".repeat(Math.min(value.length - 4, 12))}${value.slice(-4)}`;
+  }
+  private auditBank(row: BankAccount) {
+    return {
+      ...row,
+      accountNumber: this.mask(row.accountNumber),
+      swiftBic: row.swiftBic ? "[REDACTED]" : null,
+      routingData: Object.fromEntries(
+        Object.keys(row.routingData).map((key) => [key, "[REDACTED]"]),
+      ),
+    };
+  }
+  private bankView(actor: ActorContext, row: BankAccount) {
+    const requisite = this.getInternal(row.workspaceId, row.requisiteId);
+    try {
+      this.support.requireRecord(
+        actor,
+        "bank_data.view",
+        this.ownerResponsible(requisite),
+      );
+      return row;
+    } catch (error) {
+      if (!(error instanceof AppError) || error.code !== "PERMISSION_DENIED")
+        throw error;
+      return {
+          ...row,
+          accountNumber: this.mask(row.accountNumber),
+          swiftBic: null,
+          routingData: {},
+      };
+    }
+  }
 }

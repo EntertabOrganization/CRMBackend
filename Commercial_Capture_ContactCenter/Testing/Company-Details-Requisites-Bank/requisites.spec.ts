@@ -28,5 +28,9 @@ describe('Requisites service contract', () => {
     await runContractScenario('requisite tenant isolation');
   });
 
+  it('enforces record scopes for Requisite and Bank Data access', async () => {
+    await runContractScenario('requisite and bank record scopes');
+  });
+
 });
 
