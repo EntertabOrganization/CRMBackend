@@ -53,6 +53,12 @@ function translatePersistError(error: unknown): unknown {
     if (target.includes('sku_key')) return new AppError('PRODUCT_SKU_CONFLICT', 'This SKU is already used by another item in the workspace.', 409);
     if (target.includes('axis_key')) return new AppError('VARIANT_COMBINATION_CONFLICT', 'A Variant with this option combination already exists.', 409);
     if (target.includes('idempotency_key') && target.includes('workspace_id')) return new AppError('AUTOMATION_DUPLICATE_JOB', 'The automation job already exists.', 409);
+    if (target.includes('commercial_pack_records_invoice_number')) return new AppError('INVOICE_NUMBER_CONFLICT', 'Invoice number was allocated concurrently.', 409);
+    if (target.includes('commercial_pack_records_provider_event')) return new AppError('PAYMENT_PROVIDER_EVENT_DUPLICATE', 'Provider event was already processed.', 409);
+    if (target.includes('commercial_pack_records_channel_event') || target.includes('commercial_pack_external_message')) return new AppError('CHANNEL_EVENT_DUPLICATE', 'Channel event/message was already processed.', 409);
+    if (target.includes('commercial_pack_form_submission_idempotency')) return new AppError('IDEMPOTENCY_KEY_REUSED', 'Submission idempotency key already exists.', 409);
+    if (target.includes('commercial_pack_outbound_client_message')) return new AppError('MESSAGE_ALREADY_EXISTS', 'Client message was already accepted.', 409);
+    if (target.includes('commercial_pack_')) return new AppError('CONCURRENCY_CONFLICT', 'A concurrent operation changed the same business invariant.', 409);
   }
   return error;
 }
@@ -84,11 +90,19 @@ async function withState<T>(handler: () => Promise<T>): Promise<{ result?: T; er
   } catch (error) {
     outcome = { error };
   }
-  try {
-    await persistState(prisma, snapshot, appContext.store.state);
-  } catch (persistError) {
-    committed = false;
-    outcome = { error: translatePersistError(persistError) };
+  if (committed) {
+    try {
+      await persistState(prisma, snapshot, appContext.store.state);
+    } catch (persistError) {
+      committed = false;
+      appContext.store.state = structuredClone(snapshot);
+      outcome = { error: translatePersistError(persistError) };
+    }
+  } else {
+    // A failed handler is a failed transaction. Never persist mutations that
+    // happened before validation/provider failure, and do not leave them in the
+    // shared working state for the next request.
+    appContext.store.state = structuredClone(snapshot);
   }
   // Advisory hints are released only after the commit, and only for successful requests.
   if (committed) appContext.realtime.flush();

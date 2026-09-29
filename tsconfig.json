@@ -32,6 +32,7 @@
     "app/**/*.ts",
     "src/server/**/*.ts",
     "tests/**/*.ts",
+    "Commercial_Capture_ContactCenter/Testing/**/*.ts",
     "next-env.d.ts",
     ".next/types/**/*.ts"
   ],

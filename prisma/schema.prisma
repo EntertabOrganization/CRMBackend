@@ -1805,3 +1805,19 @@ model CommercialRowSet {
   @@unique([workspaceId, ownerType, ownerId])
   @@map("commercial_row_sets")
 }
+
+/// Durable aggregate storage for the Commercial/Capture/Contact-Center bounded contexts.
+/// The domain services expose typed entities; JSON allows this repository's state-snapshot persistence layer
+/// to commit a large connected aggregate atomically while dedicated indexes enforce tenant/collection access.
+model CommercialPackRecord {
+  id          String   @id @db.Uuid
+  workspaceId String?  @map("workspace_id") @db.Uuid
+  collection  String
+  data        Json
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([workspaceId, collection])
+  @@index([collection])
+  @@map("commercial_pack_records")
+}

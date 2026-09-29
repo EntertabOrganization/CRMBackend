@@ -1753,6 +1753,12 @@ describe('Cross-cutting behaviour', () => {
     // Authenticated by the refresh token in the body, so an expired access token still works.
     'POST /api/v1/auth/refresh',
     'POST /api/v1/auth/logout',
+    'GET /api/v1/public/forms/[publicKey]',
+    'POST /api/v1/public/forms/[publicKey]/submissions',
+    'POST /api/v1/public/forms/[publicKey]/uploads',
+    'POST /api/v1/public/forms/[publicKey]/uploads/[uploadId]/finalize',
+    'POST /api/v1/payments/providers/[providerKey]/webhook',
+    'POST /api/v1/contact-center/connections/[connectionId]/events',
   ]);
 
   it('only the allow-listed public endpoints exist without a bearer token', async () => {
@@ -1810,6 +1816,20 @@ describe('Cross-cutting behaviour', () => {
     expect(await prisma.crmLead.count({ where: { workspaceId: ws.owner.workspaceId } })).toBeGreaterThanOrEqual(2);
     expect(await prisma.crmDeal.count({ where: { workspaceId: ws.owner.workspaceId } })).toBeGreaterThanOrEqual(2);
     expect(await prisma.user.count({ where: { email: ws.owner.email } })).toBe(1);
+  });
+
+  it('rejects invalid public commercial form and provider requests through their real handlers', async () => {
+    expectError(await api('GET', '/api/v1/public/forms/[publicKey]', { params: { publicKey: MISSING_ID } }), 404, 'FORM_NOT_PUBLISHED');
+    expectError(await api('POST', '/api/v1/public/forms/[publicKey]/submissions', { params: { publicKey: MISSING_ID }, body: {} }), 404, 'FORM_NOT_PUBLISHED');
+    expectError(await api('POST', '/api/v1/public/forms/[publicKey]/uploads', { params: { publicKey: MISSING_ID }, body: { fieldKey:'file',mimeType:'text/plain',size:1 } }), 404, 'FORM_NOT_PUBLISHED');
+    expectError(await api('POST', '/api/v1/public/forms/[publicKey]/uploads/[uploadId]/finalize', { params: { publicKey: MISSING_ID,uploadId:MISSING_ID }, headers:{'x-upload-token':'invalid'}, body: {} }), 404, 'FORM_NOT_PUBLISHED');
+    expectError(await api('POST', '/api/v1/payments/providers/[providerKey]/webhook', { params: { providerKey: MISSING_ID }, body: {} }), 409, 'PAYMENT_PROVIDER_NOT_CONFIGURED');
+    expectError(await api('POST', '/api/v1/contact-center/connections/[connectionId]/events', { params: { connectionId: MISSING_ID }, body: {} }), 404, 'CHANNEL_CONNECTION_INACTIVE');
+    const authenticated = { token: ws.owner.token, workspaceId: ws.owner.workspaceId };
+    expectOk(await api('GET', '/api/v1/invoice-sequences', authenticated));
+    expectError(await api('POST', '/api/v1/invoice-sequences', { ...authenticated, body: { prefix: '' } }), 400, 'VALIDATION_ERROR');
+    expectOk(await api('GET', '/api/v1/commercial-jobs', authenticated));
+    expectError(await api('POST', '/api/v1/commercial-jobs/[id]/retry', { ...authenticated, params: { id: MISSING_ID } }), 404, 'COMMERCIAL_JOB_NOT_FOUND');
   });
 
   it('exercises every route handler exposed under app/', async () => {

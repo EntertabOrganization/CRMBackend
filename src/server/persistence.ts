@@ -120,6 +120,14 @@ const EXTRA_COLLECTIONS: ExtraCollection[] = [
   { key: 'automationExtensions', model: 'automationExtensionDefinition' },
   { key: 'automationCredentials', model: 'automationIntegrationCredential' },
 ];
+
+const PACK_COLLECTIONS: Array<keyof DbState> = [
+  'requisitePresets','requisites','requisiteAddresses','bankAccounts','sellerCompanyBindings','commercialSnapshots','estimateStages',
+  'estimates','invoices','invoiceSequences','payments','paymentAllocations','paymentAttempts','paymentProviderEvents','refunds',
+  'recurringRules','recurringOccurrences','crmForms','crmFormVersions','crmFormSubmissions','crmFormEntityBindings','crmFormUploads',
+  'communicationChannels','channelConnections','contactCenterQueues','contactCenterQueueMembers','customerChannelIdentities',
+  'customerConversations','conversationMessages','conversationAssignments','conversationTransfers','channelProviderEvents','slaPolicies','slaTimers','backgroundJobs',
+];
 for (const extra of EXTRA_COLLECTIONS) {
   COLLECTIONS.push({ key: extra.key, delegate: (c) => (c as unknown as Record<string, Delegate>)[extra.model] });
 }
@@ -338,7 +346,19 @@ export async function hydrateState(client: PrismaClient): Promise<DbState> {
     const rows = extraRows[index];
     target[extra.key as string] = extra.decimals?.length ? rows.map((row) => decimalsToStrings(row, extra.decimals!)) : rows;
   });
+  const packed = await (client.commercialPackRecord as unknown as Delegate).findMany() as Array<{ collection:string; data:unknown }>;
+  for (const key of PACK_COLLECTIONS) target[key as string] = [];
+  for (const record of packed) {
+    if (PACK_COLLECTIONS.includes(record.collection as keyof DbState)) target[record.collection].push(reviveDates(record.data));
+  }
   return state;
+}
+
+function reviveDates(value: unknown, key = ''): unknown {
+  if (Array.isArray(value)) return value.map((item) => reviveDates(item));
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value as Record<string,unknown>).map(([k,v])=>[k,reviveDates(v,k)]));
+  if (typeof value === 'string' && /(At|Until|ExpiresAt|RunAt)$/.test(key) && /^\d{4}-\d{2}-\d{2}T/.test(value)) return new Date(value);
+  return value;
 }
 
 /** Prisma returns Decimal instances; the domain carries canonical decimal strings. */
@@ -390,6 +410,21 @@ export async function persistState(client: PrismaClient, before: DbState, after:
         if (removedIds.length > 0) {
           await delegate(tx).deleteMany({ where: { id: { in: removedIds } } });
         }
+      }
+
+      const packDelegate = tx.commercialPackRecord;
+      for (const key of PACK_COLLECTIONS) {
+        const beforeById = new Map((before[key] as unknown as Array<{id:string}>).map(row=>[row.id,row]));
+        const afterRows = after[key] as unknown as Array<{id:string;workspaceId?:string|null}>;
+        for (const row of afterRows) {
+          if (!beforeById.has(row.id) || JSON.stringify(beforeById.get(row.id)) !== JSON.stringify(row)) {
+            const data = JSON.parse(JSON.stringify(row)) as Prisma.InputJsonValue;
+            await packDelegate.upsert({ where:{id:row.id}, create:{id:row.id,workspaceId:row.workspaceId??null,collection:String(key),data}, update:{workspaceId:row.workspaceId??null,collection:String(key),data} });
+          }
+        }
+        const afterIds=new Set(afterRows.map(row=>row.id));
+        const removed=(before[key] as unknown as Array<{id:string}>).filter(row=>!afterIds.has(row.id)).map(row=>row.id);
+        if(removed.length)await packDelegate.deleteMany({where:{id:{in:removed}}});
       }
     },
     { maxWait: 10_000, timeout: 30_000 },

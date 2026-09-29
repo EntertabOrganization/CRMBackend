@@ -1,0 +1,7 @@
+import { NextRequest } from 'next/server';
+import { appContext } from '@/src/server/app-context';
+import { routeWithMeta } from '@/src/server/response';
+import { requireWorkspaceContext } from '@/src/server/route-helpers';
+import { paginateCommercial } from '@/src/server/commercial/pagination';
+
+export async function GET(request:NextRequest){return routeWithMeta(async()=>{const {actor}=await requireWorkspaceContext(request);return paginateCommercial(request,appContext.commercialPack.jobs.list(actor),{searchable:['type','key','lastError'],filterable:['type','status','failureClass'],sortable:['runAt','status','type','id'],defaultSortBy:'runAt'});});}

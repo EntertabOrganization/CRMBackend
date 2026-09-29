@@ -89,6 +89,17 @@ const PERMISSIONS = [
   'product_row.edit_price',
   'product_row.edit_discount',
   'product_row.edit_tax',
+  'requisite.create', 'requisite.read', 'requisite.update', 'requisite.set_default', 'requisite.archive', 'requisite.restore',
+  'requisite_preset.manage',
+  'bank_data.view', 'bank_data.create', 'bank_data.update', 'bank_data.set_default', 'bank_data.archive', 'bank_data.restore',
+  'seller_company.manage', 'seller_company.read',
+  'estimate.create', 'estimate.read', 'estimate.update', 'estimate.send', 'estimate.accept', 'estimate.decline', 'estimate.convert', 'estimate.archive', 'estimate.restore',
+  'invoice.create', 'invoice.read', 'invoice.update_draft', 'invoice.issue', 'invoice.void', 'invoice.cancel', 'invoice.read_payments', 'invoice.archive',
+  'payment.create_attempt', 'payment.record', 'payment.read', 'payment.allocate', 'payment.reverse_allocation', 'payment.refund',
+  'recurring_invoice.create', 'recurring_invoice.read', 'recurring_invoice.update', 'recurring_invoice.activate', 'recurring_invoice.deactivate',
+  'form.create', 'form.read', 'form.update', 'form.publish', 'form.unpublish', 'form.archive', 'form.read_submission', 'form.export_submission', 'form.manage_security', 'form.manage_capture',
+  'contact_center.channel_manage', 'contact_center.queue_manage',
+  'conversation.read', 'conversation.respond', 'conversation.assign', 'conversation.transfer', 'conversation.close', 'conversation.reopen', 'conversation.bind_crm', 'conversation.view_recording', 'conversation.ai_assist',
 ];
 
 module.exports = {

@@ -22,6 +22,7 @@ import { RoleService } from './role-service';
 import { InMemoryStore } from './store';
 import { UserService } from './user-service';
 import { WorkspaceService } from './workspace-service';
+import { CommercialCaptureContactCenterModule } from './commercial';
 
 function createAppContext() {
   const store = new InMemoryStore();
@@ -44,10 +45,12 @@ function createAppContext() {
   const catalog = new CatalogModule({ store, access, realtime, fields, registry, crmCore, files: () => ports.files });
   const crm = new CrmPipelineService(store, undefined, fields);
   const automation = new AutomationModule({ store, access, realtime, fields, registry, crm, crmCore, activities });
+  const commercialPack = new CommercialCaptureContactCenterModule({ store, access, crmCore, crm });
   return {
     store,
     catalog,
     automation,
+    commercialPack,
     mailer,
     google,
     realtime,

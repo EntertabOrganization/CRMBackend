@@ -45,6 +45,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         return appContext.automation.ingestPending();
       case 'timeline-project':
         return appContext.timeline.projectPending(typeof body.workspaceId === 'string' ? body.workspaceId : undefined);
+      case 'commercial-run':
+        return appContext.commercialPack.jobs.runDue(new Date(),typeof body.limit==='number'?Math.min(Math.max(body.limit,1),100):25);
+      case 'commercial-maintenance':
+        return {expiredEstimates:appContext.commercialPack.commerce.expireDueEstimates().length,breachedSla:appContext.commercialPack.contactCenter.checkSla().length};
       case 'timeline-rebuild': {
         if (typeof body.workspaceId !== 'string') throw badRequest('WORKSPACE_REQUIRED', 'workspaceId is required.');
         const date = (value: unknown) => (typeof value === 'string' && !Number.isNaN(Date.parse(value)) ? new Date(value) : undefined);

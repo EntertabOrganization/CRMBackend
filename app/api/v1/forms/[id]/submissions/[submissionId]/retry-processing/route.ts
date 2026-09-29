@@ -1,0 +1,2 @@
+import { NextRequest } from 'next/server'; import { appContext } from '@/src/server/app-context'; import { route } from '@/src/server/response'; import { requireWorkspaceContext } from '@/src/server/route-helpers';
+export async function POST(request:NextRequest,{params}:{params:Promise<{id:string;submissionId:string}>}){return route(async()=>{const {actor}=await requireWorkspaceContext(request);const p=await params;return appContext.commercialPack.forms.retry(actor,p.id,p.submissionId);});}

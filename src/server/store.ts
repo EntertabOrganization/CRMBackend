@@ -88,6 +88,13 @@ import type {
   TimelineCommentMention,
   TimelineEntry,
 } from './activities/types';
+import type {
+  BackgroundJob, BankAccount, Channel, ChannelConnection, ChannelProviderEvent, CommercialSnapshot, ContactQueue,
+  Conversation, ConversationAssignment, ConversationMessage, ConversationTransfer, CrmForm, CustomerIdentity, Estimate, EstimateStage,
+  FormEntityBinding, FormSubmission, FormUpload, FormVersion, Invoice, InvoiceSequence, Payment, PaymentAllocation,
+  PaymentAttempt, ProviderEvent, QueueMember, RecurringOccurrence, RecurringRule, Refund, Requisite, RequisiteAddress,
+  RequisitePreset, SellerCompanyBinding, SlaPolicy, SlaTimer,
+} from './commercial/types';
 
 export type DbState = {
   users: User[];
@@ -170,6 +177,41 @@ export type DbState = {
   automationLogs: AutomationLog[];
   automationExtensions: AutomationExtension[];
   automationCredentials: AutomationCredential[];
+  requisitePresets: RequisitePreset[];
+  requisites: Requisite[];
+  requisiteAddresses: RequisiteAddress[];
+  bankAccounts: BankAccount[];
+  sellerCompanyBindings: SellerCompanyBinding[];
+  commercialSnapshots: CommercialSnapshot[];
+  estimateStages: EstimateStage[];
+  estimates: Estimate[];
+  invoices: Invoice[];
+  invoiceSequences: InvoiceSequence[];
+  payments: Payment[];
+  paymentAllocations: PaymentAllocation[];
+  paymentAttempts: PaymentAttempt[];
+  paymentProviderEvents: ProviderEvent[];
+  refunds: Refund[];
+  recurringRules: RecurringRule[];
+  recurringOccurrences: RecurringOccurrence[];
+  crmForms: CrmForm[];
+  crmFormVersions: FormVersion[];
+  crmFormSubmissions: FormSubmission[];
+  crmFormEntityBindings: FormEntityBinding[];
+  crmFormUploads: FormUpload[];
+  communicationChannels: Channel[];
+  channelConnections: ChannelConnection[];
+  contactCenterQueues: ContactQueue[];
+  contactCenterQueueMembers: QueueMember[];
+  customerChannelIdentities: CustomerIdentity[];
+  customerConversations: Conversation[];
+  conversationMessages: ConversationMessage[];
+  conversationAssignments: ConversationAssignment[];
+  conversationTransfers: ConversationTransfer[];
+  channelProviderEvents: ChannelProviderEvent[];
+  slaPolicies: SlaPolicy[];
+  slaTimers: SlaTimer[];
+  backgroundJobs: BackgroundJob[];
 };
 
 export class InMemoryStore {
@@ -257,6 +299,41 @@ export class InMemoryStore {
       automationLogs: [],
       automationExtensions: [],
       automationCredentials: [],
+      requisitePresets: [],
+      requisites: [],
+      requisiteAddresses: [],
+      bankAccounts: [],
+      sellerCompanyBindings: [],
+      commercialSnapshots: [],
+      estimateStages: [],
+      estimates: [],
+      invoices: [],
+      invoiceSequences: [],
+      payments: [],
+      paymentAllocations: [],
+      paymentAttempts: [],
+      paymentProviderEvents: [],
+      refunds: [],
+      recurringRules: [],
+      recurringOccurrences: [],
+      crmForms: [],
+      crmFormVersions: [],
+      crmFormSubmissions: [],
+      crmFormEntityBindings: [],
+      crmFormUploads: [],
+      communicationChannels: [],
+      channelConnections: [],
+      contactCenterQueues: [],
+      contactCenterQueueMembers: [],
+      customerChannelIdentities: [],
+      customerConversations: [],
+      conversationMessages: [],
+      conversationAssignments: [],
+      conversationTransfers: [],
+      channelProviderEvents: [],
+      slaPolicies: [],
+      slaTimers: [],
+      backgroundJobs: [],
       ...seed,
     };
   }

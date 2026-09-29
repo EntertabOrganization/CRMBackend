@@ -1,0 +1,2 @@
+import { NextRequest } from 'next/server'; import { appContext } from '@/src/server/app-context'; import { route } from '@/src/server/response'; import { requireUser } from '@/src/server/request';
+export async function GET(request:NextRequest,{params}:{params:Promise<{publicKey:string}>}){return route(async()=>{const user=request.headers.get('authorization')?await requireUser(request,appContext.store):undefined;return appContext.commercialPack.forms.publicSchema((await params).publicKey,user?.id,request.headers.get('x-form-token')??undefined);});}

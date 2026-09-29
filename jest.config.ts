@@ -3,7 +3,8 @@ import type { Config } from 'jest';
 const config: Config = {
   preset: 'ts-jest',
   testEnvironment: 'node',
-  roots: ['<rootDir>/tests'],
+  roots: ['<rootDir>/tests', '<rootDir>/Commercial_Capture_ContactCenter/Testing'],
+  testMatch: ['**/*.spec.ts', '**/Commercial_Capture_ContactCenter/Testing/**/*.e2e-spec.ts'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
   },

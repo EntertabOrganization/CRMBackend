@@ -213,7 +213,11 @@ export class AutomationEngine {
       this.recordExecution(rule, revision, context, target, policy, 'SKIPPED_CONDITION', { skipReason: 'CONDITIONS_NOT_MET', outcome: evaluation, initiator: options.initiator });
       return 0;
     }
-    const planned = options.manual ? { at: new Date() } : this.schedule(revision.timing, target, new Date());
+    // Anchor event-driven scheduling to the durable event timestamp. Using the
+    // ingestion wall clock makes an IMMEDIATE job a few milliseconds newer than
+    // the runner's supplied `now`, and also lets queue lag shift delayed jobs.
+    const eventTime = new Date(context.occurredAt);
+    const planned = options.manual ? { at: new Date() } : this.schedule(revision.timing, target, eventTime);
     if ('skip' in planned) {
       this.recordExecution(rule, revision, context, target, policy, 'SKIPPED_STALE', { skipReason: planned.skip, outcome: evaluation, initiator: options.initiator });
       return 0;

@@ -1,0 +1,3 @@
+import { NextRequest } from 'next/server'; import { appContext } from '@/src/server/app-context'; import { route } from '@/src/server/response';
+import { rateLimitRequest } from '@/src/server/rate-limit';
+export async function POST(request:NextRequest,{params}:{params:Promise<{providerKey:string}>}){return route(async()=>{rateLimitRequest(request,{scope:'payment.webhook',limit:300,windowMs:60000});const {providerKey}=await params;const raw=await request.text();return appContext.commercialPack.commerce.handleProviderWebhook(providerKey,request.headers.get('x-provider-connection')??'default',Object.fromEntries(request.headers.entries()),raw);});}
