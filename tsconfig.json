@@ -29,13 +29,15 @@
     ]
   },
   "include": [
-    "app/**/*.ts",
-    "src/server/**/*.ts",
-    "tests/**/*.ts",
+    ".next/types/**/*.ts",
     "Commercial_Capture_ContactCenter/Testing/**/*.ts",
     "Data_Integration_Intelligence_Analytics/Testing/**/*.ts",
+    "app/**/*.ts",
     "next-env.d.ts",
-    ".next/types/**/*.ts"
+    "src/server/**/*.ts",
+    "tests/**/*.ts",
+    ".next-dev/types/**/*.ts",
+    ".next-live/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

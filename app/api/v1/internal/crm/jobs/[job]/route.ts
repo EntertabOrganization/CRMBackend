@@ -1,4 +1,5 @@
 import { timingSafeEqual } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { NextRequest } from 'next/server';
 import { appContext } from '@/src/server/app-context';
 import { badRequest, unauthorized } from '@/src/server/errors';
@@ -6,7 +7,11 @@ import { readJson } from '@/src/server/request';
 import { fail, ok, route, runAutomationDue } from '@/src/server/response';
 
 function assertJobToken(request: NextRequest) {
-  const expected = process.env.INTERNAL_JOB_TOKEN ?? '';
+  const fixturePath = process.env.TEST_INTERNAL_JOB_TOKEN_FILE;
+  let expected = process.env.INTERNAL_JOB_TOKEN ?? '';
+  if (fixturePath) {
+    try { expected = readFileSync(fixturePath, 'utf8').trim(); } catch { expected = ''; }
+  }
   const provided = request.headers.get('x-internal-job-token') ?? '';
   const a = Buffer.from(expected);
   const b = Buffer.from(provided);

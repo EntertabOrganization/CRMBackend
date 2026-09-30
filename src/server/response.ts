@@ -60,11 +60,30 @@ function translatePersistError(error: unknown): unknown {
     if (target.includes('commercial_pack_outbound_client_message')) return new AppError('MESSAGE_ALREADY_EXISTS', 'Client message was already accepted.', 409);
     if (target.includes('commercial_pack_')) return new AppError('CONCURRENCY_CONFLICT', 'A concurrent operation changed the same business invariant.', 409);
   }
+  return translateDatabaseError(error);
+}
+
+/** Converts unavailable/missing PostgreSQL failures into a stable, sanitized API contract. */
+export function translateDatabaseError(error: unknown): unknown {
+  const candidate = error as { code?: string; name?: string; message?: string } | null;
+  const unavailableCodes = new Set(['P1000', 'P1001', 'P1002', 'P1003', 'P1017']);
+  if (
+    (candidate?.code && unavailableCodes.has(candidate.code)) ||
+    candidate?.name === 'PrismaClientInitializationError' ||
+    /can't reach database server|server has closed the connection/i.test(candidate?.message ?? '')
+  ) {
+    return new AppError('DATABASE_UNAVAILABLE', 'The database is temporarily unavailable.', 503);
+  }
   return error;
 }
 
 async function withState<T>(handler: () => Promise<T>): Promise<{ result?: T; error?: unknown }> {
-  const snapshot = await hydrateState(prisma);
+  let snapshot;
+  try {
+    snapshot = await hydrateState(prisma);
+  } catch (error) {
+    return { error: translateDatabaseError(error) };
+  }
   appContext.store.state = structuredClone(snapshot);
   appContext.realtime.discard();
   let committed = false;
@@ -113,7 +132,12 @@ async function withState<T>(handler: () => Promise<T>): Promise<{ result?: T; er
 /** Runs a read-only handler against freshly hydrated state (nothing is persisted or projected). */
 export function readOnly<T>(handler: () => Promise<T>): Promise<{ result?: T; error?: unknown }> {
   return serialized(async () => {
-    const snapshot = await hydrateState(prisma);
+    let snapshot;
+    try {
+      snapshot = await hydrateState(prisma);
+    } catch (error) {
+      return { error: translateDatabaseError(error) };
+    }
     appContext.store.state = structuredClone(snapshot);
     try {
       return { result: await handler() };

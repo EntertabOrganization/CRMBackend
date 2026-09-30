@@ -1,38 +1,45 @@
 # EntertabCRM Backend
 
-Auth/identity module implementation based on the provided `Auth_Module` specification pack.
+Next.js backend for authentication, CRM, automation, catalog, commercial operations, contact center, data integration, sales intelligence, and analytics.
 
-## What is included
+## Local development on Windows
 
-- NestJS modular backend using Fastify.
-- Auth, Workspace, User, Authorization, Department, Partner and Audit HTTP APIs under `/api/v1`.
-- Prisma PostgreSQL schema and initial SQL migration.
-- Contract-style domain tests and HTTP E2E tests.
-- Deterministic local mail/OAuth fakes for automated tests.
+The backend uses the project-local PostgreSQL 18 cluster under `.local-postgres/data-utf8`. The incomplete Windows service cluster at `D:\Applications\PostgreSql\data` is not modified. PostgreSQL binaries default to `D:\Applications\PostgreSql\bin`; set `POSTGRES_BIN` to use another installation.
 
-## Local commands
+Port 3000 belongs to the frontend. The backend always starts on [http://localhost:3001](http://localhost:3001).
 
-```bash
+```powershell
 npm install
-npm run build
+npm run db:setup
+npm run dev
+```
+
+`npm run dev` runs the idempotent database setup automatically. Setup recovers a stopped cluster, verifies stale PID files before removal, snapshots data before recovery, creates the application database, deploys migrations, and seeds the admin role and permissions.
+
+Database lifecycle commands:
+
+```powershell
+npm run db:setup
+npm run db:start
+npm run db:health
+npm run db:stop
+```
+
+The readiness endpoint is `GET /api/v1/health/ready`. A database outage returns a sanitized `503 DATABASE_UNAVAILABLE` response instead of an unhandled error.
+
+## Validation
+
+```powershell
+npm run typecheck
+npm run prisma:validate
 npm test
-npm run test:auth
-npm run test:e2e
-npm audit
+npm run test:endpoints
+npm run test:endpoints:live
+npm run test:all
 ```
 
-Prisma validation:
+- `test:endpoints` recreates `entertabcrm_test`, deploys migrations, and exercises every Next route handler directly with real persistence.
+- `test:endpoints:live` builds and starts Next.js on port 3101, then runs the same endpoint scenarios over HTTP.
+- `test:all` runs type checking, Prisma validation, the complete Jest suite, live HTTP endpoint coverage, and a final production build.
 
-```bash
-DATABASE_URL="postgresql://entertabcrm:entertabcrm@localhost:5432/entertabcrm_auth" npx prisma validate --schema prisma/schema.prisma
-DATABASE_URL="postgresql://entertabcrm:entertabcrm@localhost:5432/entertabcrm_auth" npx prisma generate --schema prisma/schema.prisma
-```
-
-PostgreSQL for future DB integration:
-
-```bash
-docker compose up -d postgres
-npx prisma migrate deploy --schema prisma/schema.prisma
-```
-
-The current automated suite runs against the in-memory domain service. Live PostgreSQL integration requires Docker/PostgreSQL availability, which was not present in this workspace environment.
+The endpoint audit discovers route files automatically, rejects missing coverage, and requires protected routes to be exercised using valid credentials.

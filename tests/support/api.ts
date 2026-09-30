@@ -16,7 +16,7 @@ export type ApiOptions = {
   workspaceId?: string;
   body?: unknown;
   query?: Record<string, string>;
-  params?: Record<string, string>;
+  params?: Record<string, string | string[]>;
   headers?: Record<string, string>;
   /** For streaming endpoints (SSE): return once headers arrive and cancel the body instead of waiting for it to end. */
   stream?: boolean;
@@ -38,6 +38,7 @@ let requestCounter = 0;
  * Must run before anything imports `src/server/prisma-client`.
  */
 export async function prepareTestDatabase() {
+  if (process.env.TEST_DATABASE_PREPARED === '1') return;
   const url = process.env.TEST_DATABASE_URL ?? DEFAULT_TEST_URL;
   const dbName = new URL(url).pathname.replace(/^\//, '');
   if (!dbName.endsWith('_test')) {
@@ -75,16 +76,10 @@ export function coveredEndpoints() {
 }
 
 export async function api<T = any>(method: Method, template: string, options: ApiOptions = {}): Promise<ApiResult<T>> {
-  const routeModule = await import(`@/app${template === '/' ? '' : template}/route`);
-  const handler = routeModule[method];
-  if (typeof handler !== 'function') throw new Error(`${method} ${template} is not exported by its route file.`);
-
   const params = options.params ?? {};
-  const resolvedPath = template.replace(/\[(\w+)\]/g, (_, key: string) => {
-    if (!params[key]) throw new Error(`Missing path param "${key}" for ${template}`);
-    return params[key];
-  });
-  const url = new URL(`http://localhost${resolvedPath}`);
+  const resolvedPath = resolveTemplate(template, params);
+  const baseUrl = process.env.API_TEST_BASE_URL ?? 'http://localhost';
+  const url = new URL(resolvedPath, baseUrl);
   for (const [key, value] of Object.entries(options.query ?? {})) url.searchParams.set(key, value);
 
   const headers: Record<string, string> = {
@@ -96,12 +91,25 @@ export async function api<T = any>(method: Method, template: string, options: Ap
   if (options.token) headers.authorization = `Bearer ${options.token}`;
   if (options.workspaceId) headers['x-workspace-id'] = options.workspaceId;
 
-  const request = new NextRequest(url, {
-    method,
-    headers,
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
-  });
-  const response: Response = await handler(request, { params: Promise.resolve(params) });
+  let response: Response;
+  if (process.env.API_TEST_BASE_URL) {
+    response = await fetch(url, {
+      method,
+      headers,
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      redirect: 'manual',
+    });
+  } else {
+    const routeModule = await import(`@/app${template === '/' ? '' : template}/route`);
+    const handler = routeModule[method];
+    if (typeof handler !== 'function') throw new Error(`${method} ${template} is not exported by its route file.`);
+    const request = new NextRequest(url, {
+      method,
+      headers,
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    });
+    response = await handler(request, { params: Promise.resolve(params) });
+  }
   covered.add(`${method} ${template}`);
   if (options.token || options.headers?.['x-internal-job-token'] || options.headers?.['x-automation-integration-key']) coveredAuthenticated.add(`${method} ${template}`);
 
@@ -117,6 +125,24 @@ export async function api<T = any>(method: Method, template: string, options: Ap
     // Non-JSON responses (the landing page and swagger UI) are returned as text.
   }
   return { status: response.status, body, data: body?.data };
+}
+
+function resolveTemplate(template: string, params: Record<string, string | string[]>) {
+  let resolved = template.replace(/\/\[\[\.\.\.(\w+)\]\]/g, (_match, key: string) => {
+    const value = params[key];
+    const parts = Array.isArray(value) ? value : value ? [value] : [];
+    return parts.length ? `/${parts.map(encodeURIComponent).join('/')}` : '';
+  });
+  resolved = resolved.replace(/\[\.\.\.(\w+)\]/g, (_match, key: string) => {
+    const value = params[key];
+    const parts = Array.isArray(value) ? value : value ? [value] : ['missing'];
+    return parts.map(encodeURIComponent).join('/');
+  });
+  return resolved.replace(/\[(\w+)\]/g, (_match, key: string) => {
+    const value = params[key];
+    if (!value || Array.isArray(value)) throw new Error(`Missing path param "${key}" for ${template}`);
+    return encodeURIComponent(value);
+  });
 }
 
 /** Lists every `METHOD /template` the app/ directory exposes, by importing each route module. */

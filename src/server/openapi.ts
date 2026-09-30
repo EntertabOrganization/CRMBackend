@@ -11,6 +11,7 @@ const baseDocument = {
   },
   servers: [{ url: '/api/v1' }],
   tags: [
+    { name: 'Health' },
     { name: 'Auth' },
     { name: 'Workspaces' },
     { name: 'Users' },
@@ -103,6 +104,17 @@ const baseDocument = {
     },
   },
   paths: {
+    '/health/ready': {
+      get: {
+        tags: ['Health'],
+        summary: 'Check database and migration readiness.',
+        security: [],
+        responses: {
+          '200': { description: 'The backend is ready to serve requests.' },
+          '503': { description: 'The database is unavailable or migrations are incomplete.' },
+        },
+      },
+    },
     '/auth/signup': authPost('Sign up with email and password.', 'SignupInput'),
     '/auth/verify-email': authPost('Verify email and create the first workspace.', 'TokenInput'),
     '/auth/resend-verification': authPost('Request a new verification email.', 'EmailInput'),

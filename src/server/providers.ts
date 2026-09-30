@@ -1,3 +1,4 @@
+import { appendFileSync, readFileSync } from 'node:fs';
 import { unauthorized } from './errors';
 
 export type SentMail = {
@@ -15,16 +16,22 @@ export interface MailService {
 export class MemoryMailService implements MailService {
   sent: SentMail[] = [];
 
+  private record(mail: SentMail) {
+    this.sent.push(mail);
+    const mailbox = process.env.TEST_MAILBOX_FILE;
+    if (mailbox) appendFileSync(mailbox, `${JSON.stringify(mail)}\n`, { encoding: 'utf8' });
+  }
+
   async sendVerificationEmail(to: string, token: string) {
-    this.sent.push({ to, subject: 'Verify your EntertabCRM email', token });
+    this.record({ to, subject: 'Verify your EntertabCRM email', token });
   }
 
   async sendPasswordResetEmail(to: string, token: string) {
-    this.sent.push({ to, subject: 'Reset your EntertabCRM password', token });
+    this.record({ to, subject: 'Reset your EntertabCRM password', token });
   }
 
   async sendInvitationEmail(to: string, token: string) {
-    this.sent.push({ to, subject: 'EntertabCRM workspace invitation', token });
+    this.record({ to, subject: 'EntertabCRM workspace invitation', token });
   }
 }
 
@@ -48,7 +55,16 @@ export class FakeGoogleAuthProvider implements GoogleAuthProvider {
   }
 
   async verifyCredential(credential: string) {
-    const profile = this.profiles.get(credential);
+    let profile = this.profiles.get(credential);
+    const fixturePath = process.env.TEST_GOOGLE_PROFILES_FILE;
+    if (!profile && fixturePath) {
+      try {
+        const fixtures = JSON.parse(readFileSync(fixturePath, 'utf8')) as Record<string, GoogleProfile>;
+        profile = fixtures[credential];
+      } catch {
+        profile = undefined;
+      }
+    }
     if (!profile) throw unauthorized('Invalid Google credential.');
     return profile;
   }

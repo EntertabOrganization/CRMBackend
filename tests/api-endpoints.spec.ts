@@ -5,6 +5,7 @@
  */
 import { resetRateLimits } from '@/src/server/rate-limit';
 import { api, coveredAuthenticatedEndpoints, coveredEndpoints, disconnectTestDatabase, discoverEndpoints, prepareTestDatabase } from './support/api';
+import fs from 'node:fs';
 
 jest.setTimeout(120_000);
 
@@ -22,6 +23,35 @@ type Session = {
 
 const ws = { owner: undefined as unknown as Session };
 const ctx: Record<string, any> = {};
+
+async function sentMail() {
+  const mailbox = process.env.TEST_MAILBOX_FILE;
+  if (process.env.API_TEST_BASE_URL && mailbox) {
+    if (!fs.existsSync(mailbox)) return [];
+    return fs.readFileSync(mailbox, 'utf8').split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
+  }
+  const { appContext } = await import('@/src/server/app-context');
+  return appContext.mailer.sent;
+}
+
+async function addGoogleCredential(credential: string, profile: Record<string, unknown>) {
+  const fixturePath = process.env.TEST_GOOGLE_PROFILES_FILE;
+  if (process.env.API_TEST_BASE_URL && fixturePath) {
+    const fixtures = fs.existsSync(fixturePath) ? JSON.parse(fs.readFileSync(fixturePath, 'utf8') || '{}') : {};
+    fixtures[credential] = profile;
+    fs.writeFileSync(fixturePath, JSON.stringify(fixtures), 'utf8');
+    return;
+  }
+  const { appContext } = await import('@/src/server/app-context');
+  appContext.google.addCredential(credential, profile as any);
+}
+
+function configureInternalJobToken(token?: string) {
+  if (token) process.env.INTERNAL_JOB_TOKEN = token;
+  else delete process.env.INTERNAL_JOB_TOKEN;
+  const fixturePath = process.env.TEST_INTERNAL_JOB_TOKEN_FILE;
+  if (process.env.API_TEST_BASE_URL && fixturePath) fs.writeFileSync(fixturePath, token ?? '', 'utf8');
+}
 
 async function register(label: string, domain = 'example.com'): Promise<Session> {
   const email = `apitest-${label}-${RUN}@${domain}`;
@@ -83,6 +113,13 @@ describe('Public routes', () => {
     expect(res.body.openapi).toMatch(/^3\./);
     expect(Object.keys(res.body.paths).length).toBeGreaterThan(50);
   });
+
+  it('GET /api/v1/health/ready confirms database and migration readiness', async () => {
+    const res = await api('GET', '/api/v1/health/ready');
+    expectOk(res);
+    expect(res.data).toMatchObject({ status: 'ready', database: 'available' });
+    expect(res.data.appliedMigrations).toBeGreaterThan(0);
+  });
 });
 
 describe('Auth', () => {
@@ -109,8 +146,7 @@ describe('Auth', () => {
     expectOk(await api('POST', '/api/v1/auth/resend-verification', { body: { email: ctx.signup.email } }));
     expectError(await api('POST', '/api/v1/auth/verify-email', { body: { token: 'not-a-real-token' } }), 400);
 
-    const { appContext } = await import('@/src/server/app-context');
-    const mail = [...appContext.mailer.sent].reverse().find((item) => item.to === ctx.signup.email && item.token);
+    const mail = [...await sentMail()].reverse().find((item) => item.to === ctx.signup.email && item.token);
     expect(mail).toBeDefined();
     const verified = await api('POST', '/api/v1/auth/verify-email', { body: { token: mail!.token } });
     expectOk(verified);
@@ -161,8 +197,7 @@ describe('Auth', () => {
     // Unknown addresses must not leak whether an account exists.
     expectOk(await api('POST', '/api/v1/auth/forgot-password', { body: { email: `ghost-${RUN}@example.com` } }));
 
-    const { appContext } = await import('@/src/server/app-context');
-    const mail = [...appContext.mailer.sent].reverse().find((item) => item.to === user.email && item.subject.startsWith('Reset'));
+    const mail = [...await sentMail()].reverse().find((item) => item.to === user.email && item.subject.startsWith('Reset'));
     expect(mail?.token).toBeTruthy();
 
     expectError(await api('POST', '/api/v1/auth/reset-password', { body: { token: mail!.token, password: 'weak' } }), 400);
@@ -173,16 +208,15 @@ describe('Auth', () => {
   });
 
   it('POST /auth/google/signup and /auth/google/signin authenticate a verified Google profile', async () => {
-    const { appContext } = await import('@/src/server/app-context');
     const email = `apitest-google-${RUN}@example.com`;
-    appContext.google.addCredential(`cred-${RUN}`, {
+    await addGoogleCredential(`cred-${RUN}`, {
       providerUserId: `google-${RUN}`,
       email,
       emailVerified: true,
       firstName: 'Goo',
       lastName: 'Gle',
     });
-    appContext.google.addCredential(`unverified-${RUN}`, {
+    await addGoogleCredential(`unverified-${RUN}`, {
       providerUserId: `google-unverified-${RUN}`,
       email: `apitest-google-unverified-${RUN}@example.com`,
       emailVerified: false,
@@ -1283,7 +1317,7 @@ describe('Realtime and operational jobs', () => {
   });
 
   it('POST /internal/crm/jobs/[job] runs idempotent scheduler jobs only with the job token', async () => {
-    process.env.INTERNAL_JOB_TOKEN = 'test-job-token-0123456789';
+    configureInternalJobToken('test-job-token-0123456789');
     const headers = { 'x-internal-job-token': 'test-job-token-0123456789' };
     const run = (job: string, body: Record<string, unknown> = {}, extra: Record<string, string> = headers) => api('POST', '/api/v1/internal/crm/jobs/[job]', { params: { job }, headers: extra, body });
     const overdue = await run('overdue');
@@ -1305,7 +1339,7 @@ describe('Realtime and operational jobs', () => {
     expectError(await run('overdue', {}, {}), 401, 'UNAUTHENTICATED');
     // A user bearer token is not a job credential.
     expectError(await api('POST', '/api/v1/internal/crm/jobs/[job]', authed({ params: { job: 'overdue' }, body: {} })), 401, 'UNAUTHENTICATED');
-    delete process.env.INTERNAL_JOB_TOKEN;
+    configureInternalJobToken();
     expectError(await run('overdue'), 401, 'UNAUTHENTICATED'); // disabled when unconfigured
   });
 });
@@ -1558,10 +1592,10 @@ describe('Automation Rules & Triggers API', () => {
   const stageOf = (name?: string) => ctx.dealStages.filter((s: any) => s.semanticType === 'PROGRESS');
 
   beforeAll(() => {
-    process.env.INTERNAL_JOB_TOKEN = TOKEN;
+    configureInternalJobToken(TOKEN);
   });
   afterAll(() => {
-    delete process.env.INTERNAL_JOB_TOKEN;
+    configureInternalJobToken();
   });
 
   it('exposes registry-driven metadata for targets, triggers, actions and conditions', async () => {
@@ -1742,6 +1776,7 @@ describe('Cross-cutting behaviour', () => {
     'GET /',
     'GET /swagger',
     'GET /api/docs',
+    'GET /api/v1/health/ready',
     'POST /api/v1/auth/signup',
     'POST /api/v1/auth/signin',
     'POST /api/v1/auth/google/signup',
