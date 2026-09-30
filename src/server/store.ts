@@ -95,6 +95,15 @@ import type {
   PaymentAttempt, ProviderEvent, QueueMember, RecurringOccurrence, RecurringRule, Refund, Requisite, RequisiteAddress,
   RequisitePreset, SellerCompanyBinding, SlaPolicy, SlaTimer,
 } from './commercial/types';
+import type {
+  AdCampaign, AnalyticsFact, AnalyticsFreshness, AnalyticsReport, ApiApplication, ApiCredential, AttributionModelVersion,
+  AttributionResult, AttributionSettings, AttributionTouch, BiCredential, Dashboard, DuplicateCandidate, DuplicateExclusion,
+  DuplicateKey, DuplicateRule, EntitlementGrant, ExportJob, ExternalEntityLink, ImportJob, ImportRow, IntelligenceJob,
+  IntegrationConnection, IntegrationProviderEvent, KpiTarget, MarketingCost, MergeOperation, MergeRedirect, MetricVersion,
+  PrivateArtifact, QualityFinding, QualityRule, QualityScore, ReportSchedule, ReportScheduleRun, RetentionRecord,
+  SemanticDataset, SourceOverride, SourceRule, SyncConflict, SyncRun, TrackingAsset, TrafficSource, Visitor,
+  VisitorIdentityLink, VisitorSession, WebhookDelivery, WebhookSubscription,
+} from './intelligence/types';
 
 export type DbState = {
   users: User[];
@@ -212,6 +221,54 @@ export type DbState = {
   slaPolicies: SlaPolicy[];
   slaTimers: SlaTimer[];
   backgroundJobs: BackgroundJob[];
+  entitlementGrants: EntitlementGrant[];
+  retentionRecords: RetentionRecord[];
+  intelligenceJobs: IntelligenceJob[];
+  duplicateRules: DuplicateRule[];
+  duplicateKeys: DuplicateKey[];
+  duplicateCandidates: DuplicateCandidate[];
+  duplicateExclusions: DuplicateExclusion[];
+  mergeOperations: MergeOperation[];
+  mergeRedirects: MergeRedirect[];
+  qualityRules: QualityRule[];
+  qualityFindings: QualityFinding[];
+  qualityScores: QualityScore[];
+  importJobs: ImportJob[];
+  importRows: ImportRow[];
+  exportJobs: ExportJob[];
+  privateArtifacts: PrivateArtifact[];
+  apiApplications: ApiApplication[];
+  apiCredentials: ApiCredential[];
+  integrationConnections: IntegrationConnection[];
+  externalEntityLinks: ExternalEntityLink[];
+  syncRuns: SyncRun[];
+  syncConflicts: SyncConflict[];
+  webhookSubscriptions: WebhookSubscription[];
+  webhookDeliveries: WebhookDelivery[];
+  integrationProviderEvents: IntegrationProviderEvent[];
+  trafficSources: TrafficSource[];
+  sourceRules: SourceRule[];
+  visitors: Visitor[];
+  visitorSessions: VisitorSession[];
+  attributionTouches: AttributionTouch[];
+  visitorIdentityLinks: VisitorIdentityLink[];
+  trackingAssets: TrackingAsset[];
+  sourceOverrides: SourceOverride[];
+  adCampaigns: AdCampaign[];
+  marketingCosts: MarketingCost[];
+  attributionModelVersions: AttributionModelVersion[];
+  attributionSettings: AttributionSettings[];
+  attributionResults: AttributionResult[];
+  analyticsFacts: AnalyticsFact[];
+  analyticsFreshness: AnalyticsFreshness[];
+  metricVersions: MetricVersion[];
+  semanticDatasets: SemanticDataset[];
+  analyticsReports: AnalyticsReport[];
+  dashboards: Dashboard[];
+  kpiTargets: KpiTarget[];
+  reportSchedules: ReportSchedule[];
+  reportScheduleRuns: ReportScheduleRun[];
+  biCredentials: BiCredential[];
 };
 
 export class InMemoryStore {
@@ -334,6 +391,54 @@ export class InMemoryStore {
       slaPolicies: [],
       slaTimers: [],
       backgroundJobs: [],
+      entitlementGrants: [],
+      retentionRecords: [],
+      intelligenceJobs: [],
+      duplicateRules: [],
+      duplicateKeys: [],
+      duplicateCandidates: [],
+      duplicateExclusions: [],
+      mergeOperations: [],
+      mergeRedirects: [],
+      qualityRules: [],
+      qualityFindings: [],
+      qualityScores: [],
+      importJobs: [],
+      importRows: [],
+      exportJobs: [],
+      privateArtifacts: [],
+      apiApplications: [],
+      apiCredentials: [],
+      integrationConnections: [],
+      externalEntityLinks: [],
+      syncRuns: [],
+      syncConflicts: [],
+      webhookSubscriptions: [],
+      webhookDeliveries: [],
+      integrationProviderEvents: [],
+      trafficSources: [],
+      sourceRules: [],
+      visitors: [],
+      visitorSessions: [],
+      attributionTouches: [],
+      visitorIdentityLinks: [],
+      trackingAssets: [],
+      sourceOverrides: [],
+      adCampaigns: [],
+      marketingCosts: [],
+      attributionModelVersions: [],
+      attributionSettings: [],
+      attributionResults: [],
+      analyticsFacts: [],
+      analyticsFreshness: [],
+      metricVersions: [],
+      semanticDatasets: [],
+      analyticsReports: [],
+      dashboards: [],
+      kpiTargets: [],
+      reportSchedules: [],
+      reportScheduleRuns: [],
+      biCredentials: [],
       ...seed,
     };
   }

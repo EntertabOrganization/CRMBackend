@@ -1,5 +1,6 @@
 import { CRM_EXTENSION_TAGS, crmExtensionPaths } from './openapi-extensions';
 import { COMMERCIAL_TAGS, commercialPaths } from './openapi-commercial';
+import { INTELLIGENCE_TAGS, intelligencePaths } from './openapi-intelligence';
 
 const baseDocument = {
   openapi: '3.1.0',
@@ -217,8 +218,8 @@ function mergePaths<T extends object>(base: T, extra: Record<string, Record<stri
 
 export const openApiDocument = {
   ...baseDocument,
-  tags: [...baseDocument.tags, ...CRM_EXTENSION_TAGS, ...COMMERCIAL_TAGS],
-  paths: mergePaths(mergePaths(baseDocument.paths, crmExtensionPaths()), commercialPaths()),
+  tags: [...baseDocument.tags, ...CRM_EXTENSION_TAGS, ...COMMERCIAL_TAGS, ...INTELLIGENCE_TAGS],
+  paths: mergePaths(mergePaths(mergePaths(baseDocument.paths, crmExtensionPaths()), commercialPaths()), intelligencePaths()),
 };
 
 function authPost(summary: string, schema: string) {

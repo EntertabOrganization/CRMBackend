@@ -100,6 +100,17 @@ const PERMISSIONS = [
   'form.create', 'form.read', 'form.update', 'form.publish', 'form.unpublish', 'form.archive', 'form.read_submission', 'form.export_submission', 'form.manage_security', 'form.manage_capture',
   'contact_center.channel_manage', 'contact_center.queue_manage',
   'conversation.read', 'conversation.respond', 'conversation.assign', 'conversation.transfer', 'conversation.close', 'conversation.reopen', 'conversation.bind_crm', 'conversation.view_recording', 'conversation.ai_assist',
+  'duplicate.read', 'duplicate.scan', 'duplicate.merge', 'duplicate.exclude', 'duplicate.configure',
+  'quality.read', 'quality.resolve', 'quality.ignore', 'quality.configure',
+  'import.read', 'import.create', 'import.cancel', 'import.undo',
+  'export.read', 'export.create', 'export.download',
+  'api_app.read', 'api_app.manage', 'api_credential.manage',
+  'integration.read', 'integration.manage', 'integration.sync', 'integration.conflict.resolve',
+  'webhook.read', 'webhook.manage', 'webhook.replay',
+  'sales_intelligence.read', 'sales_intelligence.configure', 'sales_intelligence.source.override', 'sales_intelligence.tracking.manage',
+  'sales_intelligence.cost.read', 'sales_intelligence.cost.manage', 'sales_intelligence.attribution.recalculate',
+  'analytics.read', 'analytics.configure', 'analytics.rebuild', 'analytics.report.manage', 'analytics.dashboard.manage',
+  'analytics.kpi.manage', 'analytics.schedule.manage', 'analytics.bi.manage',
 ];
 
 module.exports = {

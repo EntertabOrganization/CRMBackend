@@ -54,7 +54,8 @@ describe('database seed configuration', () => {
         'timeline.comment_delete',
       ]),
     );
-    expect(seedConfig.PERMISSIONS).toHaveLength(146);
+    const { PERMISSION_CATALOG } = require('../src/server/permissions');
+    expect(seedConfig.PERMISSIONS).toHaveLength(PERMISSION_CATALOG.length);
   });
 
   it('keeps the seed catalog identical to the server permission catalog', () => {

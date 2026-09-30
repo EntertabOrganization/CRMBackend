@@ -1,17 +1,52 @@
 import type { NextRequest } from 'next/server';
 import { appContext } from './app-context';
-import { badRequest } from './errors';
+import { AppError, badRequest } from './errors';
 import { rateLimitUser } from './rate-limit';
 import type { CrmRateLimit } from './rate-limit';
 import { requireUser, workspaceHeader } from './request';
 
 /** Authenticated user + the workspace resolved from the server-checked header (never from the request body). */
 export async function requireWorkspaceContext(request: NextRequest, rateLimit?: CrmRateLimit) {
+  const authorization = request.headers.get('authorization') ?? '';
+  const rawCredential = authorization.startsWith('Bearer trm_api_') ? authorization.slice('Bearer '.length) : null;
+  if (rawCredential) {
+    const requiredScope = apiScopeForOperation(request.method, request.nextUrl.pathname);
+    if (!requiredScope && request.nextUrl.pathname !== '/api/v1/batch') {
+      throw new AppError('API_SCOPE_DENIED', 'API credentials cannot access this endpoint.', 403);
+    }
+    const credential = appContext.intelligence.integrations.authenticateApi(rawCredential, requiredScope ?? undefined);
+    const user = appContext.store.state.users.find((item) => item.id === credential.principalId && !item.isDeleted);
+    if (!user) throw badRequest('CREDENTIAL_REVOKED', 'API credential principal is inactive.');
+    const suppliedWorkspace = workspaceHeader(request);
+    if (suppliedWorkspace && suppliedWorkspace !== credential.workspaceId) throw badRequest('WORKSPACE_CONTEXT_INVALID', 'Credential workspace cannot be overridden.');
+    if (rateLimit) rateLimitUser(`api:${credential.id}`, rateLimit);
+    return { user, workspaceId: credential.workspaceId, actor: appContext.access.actor(user, credential.workspaceId), credential };
+  }
   const user = await requireUser(request, appContext.store);
   const workspaceId = workspaceHeader(request);
   if (!workspaceId) throw badRequest('WORKSPACE_REQUIRED', 'X-Workspace-Id is required.');
   if (rateLimit) rateLimitUser(user.id, rateLimit);
-  return { user, workspaceId, actor: appContext.access.actor(user, workspaceId) };
+  return { user, workspaceId, actor: appContext.access.actor(user, workspaceId), credential: null };
+}
+
+/** Coarse API scope; normal RBAC and record scope are still enforced by each service. */
+export function apiScopeForOperation(method: string, pathname: string) {
+  const write = method.toUpperCase() !== 'GET';
+  if (/^\/api\/v1\/crm\//.test(pathname)) return write ? 'crm.write' : 'crm.read';
+  if (/^\/api\/v1\/data-quality(?:\/|$)/.test(pathname)) return write ? 'data_quality.write' : 'data_quality.read';
+  if (/^\/api\/v1\/imports(?:\/|$)/.test(pathname)) return 'imports.manage';
+  if (/^\/api\/v1\/exports(?:\/|$)/.test(pathname)) return 'exports.manage';
+  if (/^\/api\/v1\/analytics(?:\/|$)/.test(pathname)) return 'analytics.read';
+  if (/^\/api\/v1\/sales-intelligence(?:\/|$)/.test(pathname)) return write ? 'sales_intelligence.write' : 'sales_intelligence.read';
+  if (/^\/api\/v1\/integrations\/webhook/.test(pathname)) return 'webhooks.manage';
+  if (/^\/api\/v1\/integrations(?:\/|$)/.test(pathname)) return 'integrations.manage';
+  return null;
+}
+
+export function requireCredentialScope(credential: { scopes: string[] } | null, scope: string | null) {
+  if (credential && (!scope || !credential.scopes.includes(scope))) {
+    throw new AppError('API_SCOPE_DENIED', 'API credential scope is insufficient.', 403);
+  }
 }
 
 export function idempotencyKeyOf(request: NextRequest) {

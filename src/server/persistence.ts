@@ -127,6 +127,13 @@ const PACK_COLLECTIONS: Array<keyof DbState> = [
   'recurringRules','recurringOccurrences','crmForms','crmFormVersions','crmFormSubmissions','crmFormEntityBindings','crmFormUploads',
   'communicationChannels','channelConnections','contactCenterQueues','contactCenterQueueMembers','customerChannelIdentities',
   'customerConversations','conversationMessages','conversationAssignments','conversationTransfers','channelProviderEvents','slaPolicies','slaTimers','backgroundJobs',
+  'entitlementGrants','retentionRecords','intelligenceJobs','duplicateRules','duplicateKeys','duplicateCandidates','duplicateExclusions',
+  'mergeOperations','mergeRedirects','qualityRules','qualityFindings','qualityScores','importJobs','importRows','exportJobs','privateArtifacts',
+  'apiApplications','apiCredentials','integrationConnections','externalEntityLinks','syncRuns','syncConflicts','webhookSubscriptions',
+  'webhookDeliveries','integrationProviderEvents','trafficSources','sourceRules','visitors','visitorSessions','attributionTouches',
+  'visitorIdentityLinks','trackingAssets','sourceOverrides','adCampaigns','marketingCosts','attributionModelVersions','attributionSettings',
+  'attributionResults','analyticsFacts','analyticsFreshness','metricVersions','semanticDatasets','analyticsReports','dashboards','kpiTargets',
+  'reportSchedules','reportScheduleRuns','biCredentials',
 ];
 for (const extra of EXTRA_COLLECTIONS) {
   COLLECTIONS.push({ key: extra.key, delegate: (c) => (c as unknown as Record<string, Delegate>)[extra.model] });

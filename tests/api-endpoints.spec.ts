@@ -1759,6 +1759,8 @@ describe('Cross-cutting behaviour', () => {
     'POST /api/v1/public/forms/[publicKey]/uploads/[uploadId]/finalize',
     'POST /api/v1/payments/providers/[providerKey]/webhook',
     'POST /api/v1/contact-center/connections/[connectionId]/events',
+    'POST /api/v1/integrations/providers/[provider]/[connectionId]/webhook',
+    'GET /t/[token]',
   ]);
 
   it('only the allow-listed public endpoints exist without a bearer token', async () => {
@@ -1830,6 +1832,39 @@ describe('Cross-cutting behaviour', () => {
     expectError(await api('POST', '/api/v1/invoice-sequences', { ...authenticated, body: { prefix: '' } }), 400, 'VALIDATION_ERROR');
     expectOk(await api('GET', '/api/v1/commercial-jobs', authenticated));
     expectError(await api('POST', '/api/v1/commercial-jobs/[id]/retry', { ...authenticated, params: { id: MISSING_ID } }), 404, 'COMMERCIAL_JOB_NOT_FOUND');
+  });
+
+  it('exercises the data integration, intelligence, and analytics route surfaces', async () => {
+    const authenticated = { token: ws.owner.token, workspaceId: ws.owner.workspaceId };
+    const catchAll = (path: string[]) => ({ path } as any);
+
+    expectOk(await api('GET', '/api/v1/data-quality/[...path]', { ...authenticated, params: catchAll(['duplicates']) }));
+    expectOk(await api('POST', '/api/v1/data-quality/[...path]', { ...authenticated, params: catchAll(['duplicate-scans']), headers: { 'idempotency-key': `scan-${RUN}` }, body: { entityType: 'LEAD' } }));
+    expectError(await api('DELETE', '/api/v1/data-quality/[...path]', { ...authenticated, params: catchAll(['duplicate-exclusions', MISSING_ID]) }), 404);
+
+    expectOk(await api('GET', '/api/v1/imports/[[...path]]', { ...authenticated, params: catchAll([]) }));
+    expectOk(await api('POST', '/api/v1/imports/[[...path]]', { ...authenticated, params: catchAll([]), body: { entityType: 'CONTACT', mode: 'CREATE', fileFormat: 'CSV', csv: 'email\nroute@example.com' } }));
+    expectError(await api('PUT', '/api/v1/imports/[[...path]]', { ...authenticated, params: catchAll([MISSING_ID, 'mapping']), body: {} }), 404);
+
+    expectOk(await api('GET', '/api/v1/exports/[[...path]]', { ...authenticated, params: catchAll([]) }));
+    expectOk(await api('POST', '/api/v1/exports/[[...path]]', { ...authenticated, params: catchAll([]), body: { entityType: 'CONTACT', fields: ['id'], format: 'CSV' } }));
+    expectOk(await api('POST', '/api/v1/batch', { ...authenticated, body: { operations: [] } }));
+
+    expectOk(await api('GET', '/api/v1/integrations/[...path]', { ...authenticated, params: catchAll(['api-applications']) }));
+    expectOk(await api('POST', '/api/v1/integrations/[...path]', { ...authenticated, params: catchAll(['api-applications']), body: { name: 'Endpoint coverage', allowedScopes: ['analytics.read'] } }));
+    expectError(await api('POST', '/api/v1/integrations/providers/[provider]/[connectionId]/webhook', { params: { provider: 'fake', connectionId: MISSING_ID }, body: {} }), 400, 'WEBHOOK_SIGNATURE_INVALID');
+
+    expectOk(await api('GET', '/api/v1/sales-intelligence/[...path]', { ...authenticated, params: catchAll(['sources']) }));
+    expectError(await api('POST', '/api/v1/sales-intelligence/[...path]', { ...authenticated, params: catchAll(['unsupported']), body: {} }), 400, 'VALIDATION_FAILED');
+    expectError(await api('PATCH', '/api/v1/sales-intelligence/[...path]', { ...authenticated, params: catchAll(['unsupported']), body: {} }), 400, 'VALIDATION_FAILED');
+
+    expectOk(await api('GET', '/api/v1/analytics/[[...path]]', { ...authenticated, params: catchAll([]) }));
+    const bi = await api('POST', '/api/v1/analytics/[[...path]]', { ...authenticated, params: catchAll(['bi-credentials']), body: { name: 'Endpoint coverage', principalId: ws.owner.userId, allowedDatasets: ['deals'], queryLimit: 2 } });
+    expectOk(bi);
+    expectError(await api('POST', '/api/v1/analytics/[[...path]]', { ...authenticated, params: catchAll(['unsupported']), body: {} }), 400, 'REPORT_DEFINITION_INVALID');
+    expectError(await api('PATCH', '/api/v1/analytics/[[...path]]', { ...authenticated, params: catchAll(['unsupported']), body: {} }), 400, 'REPORT_DEFINITION_INVALID');
+    expectOk(await api('POST', '/api/v1/analytics/bi/query', { token: bi.data.secret, body: { datasetKey: 'deals' } }));
+    expectError(await api('GET', '/t/[token]', { params: { token: MISSING_ID } }), 404);
   });
 
   it('exercises every route handler exposed under app/', async () => {
