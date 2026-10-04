@@ -84,7 +84,10 @@ function Remove-StalePostmasterPid([int]$Port) {
   if (Test-PortOccupied $Port) {
     throw "Port $Port is already occupied. Refusing to remove postmaster.pid or start another database."
   }
-  $recordedPid = [System.IO.File]::ReadLines($pidFile) | Select-Object -First 1
+  # ReadLines() is lazy and can keep postmaster.pid open until its enumerator is
+  # finalized. On Windows that prevents the verified stale file from being
+  # deleted below, so read the small PID file eagerly instead.
+  $recordedPid = [System.IO.File]::ReadAllLines($pidFile) | Select-Object -First 1
   $process = if ($recordedPid -match '^\d+$') { Get-CimInstance Win32_Process -Filter "ProcessId=$recordedPid" -ErrorAction SilentlyContinue } else { $null }
   if ($process -and $process.Name -like 'postgres*') {
     throw "PID $recordedPid belongs to PostgreSQL. Refusing to treat postmaster.pid as stale."
