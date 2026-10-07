@@ -40,6 +40,7 @@ export function apiScopeForOperation(method: string, pathname: string) {
   if (/^\/api\/v1\/sales-intelligence(?:\/|$)/.test(pathname)) return write ? 'sales_intelligence.write' : 'sales_intelligence.read';
   if (/^\/api\/v1\/integrations\/webhook/.test(pathname)) return 'webhooks.manage';
   if (/^\/api\/v1\/integrations(?:\/|$)/.test(pathname)) return 'integrations.manage';
+  if (/^\/api\/v1\/(?:tasks|task-checklists|task-checklist-items|task-time-entries|task-templates|projects|project-stages)(?:\/|$)/.test(pathname)) return write ? 'tasks.write' : 'tasks.read';
   return null;
 }
 

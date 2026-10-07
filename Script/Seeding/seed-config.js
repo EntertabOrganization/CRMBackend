@@ -111,6 +111,13 @@ const PERMISSIONS = [
   'sales_intelligence.cost.read', 'sales_intelligence.cost.manage', 'sales_intelligence.attribution.recalculate',
   'analytics.read', 'analytics.configure', 'analytics.rebuild', 'analytics.report.manage', 'analytics.dashboard.manage',
   'analytics.kpi.manage', 'analytics.schedule.manage', 'analytics.bi.manage',
+  // Tasks & Projects
+  'project.create', 'project.read', 'project.update', 'project.delete', 'project.hard_delete', 'project.archive', 'project.tool_manage',
+  'project.member_view', 'project.member_manage', 'project.owner_transfer', 'project.permission_view', 'project.stage_manage', 'project.task_move_stage',
+  'task.create', 'task.read', 'task.update', 'task.delete', 'task.hard_delete', 'task.complete', 'task.reopen', 'task.review',
+  'task.change_deadline', 'task.change_responsible', 'task.add_participant', 'task.add_observer', 'task.result_submit', 'task.history_view',
+  'task.checklist_manage', 'task.checklist_complete', 'task.dependency_manage', 'task.time_add', 'task.time_edit_own', 'task.time_edit_all', 'task.time_delete',
+  'task_template.create', 'task_template.read', 'task_template.update', 'task_template.delete', 'task_template.recurrence_manage',
 ];
 
 module.exports = {

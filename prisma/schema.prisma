@@ -184,6 +184,9 @@ model Workspace {
   invitations      WorkspaceInvitation[]
   auditLogs        AuditLog[]
   partnerRelations PartnerWorkspaceRelation[]
+  projects         Project[]
+  tasks            Task[]
+  taskTemplates    TaskTemplate[]
 
   @@map("workspaces")
 }
@@ -1820,4 +1823,603 @@ model CommercialPackRecord {
   @@index([workspaceId, collection])
   @@index([collection])
   @@map("commercial_pack_records")
+}
+
+// ---------------------------------------------------------------------------
+// Tasks & Projects (TrueCRM Collaboration Pack)
+// Child rows reference parents through (workspace_id, parent_id) composite keys, so a row can never point at a
+// parent in another Workspace. Version columns are guarded by a trigger (see migration) as a cross-instance backstop.
+// ---------------------------------------------------------------------------
+
+enum ProjectType {
+  PROJECT
+  WORKGROUP
+}
+
+enum ProjectStatus {
+  PLANNED
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  CANCELLED
+  ARCHIVED
+}
+
+enum ProjectVisibility {
+  PRIVATE
+  WORKSPACE_VISIBLE
+  OPEN
+  INVITE_ONLY
+}
+
+enum ProjectRole {
+  OWNER
+  MODERATOR
+  MEMBER
+}
+
+enum ProjectMemberStatus {
+  ACTIVE
+  INVITED
+  REMOVED
+}
+
+enum ProjectToolType {
+  TASKS
+  KANBAN
+  CALENDAR
+  DRIVE
+  FEED
+  CHAT
+  REPORTS
+  KNOWLEDGE
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  REVIEW
+  COMPLETED
+  DEFERRED
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum TaskMemberRole {
+  PARTICIPANT
+  OBSERVER
+}
+
+enum SubtaskCompletionPolicy {
+  IGNORE
+  WARN
+  REQUIRE_ALL
+}
+
+enum TaskReviewDecision {
+  PENDING
+  APPROVED
+  RETURNED
+}
+
+enum TaskResultType {
+  TEXT
+  FILE
+  LINK
+}
+
+enum TaskDependencyType {
+  FINISH_START
+  START_START
+  FINISH_FINISH
+  START_FINISH
+}
+
+enum TaskTimeEntrySource {
+  MANUAL
+  TIMER
+}
+
+enum TaskTimeEntryStatus {
+  ACTIVE
+  COMPLETED
+}
+
+enum RecurrenceFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+  YEARLY
+}
+
+model Project {
+  id                  String            @id @db.Uuid
+  workspaceId         String            @map("workspace_id") @db.Uuid
+  name                String
+  code                String?
+  description         String?
+  projectType         ProjectType       @map("project_type")
+  status              ProjectStatus
+  statusBeforeArchive ProjectStatus?    @map("status_before_archive")
+  ownerUserId         String            @map("owner_user_id") @db.Uuid
+  startDate           DateTime?         @map("start_date") @db.Date
+  endDate             DateTime?         @map("end_date") @db.Date
+  visibility          ProjectVisibility
+  createdByUserId     String            @map("created_by_user_id") @db.Uuid
+  version             Int               @default(1)
+  isDeleted           Boolean           @default(false) @map("is_deleted")
+  deletedAt           DateTime?         @map("deleted_at") @db.Timestamptz(6)
+  deletedByUserId     String?           @map("deleted_by_user_id") @db.Uuid
+  archivedAt          DateTime?         @map("archived_at") @db.Timestamptz(6)
+  createdAt           DateTime          @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime          @map("updated_at") @db.Timestamptz(6)
+  workspace           Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  members             ProjectMember[]
+  tools               ProjectTool[]
+  stages              ProjectStage[]
+  tasks               Task[]
+  templates           TaskTemplate[]
+
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, code])
+  @@index([workspaceId, status])
+  @@index([workspaceId, ownerUserId])
+  @@map("projects")
+}
+
+model ProjectMember {
+  id              String              @id @db.Uuid
+  workspaceId     String              @map("workspace_id") @db.Uuid
+  projectId       String              @map("project_id") @db.Uuid
+  userId          String              @map("user_id") @db.Uuid
+  memberRole      ProjectRole         @map("member_role")
+  status          ProjectMemberStatus
+  joinedAt        DateTime?           @map("joined_at") @db.Timestamptz(6)
+  leftAt          DateTime?           @map("left_at") @db.Timestamptz(6)
+  invitedByUserId String?             @map("invited_by_user_id") @db.Uuid
+  version         Int                 @default(1)
+  createdAt       DateTime            @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime            @map("updated_at") @db.Timestamptz(6)
+  project         Project             @relation(fields: [workspaceId, projectId], references: [workspaceId, id], onDelete: NoAction)
+
+  @@unique([projectId, userId])
+  @@index([workspaceId, userId, status])
+  @@map("project_members")
+}
+
+model ProjectTool {
+  id                 String          @id @db.Uuid
+  workspaceId        String          @map("workspace_id") @db.Uuid
+  projectId          String          @map("project_id") @db.Uuid
+  toolType           ProjectToolType @map("tool_type")
+  isEnabled          Boolean         @map("is_enabled")
+  configurationJson  Json            @default("{}") @map("configuration_json")
+  linkedResourceType String?         @map("linked_resource_type")
+  linkedResourceId   String?         @map("linked_resource_id") @db.Uuid
+  version            Int             @default(1)
+  createdAt          DateTime        @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime        @map("updated_at") @db.Timestamptz(6)
+  project            Project         @relation(fields: [workspaceId, projectId], references: [workspaceId, id], onDelete: NoAction)
+
+  @@unique([projectId, toolType])
+  @@map("project_tools")
+}
+
+model ProjectStage {
+  id                    String   @id @db.Uuid
+  workspaceId           String   @map("workspace_id") @db.Uuid
+  projectId             String   @map("project_id") @db.Uuid
+  name                  String
+  code                  String
+  sortOrder             Int      @map("sort_order")
+  isDefault             Boolean  @map("is_default")
+  isTerminalVisualStage Boolean  @map("is_terminal_visual_stage")
+  version               Int      @default(1)
+  isDeleted             Boolean  @default(false) @map("is_deleted")
+  createdAt             DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime @map("updated_at") @db.Timestamptz(6)
+  project               Project  @relation(fields: [workspaceId, projectId], references: [workspaceId, id], onDelete: NoAction)
+  tasks                 Task[]
+
+  @@unique([workspaceId, id])
+  @@index([projectId, sortOrder])
+  @@map("project_stages")
+}
+
+model Task {
+  id                      String                  @id @db.Uuid
+  workspaceId             String                  @map("workspace_id") @db.Uuid
+  projectId               String?                 @map("project_id") @db.Uuid
+  projectStageId          String?                 @map("project_stage_id") @db.Uuid
+  parentTaskId            String?                 @map("parent_task_id") @db.Uuid
+  title                   String
+  description             String?
+  status                  TaskStatus
+  priority                TaskPriority
+  createdByUserId         String                  @map("created_by_user_id") @db.Uuid
+  responsibleUserId       String                  @map("responsible_user_id") @db.Uuid
+  startAt                 DateTime?               @map("start_at") @db.Timestamptz(6)
+  deadlineAt              DateTime?               @map("deadline_at") @db.Timestamptz(6)
+  plannedDurationSeconds  Int?                    @map("planned_duration_seconds")
+  progressPercent         Int                     @default(0) @map("progress_percent")
+  requiresResult          Boolean                 @map("requires_result")
+  completionControl       Boolean                 @map("completion_control")
+  subtaskCompletionPolicy SubtaskCompletionPolicy @map("subtask_completion_policy")
+  isTimeTrackingEnabled   Boolean                 @map("is_time_tracking_enabled")
+  templateId              String?                 @map("template_id") @db.Uuid
+  recurrenceInstanceId    String?                 @map("recurrence_instance_id") @db.Uuid
+  overdueNotifiedAt       DateTime?               @map("overdue_notified_at") @db.Timestamptz(6)
+  version                 Int                     @default(1)
+  isDeleted               Boolean                 @default(false) @map("is_deleted")
+  deletedAt               DateTime?               @map("deleted_at") @db.Timestamptz(6)
+  deletedByUserId         String?                 @map("deleted_by_user_id") @db.Uuid
+  completedAt             DateTime?               @map("completed_at") @db.Timestamptz(6)
+  completedByUserId       String?                 @map("completed_by_user_id") @db.Uuid
+  createdAt               DateTime                @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime                @map("updated_at") @db.Timestamptz(6)
+  workspace               Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project                 Project?                @relation(fields: [workspaceId, projectId], references: [workspaceId, id], onDelete: NoAction)
+  projectStage            ProjectStage?           @relation(fields: [workspaceId, projectStageId], references: [workspaceId, id], onDelete: NoAction)
+  parentTask              Task?                   @relation("TaskSubtasks", fields: [workspaceId, parentTaskId], references: [workspaceId, id], onDelete: NoAction)
+  subtasks                Task[]                  @relation("TaskSubtasks")
+  template                TaskTemplate?           @relation(fields: [workspaceId, templateId], references: [workspaceId, id], onDelete: NoAction)
+  members                 TaskMember[]
+  reviews                 TaskCompletionReview[]
+  results                 TaskResult[]
+  deadlineHistory         TaskDeadlineHistory[]
+  history                 TaskHistory[]
+  bindings                TaskCrmBinding[]
+  plannerPositions        TaskPlannerPosition[]
+  checklists              TaskChecklist[]
+  checklistItems          TaskChecklistItem[]
+  predecessorOf           TaskDependency[]        @relation("DependencyPredecessor")
+  successorOf             TaskDependency[]        @relation("DependencySuccessor")
+  timeEntries             TaskTimeEntry[]
+  stageHistory            ProjectStageHistory[]
+  recurrenceInstances     TaskRecurrenceInstance[]
+
+  @@unique([workspaceId, id])
+  @@index([workspaceId, status])
+  @@index([workspaceId, responsibleUserId, status])
+  @@index([workspaceId, projectId])
+  @@index([workspaceId, deadlineAt])
+  @@index([workspaceId, parentTaskId])
+  @@map("tasks")
+}
+
+model ProjectStageHistory {
+  id            String   @id @db.Uuid
+  workspaceId   String   @map("workspace_id") @db.Uuid
+  taskId        String   @map("task_id") @db.Uuid
+  projectId     String   @map("project_id") @db.Uuid
+  oldStageId    String?  @map("old_stage_id") @db.Uuid
+  newStageId    String   @map("new_stage_id") @db.Uuid
+  movedByUserId String   @map("moved_by_user_id") @db.Uuid
+  movedAt       DateTime @map("moved_at") @db.Timestamptz(6)
+  task          Task     @relation(fields: [workspaceId, taskId], references: [workspaceId, id], onDelete: NoAction)
+
+  @@index([taskId, movedAt])
+  @@map("project_stage_history")
+}
+
+model TaskMember {
+  id            String         @id @db.Uuid
+  workspaceId   String         @map("workspace_id") @db.Uuid
+  taskId        String         @map("task_id") @db.Uuid
+  userId        String         @map("user_id") @db.Uuid
+  role          TaskMemberRole
+  addedByUserId String         @map("added_by_user_id") @db.Uuid
+  createdAt     DateTime       @map("created_at") @db.Timestamptz(6)
+  task          Task           @relation(fields: [workspaceId, taskId], references: [workspaceId, id], onDelete: NoAction)
+
+  @@unique([taskId, userId, role])
+  @@index([workspaceId, userId])
+  @@map("task_members")
+}
+
+model TaskCompletionReview {
+  id                String             @id @db.Uuid
+  workspaceId       String             @map("workspace_id") @db.Uuid
+  taskId            String             @map("task_id") @db.Uuid
+  submittedByUserId String             @map("submitted_by_user_id") @db.Uuid
+  submittedAt       DateTime           @map("submitted_at") @db.Timestamptz(6)
+  reviewerUserId    String?            @map("reviewer_user_id") @db.Uuid
+  decision          TaskReviewDecision
+  comment           String?
+  decidedAt         DateTime?          @map("decided_at") @db.Timestamptz(6)
+  task              Task               @relation(fields: [workspaceId, taskId], references: [workspaceId, id], onDelete: NoAction)
+
+  @@index([taskId, submittedAt])
+  @@map("task_completion_reviews")
+}
+
+model TaskResult {
+  id                String         @id @db.Uuid
+  workspaceId       String         @map("workspace_id") @db.Uuid
+  taskId            String         @map("task_id") @db.Uuid
+  resultType        TaskResultType @map("result_type")
+  textValue         String?        @map("text_value")
+  fileId            String?        @map("file_id") @db.Uuid
+  url               String?
+  submittedByUserId String         @map("submitted_by_user_id") @db.Uuid
+  createdAt         DateTime       @map("created_at") @db.Timestamptz(6)
+  task              Task           @relation(fields: [workspaceId, taskId], references: [workspaceId, id], onDelete: NoAction)
+
+  @@index([taskId, createdAt])
+  @@map("task_results")
+}
+
+model TaskDeadlineHistory {
+  id              String    @id @db.Uuid
+  workspaceId     String    @map("workspace_id") @db.Uuid
+  taskId          String    @map("task_id") @db.Uuid
+  oldDeadlineAt   DateTime? @map("old_deadline_at") @db.Timestamptz(6)
+  newDeadlineAt   DateTime? @map("new_deadline_at") @db.Timestamptz(6)
+  changedByUserId String    @map("changed_by_user_id") @db.Uuid
+  reason          String?
+  changedAt       DateTime  @map("changed_at") @db.Timestamptz(6)
+  task            Task      @relation(fields: [workspaceId, taskId], references: [workspaceId, id], onDelete: NoAction)
+
+  @@index([taskId, changedAt])
+  @@map("task_deadline_history")
+}
+
+model TaskHistory {
+  id          String   @id @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  taskId      String   @map("task_id") @db.Uuid
+  action      String
+  field       String?
+  oldValue    Json?    @map("old_value")
+  newValue    Json?    @map("new_value")
+  actorUserId String?  @map("actor_user_id") @db.Uuid
+  occurredAt  DateTime @map("occurred_at") @db.Timestamptz(6)
+  task        Task     @relation(fields: [workspaceId, taskId], references: [workspaceId, id], onDelete: NoAction)
+
+  @@index([taskId, occurredAt])
+  @@map("task_history")
+}
+
+/// CRM and general (communication source) bindings of a Task.
+model TaskCrmBinding {
+  id              String   @id @db.Uuid
+  workspaceId     String   @map("workspace_id") @db.Uuid
+  taskId          String   @map("task_id") @db.Uuid
+  entityType      String   @map("entity_type")
+  entityId        String   @map("entity_id") @db.Uuid
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @map("created_at") @db.Timestamptz(6)
+  task            Task     @relation(fields: [workspaceId, taskId], references: [workspaceId, id], onDelete: NoAction)
+
+  @@unique([taskId, entityType, entityId])
+  @@index([workspaceId, entityType, entityId])
+  @@map("task_crm_bindings")
+}
+
+/// Personal Planner position: caller-specific read-model metadata, never Task status or Project stage.
+model TaskPlannerPosition {
+  id            String   @id @db.Uuid
+  workspaceId   String   @map("workspace_id") @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  taskId        String   @map("task_id") @db.Uuid
+  plannerColumn String   @map("planner_column")
+  sortOrder     Int      @map("sort_order")
+  updatedAt     DateTime @map("updated_at") @db.Timestamptz(6)
+  task          Task     @relation(fields: [workspaceId, taskId], references: [workspaceId, id], onDelete: NoAction)
+
+  @@unique([userId, taskId])
+  @@map("task_planner_positions")
+}
+
+model TaskChecklist {
+  id          String              @id @db.Uuid
+  workspaceId String              @map("workspace_id") @db.Uuid
+  taskId      String              @map("task_id") @db.Uuid
+  name        String
+  sortOrder   Int                 @map("sort_order")
+  version     Int                 @default(1)
+  createdAt   DateTime            @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime            @map("updated_at") @db.Timestamptz(6)
+  task        Task                @relation(fields: [workspaceId, taskId], references: [workspaceId, id], onDelete: NoAction)
+  items       TaskChecklistItem[]
+
+  @@unique([workspaceId, id])
+  @@index([taskId, sortOrder])
+  @@map("task_checklists")
+}
+
+model TaskChecklistItem {
+  id                String              @id @db.Uuid
+  workspaceId       String              @map("workspace_id") @db.Uuid
+  checklistId       String              @map("checklist_id") @db.Uuid
+  taskId            String              @map("task_id") @db.Uuid
+  parentItemId      String?             @map("parent_item_id") @db.Uuid
+  title             String
+  assignedUserId    String?             @map("assigned_user_id") @db.Uuid
+  isCompleted       Boolean             @map("is_completed")
+  completedByUserId String?             @map("completed_by_user_id") @db.Uuid
+  completedAt       DateTime?           @map("completed_at") @db.Timestamptz(6)
+  sortOrder         Int                 @map("sort_order")
+  version           Int                 @default(1)
+  createdAt         DateTime            @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime            @map("updated_at") @db.Timestamptz(6)
+  checklist         TaskChecklist       @relation(fields: [workspaceId, checklistId], references: [workspaceId, id], onDelete: NoAction)
+  task              Task                @relation(fields: [workspaceId, taskId], references: [workspaceId, id], onDelete: NoAction)
+  parentItem        TaskChecklistItem?  @relation("ChecklistItemChildren", fields: [workspaceId, parentItemId], references: [workspaceId, id], onDelete: NoAction)
+  children          TaskChecklistItem[] @relation("ChecklistItemChildren")
+
+  @@unique([workspaceId, id])
+  @@index([checklistId, parentItemId, sortOrder])
+  @@map("task_checklist_items")
+}
+
+model TaskDependency {
+  id                String             @id @db.Uuid
+  workspaceId       String             @map("workspace_id") @db.Uuid
+  predecessorTaskId String             @map("predecessor_task_id") @db.Uuid
+  successorTaskId   String             @map("successor_task_id") @db.Uuid
+  type              TaskDependencyType
+  lagSeconds        Int                @map("lag_seconds")
+  createdByUserId   String             @map("created_by_user_id") @db.Uuid
+  createdAt         DateTime           @map("created_at") @db.Timestamptz(6)
+  predecessor       Task               @relation("DependencyPredecessor", fields: [workspaceId, predecessorTaskId], references: [workspaceId, id], onDelete: NoAction)
+  successor         Task               @relation("DependencySuccessor", fields: [workspaceId, successorTaskId], references: [workspaceId, id], onDelete: NoAction)
+
+  @@unique([predecessorTaskId, successorTaskId])
+  @@index([workspaceId, successorTaskId])
+  @@map("task_dependencies")
+}
+
+model TaskTimeEntry {
+  id              String              @id @db.Uuid
+  workspaceId     String              @map("workspace_id") @db.Uuid
+  taskId          String              @map("task_id") @db.Uuid
+  userId          String              @map("user_id") @db.Uuid
+  startedAt       DateTime            @map("started_at") @db.Timestamptz(6)
+  endedAt         DateTime?           @map("ended_at") @db.Timestamptz(6)
+  durationSeconds Int                 @map("duration_seconds")
+  source          TaskTimeEntrySource
+  note            String?
+  status          TaskTimeEntryStatus
+  version         Int                 @default(1)
+  createdAt       DateTime            @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime            @map("updated_at") @db.Timestamptz(6)
+  task            Task                @relation(fields: [workspaceId, taskId], references: [workspaceId, id], onDelete: NoAction)
+
+  @@index([taskId, userId])
+  @@map("task_time_entries")
+}
+
+model TaskTemplate {
+  id                      String                      @id @db.Uuid
+  workspaceId             String                      @map("workspace_id") @db.Uuid
+  scopeType               String                      @map("scope_type")
+  scopeId                 String?                     @map("scope_id") @db.Uuid
+  name                    String
+  titleTemplate           String                      @map("title_template")
+  descriptionTemplate     String?                     @map("description_template")
+  projectId               String?                     @map("project_id") @db.Uuid
+  defaultResponsibleUserId String?                    @map("default_responsible_user_id") @db.Uuid
+  priority                TaskPriority
+  deadlineOffsetSeconds   Int?                        @map("deadline_offset_seconds")
+  plannedDurationSeconds  Int?                        @map("planned_duration_seconds")
+  isTimeTrackingEnabled   Boolean                     @map("is_time_tracking_enabled")
+  completionControl       Boolean                     @map("completion_control")
+  requiresResult          Boolean                     @map("requires_result")
+  subtaskCompletionPolicy SubtaskCompletionPolicy     @map("subtask_completion_policy")
+  fileIds                 String[]                    @map("file_ids") @db.Uuid
+  isActive                Boolean                     @map("is_active")
+  isDeleted               Boolean                     @default(false) @map("is_deleted")
+  createdByUserId         String                      @map("created_by_user_id") @db.Uuid
+  version                 Int                         @default(1)
+  createdAt               DateTime                    @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime                    @map("updated_at") @db.Timestamptz(6)
+  workspace               Workspace                   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project                 Project?                    @relation(fields: [workspaceId, projectId], references: [workspaceId, id], onDelete: NoAction)
+  members                 TaskTemplateMember[]
+  checklistItems          TaskTemplateChecklistItem[]
+  subtaskTemplates        TaskTemplateSubtask[]       @relation("TemplateSubtaskParent")
+  usedAsSubtask           TaskTemplateSubtask[]       @relation("TemplateSubtaskChild")
+  recurrenceRules         TaskRecurrenceRule[]
+  tasks                   Task[]
+
+  @@unique([workspaceId, id])
+  @@index([workspaceId, isDeleted])
+  @@map("task_templates")
+}
+
+model TaskTemplateMember {
+  id          String         @id @db.Uuid
+  workspaceId String         @map("workspace_id") @db.Uuid
+  templateId  String         @map("template_id") @db.Uuid
+  userId      String         @map("user_id") @db.Uuid
+  role        TaskMemberRole
+  template    TaskTemplate   @relation(fields: [workspaceId, templateId], references: [workspaceId, id], onDelete: NoAction)
+
+  @@unique([templateId, userId, role])
+  @@map("task_template_members")
+}
+
+model TaskTemplateChecklistItem {
+  id            String       @id @db.Uuid
+  workspaceId   String       @map("workspace_id") @db.Uuid
+  templateId    String       @map("template_id") @db.Uuid
+  checklistName String       @map("checklist_name")
+  parentItemId  String?      @map("parent_item_id") @db.Uuid
+  title         String
+  sortOrder     Int          @map("sort_order")
+  template      TaskTemplate @relation(fields: [workspaceId, templateId], references: [workspaceId, id], onDelete: NoAction)
+
+  @@index([templateId, sortOrder])
+  @@map("task_template_checklist_items")
+}
+
+model TaskTemplateSubtask {
+  id              String       @id @db.Uuid
+  workspaceId     String       @map("workspace_id") @db.Uuid
+  templateId      String       @map("template_id") @db.Uuid
+  childTemplateId String       @map("child_template_id") @db.Uuid
+  sortOrder       Int          @map("sort_order")
+  template        TaskTemplate @relation("TemplateSubtaskParent", fields: [workspaceId, templateId], references: [workspaceId, id], onDelete: NoAction)
+  childTemplate   TaskTemplate @relation("TemplateSubtaskChild", fields: [workspaceId, childTemplateId], references: [workspaceId, id], onDelete: NoAction)
+
+  @@unique([templateId, childTemplateId])
+  @@map("task_template_subtasks")
+}
+
+model TaskRecurrenceRule {
+  id                String                   @id @db.Uuid
+  workspaceId       String                   @map("workspace_id") @db.Uuid
+  templateId        String                   @map("template_id") @db.Uuid
+  frequency         RecurrenceFrequency
+  intervalValue     Int                      @map("interval_value")
+  daysOfWeek        Int[]                    @map("days_of_week")
+  dayOfMonth        Int?                     @map("day_of_month")
+  startDate         DateTime                 @map("start_date") @db.Date
+  endDate           DateTime?                @map("end_date") @db.Date
+  maxOccurrences    Int?                     @map("max_occurrences")
+  creationLocalTime String                   @map("creation_local_time")
+  timezone          String
+  nextRunAt         DateTime?                @map("next_run_at") @db.Timestamptz(6)
+  occurrenceCount   Int                      @default(0) @map("occurrence_count")
+  isActive          Boolean                  @map("is_active")
+  isDeleted         Boolean                  @default(false) @map("is_deleted")
+  lastErrorCode     String?                  @map("last_error_code")
+  lastErrorAt       DateTime?                @map("last_error_at") @db.Timestamptz(6)
+  version           Int                      @default(1)
+  createdAt         DateTime                 @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime                 @map("updated_at") @db.Timestamptz(6)
+  template          TaskTemplate             @relation(fields: [workspaceId, templateId], references: [workspaceId, id], onDelete: NoAction)
+  instances         TaskRecurrenceInstance[]
+
+  @@unique([workspaceId, id])
+  @@unique([templateId])
+  @@index([isActive, nextRunAt])
+  @@map("task_recurrence_rules")
+}
+
+model TaskRecurrenceInstance {
+  id               String             @id @db.Uuid
+  workspaceId      String             @map("workspace_id") @db.Uuid
+  recurrenceRuleId String             @map("recurrence_rule_id") @db.Uuid
+  templateId       String             @map("template_id") @db.Uuid
+  taskId           String?            @map("task_id") @db.Uuid
+  scheduledFor     DateTime           @map("scheduled_for") @db.Timestamptz(6)
+  status           String
+  attempts         Int
+  lastErrorCode    String?            @map("last_error_code")
+  createdAt        DateTime           @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime           @map("updated_at") @db.Timestamptz(6)
+  rule             TaskRecurrenceRule @relation(fields: [workspaceId, recurrenceRuleId], references: [workspaceId, id], onDelete: NoAction)
+  task             Task?              @relation(fields: [workspaceId, taskId], references: [workspaceId, id], onDelete: NoAction)
+
+  @@unique([recurrenceRuleId, scheduledFor])
+  @@index([workspaceId, status])
+  @@map("task_recurrence_instances")
 }

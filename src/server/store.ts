@@ -104,8 +104,50 @@ import type {
   SemanticDataset, SourceOverride, SourceRule, SyncConflict, SyncRun, TrackingAsset, TrafficSource, Visitor,
   VisitorIdentityLink, VisitorSession, WebhookDelivery, WebhookSubscription,
 } from './intelligence/types';
+import type {
+  Project, ProjectMember, ProjectStage, ProjectStageHistory, ProjectTool, Task, TaskChecklist, TaskChecklistItem,
+  TaskCompletionReview, TaskCrmBinding, TaskDeadlineHistory, TaskDependency, TaskHistory, TaskMember, TaskPlannerPosition,
+  TaskRecurrenceInstance, TaskRecurrenceRule, TaskResult, TaskTemplate, TaskTemplateChecklistItem, TaskTemplateMember,
+  TaskTemplateSubtask, TaskTimeEntry,
+} from './collab/tasks/types';
 
-export type DbState = {
+/** Tasks & Projects collections (one Prisma table each). */
+export type TasksProjectsState = {
+  projects: Project[];
+  projectMembers: ProjectMember[];
+  projectTools: ProjectTool[];
+  projectStages: ProjectStage[];
+  projectStageHistory: ProjectStageHistory[];
+  tasks: Task[];
+  taskMembers: TaskMember[];
+  taskCompletionReviews: TaskCompletionReview[];
+  taskResults: TaskResult[];
+  taskDeadlineHistory: TaskDeadlineHistory[];
+  taskHistory: TaskHistory[];
+  taskCrmBindings: TaskCrmBinding[];
+  taskPlannerPositions: TaskPlannerPosition[];
+  taskChecklists: TaskChecklist[];
+  taskChecklistItems: TaskChecklistItem[];
+  taskDependencies: TaskDependency[];
+  taskTimeEntries: TaskTimeEntry[];
+  taskTemplates: TaskTemplate[];
+  taskTemplateMembers: TaskTemplateMember[];
+  taskTemplateChecklistItems: TaskTemplateChecklistItem[];
+  taskTemplateSubtasks: TaskTemplateSubtask[];
+  taskRecurrenceRules: TaskRecurrenceRule[];
+  taskRecurrenceInstances: TaskRecurrenceInstance[];
+};
+
+export function emptyTasksProjectsState(): TasksProjectsState {
+  return {
+    projects: [], projectMembers: [], projectTools: [], projectStages: [], projectStageHistory: [], tasks: [], taskMembers: [],
+    taskCompletionReviews: [], taskResults: [], taskDeadlineHistory: [], taskHistory: [], taskCrmBindings: [], taskPlannerPositions: [],
+    taskChecklists: [], taskChecklistItems: [], taskDependencies: [], taskTimeEntries: [], taskTemplates: [], taskTemplateMembers: [],
+    taskTemplateChecklistItems: [], taskTemplateSubtasks: [], taskRecurrenceRules: [], taskRecurrenceInstances: [],
+  };
+}
+
+export type DbState = TasksProjectsState & {
   users: User[];
   authIdentities: AuthIdentity[];
   refreshSessions: RefreshSession[];
@@ -439,6 +481,7 @@ export class InMemoryStore {
       reportSchedules: [],
       reportScheduleRuns: [],
       biCredentials: [],
+      ...emptyTasksProjectsState(),
       ...seed,
     };
   }

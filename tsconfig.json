@@ -32,6 +32,8 @@
     ".next/types/**/*.ts",
     "Commercial_Capture_ContactCenter/Testing/**/*.ts",
     "Data_Integration_Intelligence_Analytics/Testing/**/*.ts",
+    "Tasks&Calendar&Files&Chats/Testing/support/**/*.ts",
+    "Tasks&Calendar&Files&Chats/Testing/Tasks-Projects/**/*.ts",
     "app/**/*.ts",
     "next-env.d.ts",
     "src/server/**/*.ts",

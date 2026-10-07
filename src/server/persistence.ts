@@ -1,4 +1,5 @@
-import type { Prisma, PrismaClient } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import type { PrismaClient } from '@prisma/client';
 import { canonicalDecimal } from './fields/decimal';
 import type { DbState } from './store';
 
@@ -91,7 +92,15 @@ const COLLECTIONS: { key: keyof DbState; delegate: (client: TxClient) => Delegat
  * name and `decimals` lists NUMERIC columns that Prisma returns as Decimal instances (the domain works with canonical decimal
  * strings, so hydration converts them and persistence hands the strings straight back to Prisma).
  */
-type ExtraCollection = { key: keyof DbState; model: string; decimals?: string[] };
+type ExtraCollection = {
+  key: keyof DbState;
+  model: string;
+  decimals?: string[];
+  /** DATE columns the domain carries as `YYYY-MM-DD` strings, so a timezone conversion can never move the calendar day. */
+  dateOnly?: string[];
+  /** Nullable JSON columns: Prisma needs `DbNull` instead of a plain `null` to store SQL NULL. */
+  nullableJson?: string[];
+};
 const EXTRA_COLLECTIONS: ExtraCollection[] = [
   { key: 'catalogSettings', model: 'catalogSettings' },
   { key: 'catalogs', model: 'catalog' },
@@ -119,6 +128,30 @@ const EXTRA_COLLECTIONS: ExtraCollection[] = [
   { key: 'automationLogs', model: 'automationLog' },
   { key: 'automationExtensions', model: 'automationExtensionDefinition' },
   { key: 'automationCredentials', model: 'automationIntegrationCredential' },
+  // Tasks & Projects (parents before children; deletes run in reverse order).
+  { key: 'projects', model: 'project', dateOnly: ['startDate', 'endDate'] },
+  { key: 'projectMembers', model: 'projectMember' },
+  { key: 'projectTools', model: 'projectTool' },
+  { key: 'projectStages', model: 'projectStage' },
+  { key: 'taskTemplates', model: 'taskTemplate' },
+  { key: 'taskTemplateMembers', model: 'taskTemplateMember' },
+  { key: 'taskTemplateChecklistItems', model: 'taskTemplateChecklistItem' },
+  { key: 'taskTemplateSubtasks', model: 'taskTemplateSubtask' },
+  { key: 'taskRecurrenceRules', model: 'taskRecurrenceRule', dateOnly: ['startDate', 'endDate'] },
+  { key: 'tasks', model: 'task' },
+  { key: 'taskRecurrenceInstances', model: 'taskRecurrenceInstance' },
+  { key: 'projectStageHistory', model: 'projectStageHistory' },
+  { key: 'taskMembers', model: 'taskMember' },
+  { key: 'taskCompletionReviews', model: 'taskCompletionReview' },
+  { key: 'taskResults', model: 'taskResult' },
+  { key: 'taskDeadlineHistory', model: 'taskDeadlineHistory' },
+  { key: 'taskHistory', model: 'taskHistory', nullableJson: ['oldValue', 'newValue'] },
+  { key: 'taskCrmBindings', model: 'taskCrmBinding' },
+  { key: 'taskPlannerPositions', model: 'taskPlannerPosition' },
+  { key: 'taskChecklists', model: 'taskChecklist' },
+  { key: 'taskChecklistItems', model: 'taskChecklistItem' },
+  { key: 'taskDependencies', model: 'taskDependency' },
+  { key: 'taskTimeEntries', model: 'taskTimeEntry' },
 ];
 
 const PACK_COLLECTIONS: Array<keyof DbState> = [
@@ -136,7 +169,45 @@ const PACK_COLLECTIONS: Array<keyof DbState> = [
   'reportSchedules','reportScheduleRuns','biCredentials',
 ];
 for (const extra of EXTRA_COLLECTIONS) {
-  COLLECTIONS.push({ key: extra.key, delegate: (c) => (c as unknown as Record<string, Delegate>)[extra.model] });
+  const convert = extra.dateOnly?.length || extra.nullableJson?.length;
+  COLLECTIONS.push({
+    key: extra.key,
+    delegate: (c) => {
+      const delegate = (c as unknown as Record<string, Delegate>)[extra.model];
+      if (!convert) return delegate;
+      return {
+        ...delegate,
+        findMany: delegate.findMany.bind(delegate),
+        deleteMany: delegate.deleteMany.bind(delegate),
+        upsert: (args) => {
+          const row = toDatabaseRow(args.create as Record<string, unknown>, extra);
+          return delegate.upsert({ where: args.where, create: row, update: row });
+        },
+      };
+    },
+  });
+}
+
+function toDatabaseRow(row: Record<string, unknown>, extra: ExtraCollection) {
+  const copy = { ...row };
+  for (const column of extra.dateOnly ?? []) {
+    const value = copy[column];
+    if (typeof value === 'string') copy[column] = new Date(`${value}T00:00:00.000Z`);
+  }
+  for (const column of extra.nullableJson ?? []) {
+    if (copy[column] === null || copy[column] === undefined) copy[column] = Prisma.DbNull;
+  }
+  return copy;
+}
+
+/** DATE columns come back as midnight-UTC Date instances; the domain works with the plain calendar date. */
+function dateOnlyToStrings(row: Record<string, unknown>, columns: string[]) {
+  const copy = { ...row };
+  for (const column of columns) {
+    const value = copy[column];
+    copy[column] = value instanceof Date ? value.toISOString().slice(0, 10) : value ?? null;
+  }
+  return copy;
 }
 
 /**
@@ -350,8 +421,10 @@ export async function hydrateState(client: PrismaClient): Promise<DbState> {
     EXTRA_COLLECTIONS.map((extra) => (client as unknown as Record<string, Delegate>)[extra.model].findMany() as Promise<Array<Record<string, unknown>>>),
   );
   EXTRA_COLLECTIONS.forEach((extra, index) => {
-    const rows = extraRows[index];
-    target[extra.key as string] = extra.decimals?.length ? rows.map((row) => decimalsToStrings(row, extra.decimals!)) : rows;
+    let rows = extraRows[index];
+    if (extra.decimals?.length) rows = rows.map((row) => decimalsToStrings(row, extra.decimals!));
+    if (extra.dateOnly?.length) rows = rows.map((row) => dateOnlyToStrings(row, extra.dateOnly!));
+    target[extra.key as string] = rows;
   });
   const packed = await (client.commercialPackRecord as unknown as Delegate).findMany() as Array<{ collection:string; data:unknown }>;
   for (const key of PACK_COLLECTIONS) target[key as string] = [];

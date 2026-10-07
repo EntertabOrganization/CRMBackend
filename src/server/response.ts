@@ -47,7 +47,9 @@ function serialized<T>(task: () => Promise<T>): Promise<T> {
  * A violation that slips past the application check is translated into the same stable business error instead of a 500.
  */
 function translatePersistError(error: unknown): unknown {
-  const candidate = error as { code?: string; meta?: { target?: unknown } } | null;
+  const candidate = error as { code?: string; meta?: { target?: unknown }; message?: string } | null;
+  const collab = translateCollaborationPersistError(candidate);
+  if (collab) return collab;
   if (candidate?.code === 'P2002') {
     const target = JSON.stringify(candidate.meta?.target ?? '');
     if (target.includes('sku_key')) return new AppError('PRODUCT_SKU_CONFLICT', 'This SKU is already used by another item in the workspace.', 409);
@@ -61,6 +63,28 @@ function translatePersistError(error: unknown): unknown {
     if (target.includes('commercial_pack_')) return new AppError('CONCURRENCY_CONFLICT', 'A concurrent operation changed the same business invariant.', 409);
   }
   return translateDatabaseError(error);
+}
+
+/**
+ * Collaboration-module database guards (version trigger, dependency-cycle trigger, deferrable exclusion constraints and
+ * unique keys) fire only when another application instance won a race; they map to the same codes the services use.
+ */
+function translateCollaborationPersistError(candidate: { code?: string; meta?: { target?: unknown }; message?: string } | null): AppError | null {
+  const text = `${candidate?.message ?? ''} ${JSON.stringify(candidate?.meta ?? {})}`;
+  if (text.includes('RESOURCE_VERSION_CONFLICT')) return new AppError('RESOURCE_VERSION_CONFLICT', 'The resource was changed by someone else. Reload and retry.', 409);
+  if (text.includes('TASK_DEPENDENCY_CYCLE')) return new AppError('TASK_DEPENDENCY_CYCLE', 'The dependency would create a cycle.', 409);
+  if (text.includes('TASK_DEPENDENCY_SELF')) return new AppError('TASK_DEPENDENCY_SELF', 'A Task cannot depend on itself.', 400);
+  if (text.includes('task_time_entries_one_active_timer_excl')) return new AppError('TIME_ENTRY_ACTIVE_TIMER_EXISTS', 'A timer is already running for this Task.', 409);
+  if (text.includes('project_members_single_owner_excl')) return new AppError('PROJECT_OWNER_TRANSFER_INVALID', 'Project ownership changed concurrently.', 409);
+  if (text.includes('project_stages_code_excl')) return new AppError('PROJECT_STAGE_CODE_CONFLICT', 'Another stage already uses this code.', 409);
+  if (text.includes('project_stages_default_excl')) return new AppError('CONCURRENCY_CONFLICT', 'The default stage changed concurrently.', 409);
+  if (candidate?.code === 'P2002') {
+    const target = JSON.stringify(candidate.meta?.target ?? '');
+    if (/recurrence_rule_id|recurrenceRuleId/.test(target)) return new AppError('RECURRENCE_DUPLICATE_INSTANCE', 'This occurrence was already generated.', 409);
+    if (/predecessor_task_id|predecessorTaskId/.test(target)) return new AppError('TASK_DEPENDENCY_DUPLICATE', 'This dependency already exists.', 409);
+    if (/projects_workspace_id_code|"code"/.test(target) && /workspace/.test(target)) return new AppError('PROJECT_CODE_CONFLICT', 'Another Project already uses this code.', 409);
+  }
+  return null;
 }
 
 /** Converts unavailable/missing PostgreSQL failures into a stable, sanitized API contract. */

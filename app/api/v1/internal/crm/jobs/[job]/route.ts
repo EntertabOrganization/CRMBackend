@@ -52,6 +52,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         return appContext.timeline.projectPending(typeof body.workspaceId === 'string' ? body.workspaceId : undefined);
       case 'commercial-run':
         return appContext.commercialPack.jobs.runDue(new Date(),typeof body.limit==='number'?Math.min(Math.max(body.limit,1),100):25);
+      case 'task-recurrence-run':
+        // Exactly-once per occurrence: duplicate deliveries find the CREATED instance and do nothing.
+        return appContext.collab.tasks.templates.runDue(new Date(), typeof body.limit === 'number' ? Math.min(Math.max(body.limit, 1), 500) : 100);
+      case 'task-overdue':
+        return appContext.collab.tasks.tasks.runOverdueSweep();
       case 'commercial-maintenance':
         return {expiredEstimates:appContext.commercialPack.commerce.expireDueEstimates().length,breachedSla:appContext.commercialPack.contactCenter.checkSla().length};
       case 'timeline-rebuild': {
