@@ -110,6 +110,11 @@ import type {
   TaskRecurrenceInstance, TaskRecurrenceRule, TaskResult, TaskTemplate, TaskTemplateChecklistItem, TaskTemplateMember,
   TaskTemplateSubtask, TaskTimeEntry,
 } from './collab/tasks/types';
+import type { Calendar, CalendarPermission, UserCalendarPreference } from './collab/calendar/types';
+import { emptyCalendarEventsState } from './collab/calendar/event-types';
+import type { CalendarEventsState } from './collab/calendar/event-types';
+import { emptyCalendarRecurrenceState } from './collab/calendar/recurrence-types';
+import type { CalendarRecurrenceState } from './collab/calendar/recurrence-types';
 
 /** Tasks & Projects collections (one Prisma table each). */
 export type TasksProjectsState = {
@@ -147,7 +152,10 @@ export function emptyTasksProjectsState(): TasksProjectsState {
   };
 }
 
-export type DbState = TasksProjectsState & {
+export type DbState = TasksProjectsState & CalendarEventsState & CalendarRecurrenceState & {
+  calendars: Calendar[];
+  calendarPermissions: CalendarPermission[];
+  userCalendarPreferences: UserCalendarPreference[];
   users: User[];
   authIdentities: AuthIdentity[];
   refreshSessions: RefreshSession[];
@@ -482,6 +490,9 @@ export class InMemoryStore {
       reportScheduleRuns: [],
       biCredentials: [],
       ...emptyTasksProjectsState(),
+      calendars: [], calendarPermissions: [], userCalendarPreferences: [],
+      ...emptyCalendarEventsState(),
+      ...emptyCalendarRecurrenceState(),
       ...seed,
     };
   }

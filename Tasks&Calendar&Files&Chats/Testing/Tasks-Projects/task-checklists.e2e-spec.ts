@@ -73,8 +73,15 @@ describe('Task Checklists Specification E2E contract', () => {
   });
 
   it('returns stable machine-readable error envelopes for invalid requests', async () => {
-    const { checklist } = await taskWithChecklist();
+    const { task, checklist } = await taskWithChecklist();
+    const prisma = await db();
+    const before = { checklists: await prisma.taskChecklist.count({ where: { taskId: task.id } }), history: await prisma.taskHistory.count({ where: { taskId: task.id } }), events: await prisma.outboxEvent.count({ where: { entityId: task.id } }) };
+    for (const invalid of [null, [], { title: 'x'.repeat(1001) }, { title: 'x', assignedUserId: 123 }, { title: 'x', isCompleted: true }]) {
+      expectError(await call(owner, 'POST', `tasks/${task.id}/checklists`, { body: { name: 'Invalid', items: [{ title: 'Valid' }, invalid] } }), 400, 'VALIDATION_ERROR');
+    }
+    expect({ checklists: await prisma.taskChecklist.count({ where: { taskId: task.id } }), history: await prisma.taskHistory.count({ where: { taskId: task.id } }), events: await prisma.outboxEvent.count({ where: { entityId: task.id } }) }).toEqual(before);
     const [first, second] = checklist.items;
+    expectError(await call(owner, 'POST', `task-checklist-items/${first.id}/complete`, { body: { isCompleted: true } }), 400, 'VALIDATION_ERROR');
     expectError(await call(owner, 'POST', `task-checklists/${checklist.id}/items`, { body: {} }), 400, 'VALIDATION_ERROR');
     expectError(await call(owner, 'POST', `task-checklists/${checklist.id}/items`, { body: { title: 'x', parentItemId: MISSING_ID } }), 404, 'CHECKLIST_ITEM_NOT_FOUND');
     const child = expectOk(await call(owner, 'POST', `task-checklists/${checklist.id}/items`, { body: { title: 'Child', parentItemId: first.id } }));

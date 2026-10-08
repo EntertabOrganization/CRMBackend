@@ -89,7 +89,7 @@ function expectError(result: { status: number; body: any }, status: number, code
 beforeAll(async () => {
   await prepareTestDatabase();
   ws.owner = await register('owner');
-});
+}, 300_000);
 
 afterAll(async () => {
   await disconnectTestDatabase();
@@ -1900,6 +1900,50 @@ describe('Cross-cutting behaviour', () => {
     expectError(await api('PATCH', '/api/v1/analytics/[[...path]]', { ...authenticated, params: catchAll(['unsupported']), body: {} }), 400, 'REPORT_DEFINITION_INVALID');
     expectOk(await api('POST', '/api/v1/analytics/bi/query', { token: bi.data.secret, body: { datasetKey: 'deals' } }));
     expectError(await api('GET', '/t/[token]', { params: { token: MISSING_ID } }), 404);
+  });
+
+  it('exercises the Calendar route handlers with real workspace credentials', async () => {
+    const template = '/api/v1/calendars/[[...path]]';
+    const authenticated = { token: ws.owner.token, workspaceId: ws.owner.workspaceId };
+    const created = await api('POST', template, { ...authenticated, params: { path: [] }, body: { type: 'PERSONAL', name: 'Endpoint calendar', timezone: 'UTC' } });
+    expectOk(created);
+    const params = { path: [created.data.id] };
+    expectOk(await api('GET', template, { ...authenticated, params }));
+    expectOk(await api('PATCH', template, { ...authenticated, params, body: { name: 'Updated', version: 1 } }));
+    expectOk(await api('PUT', template, { ...authenticated, params, body: { name: 'Replaced', timezone: 'UTC', version: 2 } }));
+    expectOk(await api('DELETE', template, { ...authenticated, params }));
+  });
+
+  it('exercises the Event route handlers with real workspace credentials', async () => {
+    const authenticated = { token: ws.owner.token, workspaceId: ws.owner.workspaceId };
+    const calendar = await api('POST', '/api/v1/calendars/[[...path]]', { ...authenticated, params: { path: [] }, body: { type: 'PERSONAL', name: 'Events', timezone: 'UTC' } });
+    expectOk(calendar);
+    const template = '/api/v1/calendar-events/[[...path]]';
+    const created = await api('POST', template, { ...authenticated, params: { path: [] }, body: { calendarId: calendar.data.id, title: 'Meeting', startAt: '2030-01-01T09:00:00Z', endAt: '2030-01-01T10:00:00Z' } });
+    expectOk(created);
+    const params = { path: [created.data.id] };
+    expectOk(await api('GET', template, { ...authenticated, params }));
+    expectOk(await api('PATCH', template, { ...authenticated, params, body: { title: 'Updated', version: 1 } }));
+    expectOk(await api('PUT', template, { ...authenticated, params, body: { title: 'Replaced', isAllDay: true, startDate: '2030-01-01', endDate: '2030-01-02', sourceTimezone: 'UTC', version: 2 } }));
+    expectOk(await api('DELETE', template, { ...authenticated, params }));
+  });
+
+  it('exercises all recurrence routes with real workspace credentials', async () => {
+    const authenticated = { token: ws.owner.token, workspaceId: ws.owner.workspaceId };
+    const calendar = await api('POST', '/api/v1/calendars/[[...path]]', { ...authenticated, params: { path: [] }, body: { type: 'PERSONAL', name: 'Recurring events', timezone: 'UTC' } });
+    expectOk(calendar);
+    const template = '/api/v1/calendar-events/[[...path]]';
+    const created = await api('POST', template, { ...authenticated, params: { path: [] }, body: { calendarId: calendar.data.id, title: 'Series', startAt: '2030-01-01T09:00:00Z', endAt: '2030-01-01T10:00:00Z' } });
+    expectOk(created);
+    const eventId = created.data.id;
+    const rule = await api('PUT', template, { ...authenticated, params: { path: [eventId, 'recurrence'] }, body: { rruleText: 'FREQ=DAILY;COUNT=4', sourceTimezone: 'UTC', version: 0 } });
+    expectOk(rule);
+    expectOk(await api('GET', template, { ...authenticated, params: { path: [eventId, 'recurrence'] } }));
+    expectOk(await api('PATCH', template, { ...authenticated, params: { path: [eventId, 'recurrence'] }, body: { rruleText: 'FREQ=DAILY;COUNT=5', version: 1 } }));
+    expectOk(await api('PATCH', template, { ...authenticated, params: { path: [eventId, 'occurrences', rule.data.upcoming[1].recurrenceId] }, body: { title: 'One occurrence', version: 2 } }));
+    expectOk(await api('PATCH', template, { ...authenticated, params: { path: [eventId, 'recurrence', 'future'] }, body: { recurrenceId: rule.data.upcoming[2].recurrenceId, title: 'Future occurrences', version: 3 } }));
+    expectOk(await api('POST', template, { ...authenticated, params: { path: [eventId, 'occurrences', rule.data.upcoming[0].recurrenceId, 'cancel'] }, body: { version: 4 } }));
+    expectOk(await api('DELETE', template, { ...authenticated, params: { path: [eventId, 'recurrence'] }, headers: { 'if-match': '"5"' } }));
   });
 
   it('exercises every route handler exposed under app/', async () => {

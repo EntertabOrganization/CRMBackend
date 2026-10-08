@@ -56,6 +56,7 @@ export class TimeService {
     if (!end && seconds === null) throw validationError('endedAt', 'Provide endedAt or durationSeconds.');
     if (end) seconds = Math.round((end.getTime() - startedAt.getTime()) / 1000);
     if (!end) end = new Date(startedAt.getTime() + seconds! * 1000);
+    if (seconds! <= 0) throw new AppError('TIME_ENTRY_INVALID_RANGE', 'Time entries must record at least one second.', 400);
     if (seconds! > MAX_ENTRY_SECONDS) throw new AppError('TIME_ENTRY_INVALID_RANGE', 'A single entry cannot exceed 7 days.', 400);
     if (end > new Date(Date.now() + 60_000)) throw new AppError('TIME_ENTRY_INVALID_RANGE', 'Time entries cannot end in the future.', 400);
     return { end, seconds: seconds! };
@@ -103,7 +104,7 @@ export class TimeService {
     body.only(['startedAt', 'endedAt', 'durationSeconds', 'note', 'version']);
     this.support.expectVersion(entry, body.raw.version ?? ifMatch);
     const before = { startedAt: entry.startedAt, endedAt: entry.endedAt, durationSeconds: entry.durationSeconds, note: entry.note };
-    if (entry.status === 'ACTIVE' && (body.has('endedAt') || body.has('durationSeconds'))) throw new AppError('TIME_ENTRY_INVALID_RANGE', 'Stop the running timer before changing its end.', 409);
+    if (entry.status === 'ACTIVE' && (body.has('startedAt') || body.has('endedAt') || body.has('durationSeconds'))) throw new AppError('TIME_ENTRY_INVALID_RANGE', 'Stop the running timer before changing its time range.', 409);
     if (body.has('note') || body.raw.note === null) entry.note = body.str('note', { max: 2000 }) ?? null;
     if (entry.status === 'COMPLETED' && (body.has('startedAt') || body.has('endedAt') || body.has('durationSeconds'))) {
       const startedAt = body.instant('startedAt') ?? entry.startedAt;

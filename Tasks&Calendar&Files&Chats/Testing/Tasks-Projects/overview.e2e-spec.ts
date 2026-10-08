@@ -3,6 +3,8 @@
  * Replace contract() with real NestJS/Supertest (or repository-equivalent) assertions.
  */
 
+export {};
+
 const contract = (scenario: string): never => {
   throw new Error(`E2E CONTRACT NOT WIRED: ${scenario}.`);
 };

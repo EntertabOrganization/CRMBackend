@@ -50,6 +50,10 @@ function createAppContext() {
   const commercialPack = new CommercialCaptureContactCenterModule({ store, access, crmCore, crm });
   const intelligence = new DataIntegrationIntelligenceAnalyticsModule({ store, access, crmCore });
   const collab = new CollaborationModule({ store, access, realtime, files: () => ports.files });
+  collab.calendar.events.registerBindingResolver({ entityType: 'ACTIVITY', canBind: (actor, id) => {
+    const activity = store.state.crmActivities.find((row) => row.id === id && !row.isDeleted);
+    return Boolean(activity && activities.policy.canRead(actor, activity));
+  } });
   return {
     store,
     collab,

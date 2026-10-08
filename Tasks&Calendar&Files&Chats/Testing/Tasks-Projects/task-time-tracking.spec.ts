@@ -11,7 +11,7 @@ async function setup() {
   const ctx = await collabApp();
   const worker = await ctx.memberActor('worker', perms('OWN', 'task.read', 'task.update', 'task.time_add', 'task.time_edit_own', 'task.time_delete'));
   const task = ctx.collab.tasks.tasks.create(ctx.owner, { title: 'Tracked', responsibleUserId: worker.user.id, isTimeTrackingEnabled: true, plannedDurationSeconds: 7200 });
-  return { ...ctx, worker, task, svc: ctx.collab.tasks.time };
+  return { ...ctx, worker, task, svc: ctx.collab.tasks.time, get state() { return ctx.state; } };
 }
 
 describe('Task Time Tracking Specification contract', () => {
@@ -19,6 +19,7 @@ describe('Task Time Tracking Specification contract', () => {
     const { svc, worker, task, owner, collab } = await setup();
     const timer = svc.startTimer(worker, task.id);
     expect(timer).toMatchObject({ status: 'ACTIVE', source: 'TIMER', userId: worker.user.id, endedAt: null });
+    await expectAppError(() => svc.update(worker, timer.id, b({ startedAt: ago(30), version: timer.version })), 'TIME_ENTRY_INVALID_RANGE', 409);
     const error = await expectAppError(() => svc.startTimer(worker, task.id), 'TIME_ENTRY_ACTIVE_TIMER_EXISTS', 409);
     expect(error.details.timeEntryId).toBe(timer.id);
     // Another user has an independent timer.
@@ -52,6 +53,8 @@ describe('Task Time Tracking Specification contract', () => {
     await expectAppError(() => svc.addManual(worker, task.id, b({ startedAt: ago(60), endedAt: ago(30), durationSeconds: 60 })), 'TIME_ENTRY_INVALID_RANGE', 400);
     await expectAppError(() => svc.addManual(worker, task.id, b({ startedAt: ago(-30), durationSeconds: 60 })), 'TIME_ENTRY_INVALID_RANGE', 400);
     await expectAppError(() => svc.addManual(worker, task.id, b({ startedAt: ago(60) })), 'VALIDATION_ERROR', 400);
+    const start = new Date(Date.now() - 60_000);
+    await expectAppError(() => svc.addManual(worker, task.id, b({ startedAt: start.toISOString(), endedAt: new Date(start.getTime() + 100).toISOString() })), 'TIME_ENTRY_INVALID_RANGE', 400);
     const ok = svc.addManual(worker, task.id, b({ startedAt: ago(60), endedAt: ago(30), durationSeconds: 1800 }));
     expect(ok.durationSeconds).toBe(1800);
     const fromDuration = svc.addManual(worker, task.id, b({ startedAt: ago(120), durationSeconds: 600 }));

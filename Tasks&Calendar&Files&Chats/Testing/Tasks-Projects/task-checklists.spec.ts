@@ -13,6 +13,15 @@ async function setup() {
 }
 
 describe('Task Checklists Specification contract', () => {
+  it('validates initial items before creating any rows or history', async () => {
+    const { svc, owner, task, state } = await setup();
+    const before = { checklists: state.taskChecklists.length, items: state.taskChecklistItems.length, history: state.taskHistory.length, events: state.outboxEvents.length };
+    for (const invalid of [null, [], 'item', { title: 'x'.repeat(1001) }, { title: 'x', assignedUserId: 123 }, { title: 'x', isCompleted: true }]) {
+      await expectAppError(() => svc.create(owner, task.id, b({ name: 'Invalid', items: [{ title: 'Valid' }, invalid] })), 'VALIDATION_ERROR', 400);
+      expect({ checklists: state.taskChecklists.length, items: state.taskChecklistItems.length, history: state.taskHistory.length, events: state.outboxEvents.length }).toEqual(before);
+    }
+  });
+
   it('Nested item cycle rejection.', async () => {
     const { svc, owner, checklist } = await setup();
     const root = svc.addItem(owner, checklist.id, b({ title: 'Root' }));

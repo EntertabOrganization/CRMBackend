@@ -114,6 +114,11 @@ model User {
   sentInvitations         WorkspaceInvitation[]    @relation("InvitationInviter")
   partnerMemberships      PartnerMembership[]
   partnerApplications     PartnerApplication[]
+  ownedCalendars          Calendar[]               @relation("CalendarOwner")
+  createdCalendars        Calendar[]               @relation("CalendarCreator")
+  calendarPreferences     UserCalendarPreference[]
+  organizedCalendarEvents CalendarEvent[]
+  calendarEventAttendance CalendarEventAttendee[]
 
   @@map("users")
 }
@@ -187,6 +192,7 @@ model Workspace {
   projects         Project[]
   tasks            Task[]
   taskTemplates    TaskTemplate[]
+  calendars        Calendar[]
 
   @@map("workspaces")
 }
@@ -280,7 +286,9 @@ model Department {
   children           Department[]       @relation("DepartmentTree")
   manager            User?              @relation("DepartmentManager", fields: [managerId], references: [id], onDelete: SetNull)
   members            DepartmentMember[]
+  calendars          Calendar[]
 
+  @@unique([workspaceId, id])
   @@map("departments")
 }
 
@@ -1965,12 +1973,102 @@ model Project {
   stages              ProjectStage[]
   tasks               Task[]
   templates           TaskTemplate[]
+  calendars           Calendar[]
 
   @@unique([workspaceId, id])
   @@unique([workspaceId, code])
   @@index([workspaceId, status])
   @@index([workspaceId, ownerUserId])
   @@map("projects")
+}
+
+enum CalendarType {
+  PERSONAL
+  COMPANY
+  DEPARTMENT
+  PROJECT
+}
+
+enum CalendarPermissionLevel {
+  VIEW
+  CREATE
+  EDIT_OWN
+  EDIT_ALL
+  MANAGE
+}
+
+enum CalendarPermissionSubject {
+  USER
+  ROLE
+  DEPARTMENT
+  DEPARTMENT_TREE
+  PROJECT_ROLE
+  WORKSPACE
+}
+
+model Calendar {
+  id                String   @id @db.Uuid
+  workspaceId       String   @map("workspace_id") @db.Uuid
+  type              CalendarType
+  ownerUserId       String?  @map("owner_user_id") @db.Uuid
+  departmentId      String?  @map("department_id") @db.Uuid
+  projectId         String?  @unique @map("project_id") @db.Uuid
+  createdByUserId   String   @map("created_by_user_id") @db.Uuid
+  name              String
+  description       String?
+  timezone          String
+  colorPreference   String?  @map("color_preference")
+  isActive          Boolean  @default(true) @map("is_active")
+  isReadOnly        Boolean  @default(false) @map("is_read_only")
+  isDeleted         Boolean  @default(false) @map("is_deleted")
+  version           Int      @default(1)
+  createdAt         DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @map("updated_at") @db.Timestamptz(6)
+  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: NoAction)
+  owner             User? @relation("CalendarOwner", fields: [ownerUserId], references: [id], onDelete: NoAction)
+  creator           User @relation("CalendarCreator", fields: [createdByUserId], references: [id], onDelete: NoAction)
+  department        Department? @relation(fields: [workspaceId, departmentId], references: [workspaceId, id], onDelete: NoAction)
+  project           Project? @relation(fields: [workspaceId, projectId], references: [workspaceId, id], onDelete: NoAction)
+  permissions       CalendarPermission[]
+  preferences       UserCalendarPreference[]
+  events            CalendarEvent[]
+
+  @@unique([workspaceId, id])
+  @@index([workspaceId, type, isDeleted])
+  @@index([workspaceId, ownerUserId])
+  @@map("calendars")
+}
+
+model CalendarPermission {
+  id          String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  calendarId  String @map("calendar_id") @db.Uuid
+  subjectType CalendarPermissionSubject @map("subject_type")
+  subjectId   String? @map("subject_id")
+  level       CalendarPermissionLevel
+  calendar    Calendar @relation(fields: [workspaceId, calendarId], references: [workspaceId, id], onDelete: NoAction)
+
+  @@unique([calendarId, subjectType, subjectId])
+  @@index([workspaceId, subjectType, subjectId])
+  @@map("calendar_permissions")
+}
+
+model UserCalendarPreference {
+  id              String @id @db.Uuid
+  workspaceId     String @map("workspace_id") @db.Uuid
+  calendarId      String @map("calendar_id") @db.Uuid
+  userId          String @map("user_id") @db.Uuid
+  colorPreference String? @map("color_preference")
+  isVisible       Boolean @default(true) @map("is_visible")
+  version         Int @default(1)
+  createdAt       DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @map("updated_at") @db.Timestamptz(6)
+  calendar        Calendar @relation(fields: [workspaceId, calendarId], references: [workspaceId, id], onDelete: NoAction)
+  user            User @relation(fields: [userId], references: [id], onDelete: NoAction)
+
+  @@unique([calendarId, userId])
+  @@index([workspaceId, userId])
+  @@map("user_calendar_preferences")
 }
 
 model ProjectMember {
@@ -2422,4 +2520,217 @@ model TaskRecurrenceInstance {
   @@unique([recurrenceRuleId, scheduledFor])
   @@index([workspaceId, status])
   @@map("task_recurrence_instances")
+}
+enum CalendarEventStatus {
+  CONFIRMED
+  TENTATIVE
+  CANCELLED
+}
+enum CalendarBusyStatus {
+  FREE
+  BUSY
+}
+enum CalendarAttendeeResponse {
+  NEEDS_ACTION
+  ACCEPTED
+  TENTATIVE
+  DECLINED
+}
+model CalendarEvent {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  calendarId String @map("calendar_id") @db.Uuid
+  organizerUserId String @map("organizer_user_id") @db.Uuid
+  title String
+  description String?
+  location String?
+  isAllDay Boolean @default(false) @map("is_all_day")
+  startAt DateTime? @map("start_at") @db.Timestamptz(6)
+  endAt DateTime? @map("end_at") @db.Timestamptz(6)
+  startDate DateTime? @map("start_date") @db.Date
+  endDate DateTime? @map("end_date") @db.Date
+  sourceTimezone String @map("source_timezone")
+  status CalendarEventStatus @default(CONFIRMED)
+  busyStatus CalendarBusyStatus @default(BUSY) @map("busy_status")
+  recurrenceRuleId String? @map("recurrence_rule_id") @db.Uuid
+  recurrenceParentEventId String? @map("recurrence_parent_event_id") @db.Uuid
+  recurrenceIdentity String? @map("recurrence_identity")
+  statusBeforeCancel CalendarEventStatus? @map("status_before_cancel")
+  cancelledAt DateTime? @map("cancelled_at") @db.Timestamptz(6)
+  isDeleted Boolean @default(false) @map("is_deleted")
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+  version Int @default(1)
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  calendar Calendar @relation(fields: [workspaceId, calendarId], references: [workspaceId, id], onDelete: NoAction)
+  organizer User @relation(fields: [organizerUserId], references: [id], onDelete: NoAction)
+  attendees CalendarEventAttendee[]
+  guests CalendarExternalGuest[]
+  bindings CalendarEventBinding[]
+  files CalendarEventFile[]
+  history CalendarEventHistory[]
+  meetingRecord MeetingRecord?
+  decisions MeetingDecision[]
+  recurrenceRules CalendarRecurrenceRule[]
+  activeRecurrence CalendarRecurrenceRule? @relation("ActiveRecurrence", fields: [workspaceId, id, recurrenceRuleId], references: [workspaceId, eventId, id], onDelete: NoAction)
+  recurrenceParent CalendarEvent? @relation("OccurrenceParent", fields: [workspaceId, recurrenceParentEventId], references: [workspaceId, id], onDelete: NoAction)
+  recurrenceOverrides CalendarEvent[] @relation("OccurrenceParent")
+  recurrenceExceptions CalendarRecurrenceException[]
+  @@unique([workspaceId, id])
+  @@index([workspaceId, calendarId, startAt])
+  @@index([workspaceId, calendarId, startDate])
+  @@index([workspaceId, organizerUserId, status, isDeleted])
+  @@map("calendar_events")
+}
+model CalendarRecurrenceRule {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  eventId String @map("event_id") @db.Uuid
+  rruleText String @map("rrule_text")
+  sourceTimezone String @map("source_timezone")
+  dtstartLocal String @map("dtstart_local")
+  isAllDay Boolean @map("is_all_day")
+  isDeleted Boolean @default(false) @map("is_deleted")
+  version Int @default(1)
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  event CalendarEvent @relation(fields: [workspaceId, eventId], references: [workspaceId, id], onDelete: NoAction)
+  activeEvents CalendarEvent[] @relation("ActiveRecurrence")
+  exceptions CalendarRecurrenceException[]
+  ranges CalendarRecurrenceRange[]
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, eventId, id])
+  @@index([workspaceId, eventId])
+  @@index([workspaceId, isDeleted])
+  @@map("calendar_recurrence_rules")
+}
+enum CalendarRecurrenceExceptionType {
+  CANCELLED
+  MODIFIED
+}
+model CalendarRecurrenceException {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  recurrenceRuleId String @map("recurrence_rule_id") @db.Uuid
+  recurrenceId String @map("recurrence_id")
+  exceptionType CalendarRecurrenceExceptionType @map("exception_type")
+  overrideEventId String? @map("override_event_id") @db.Uuid
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  rule CalendarRecurrenceRule @relation(fields: [workspaceId, recurrenceRuleId], references: [workspaceId, id], onDelete: NoAction)
+  overrideEvent CalendarEvent? @relation(fields: [workspaceId, overrideEventId], references: [workspaceId, id], onDelete: NoAction)
+  @@unique([workspaceId, recurrenceRuleId, recurrenceId])
+  @@index([workspaceId, overrideEventId])
+  @@map("calendar_recurrence_exceptions")
+}
+model CalendarRecurrenceRange {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  recurrenceRuleId String @map("recurrence_rule_id") @db.Uuid
+  recurrenceId String @map("recurrence_id")
+  title String?
+  hasDescription Boolean @default(false) @map("has_description")
+  description String?
+  hasLocation Boolean @default(false) @map("has_location")
+  location String?
+  sourceTimezone String? @map("source_timezone")
+  status CalendarEventStatus?
+  busyStatus CalendarBusyStatus? @map("busy_status")
+  shiftMilliseconds Float? @map("shift_milliseconds") @db.DoublePrecision
+  durationMilliseconds Float? @map("duration_milliseconds") @db.DoublePrecision
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  rule CalendarRecurrenceRule @relation(fields: [workspaceId, recurrenceRuleId], references: [workspaceId, id], onDelete: NoAction)
+  @@unique([workspaceId, recurrenceRuleId, recurrenceId])
+  @@map("calendar_recurrence_ranges")
+}
+model CalendarEventAttendee {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  eventId String @map("event_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  response CalendarAttendeeResponse @default(NEEDS_ACTION)
+  respondedAt DateTime? @map("responded_at") @db.Timestamptz(6)
+  removedAt DateTime? @map("removed_at") @db.Timestamptz(6)
+  event CalendarEvent @relation(fields: [workspaceId, eventId], references: [workspaceId, id], onDelete: NoAction)
+  user User @relation(fields: [userId], references: [id], onDelete: NoAction)
+  @@unique([eventId, userId])
+  @@index([workspaceId, userId, removedAt])
+  @@map("calendar_event_attendees")
+}
+model CalendarExternalGuest {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  eventId String @map("event_id") @db.Uuid
+  email String
+  name String?
+  response CalendarAttendeeResponse @default(NEEDS_ACTION)
+  inviteTokenHash String? @map("invite_token_hash")
+  removedAt DateTime? @map("removed_at") @db.Timestamptz(6)
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  event CalendarEvent @relation(fields: [workspaceId, eventId], references: [workspaceId, id], onDelete: NoAction)
+  @@unique([eventId, email])
+  @@index([workspaceId, eventId, removedAt])
+  @@map("calendar_external_guests")
+}
+model CalendarEventBinding {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  eventId String @map("event_id") @db.Uuid
+  entityType String @map("entity_type")
+  entityId String @map("entity_id") @db.Uuid
+  createdByUserId String @map("created_by_user_id") @db.Uuid
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  event CalendarEvent @relation(fields: [workspaceId, eventId], references: [workspaceId, id], onDelete: NoAction)
+  @@unique([eventId, entityType, entityId])
+  @@index([workspaceId, entityType, entityId])
+  @@map("calendar_event_bindings")
+}
+model CalendarEventFile {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  eventId String @map("event_id") @db.Uuid
+  fileId String @map("file_id") @db.Uuid
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  event CalendarEvent @relation(fields: [workspaceId, eventId], references: [workspaceId, id], onDelete: NoAction)
+  @@unique([eventId, fileId])
+  @@index([workspaceId, fileId])
+  @@map("calendar_event_files")
+}
+model CalendarEventHistory {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  eventId String @map("event_id") @db.Uuid
+  actorUserId String? @map("actor_user_id") @db.Uuid
+  action String
+  changes Json
+  occurredAt DateTime @map("occurred_at") @db.Timestamptz(6)
+  event CalendarEvent @relation(fields: [workspaceId, eventId], references: [workspaceId, id], onDelete: NoAction)
+  @@index([workspaceId, eventId, occurredAt, id])
+  @@map("calendar_event_history")
+}
+model MeetingRecord {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  eventId String @unique @map("event_id") @db.Uuid
+  agenda String?
+  notes String?
+  updatedByUserId String @map("updated_by_user_id") @db.Uuid
+  version Int @default(1)
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  event CalendarEvent @relation(fields: [workspaceId, eventId], references: [workspaceId, id], onDelete: NoAction)
+  @@unique([workspaceId, eventId])
+  @@map("meeting_records")
+}
+model MeetingDecision {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  eventId String @map("event_id") @db.Uuid
+  text String
+  createdByUserId String @map("created_by_user_id") @db.Uuid
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  event CalendarEvent @relation(fields: [workspaceId, eventId], references: [workspaceId, id], onDelete: NoAction)
+  @@index([workspaceId, eventId, createdAt, id])
+  @@map("meeting_decisions")
 }

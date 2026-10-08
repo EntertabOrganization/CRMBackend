@@ -112,6 +112,10 @@ export const PERMISSION_CATALOG = [
   'task.change_deadline', 'task.change_responsible', 'task.add_participant', 'task.add_observer', 'task.result_submit', 'task.history_view',
   'task.checklist_manage', 'task.checklist_complete', 'task.dependency_manage', 'task.time_add', 'task.time_edit_own', 'task.time_edit_all', 'task.time_delete',
   'task_template.create', 'task_template.read', 'task_template.update', 'task_template.delete', 'task_template.recurrence_manage',
+  // Calendar containers; event permissions are separate from calendar visibility.
+  'calendar.create', 'calendar.read', 'calendar.update', 'calendar.delete', 'calendar.permission_manage',
+  'event.create', 'event.read', 'event.update', 'event.cancel', 'event.delete_admin', 'event.attendee_manage', 'event.meeting_record_manage',
+  'event.recurrence_manage',
 ] as const;
 
 export type PermissionKey = (typeof PERMISSION_CATALOG)[number];

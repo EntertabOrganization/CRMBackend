@@ -31,6 +31,30 @@ export class ProjectService {
     this.provisioners.set(provisioner.toolType, provisioner);
   }
 
+  /** A Calendar created directly still joins Project lifecycle handling, without enabling the tool. */
+  onCalendarCreated(actor: ActorContext, projectId: string, resourceId: string) {
+    const project = this.state.projects.find((row) => row.id === projectId && row.workspaceId === actor.workspaceId && !row.isDeleted);
+    if (!project) throw notFoundError('PROJECT_NOT_FOUND', 'Project');
+    const tool = this.toolRow(project, 'CALENDAR');
+    if (tool.linkedResourceId && tool.linkedResourceId !== resourceId) throw new AppError('CALENDAR_PROJECT_EXISTS', 'This Project already has a canonical Calendar.', 409);
+    tool.linkedResourceId = resourceId;
+    tool.linkedResourceType = 'CALENDAR';
+    this.support.touch(tool);
+  }
+
+  /** CalendarService reports an authorized calendar deletion; Projects owns removal of its canonical tool link. */
+  onCalendarDeleted(actor: ActorContext, projectId: string, resourceId: string) {
+    const project = this.state.projects.find((row) => row.id === projectId && row.workspaceId === actor.workspaceId);
+    const tool = this.state.projectTools.find((row) => row.workspaceId === actor.workspaceId && row.projectId === projectId && row.toolType === 'CALENDAR' && row.linkedResourceId === resourceId);
+    if (!project || !tool) return;
+    tool.linkedResourceId = null;
+    tool.linkedResourceType = null;
+    tool.isEnabled = false;
+    this.support.touch(tool);
+    this.event(actor, project, 'PROJECT_TOOL_DISABLED', { toolType: 'CALENDAR', calendarDeleted: true });
+    this.support.audit(actor, project.workspaceId, 'PROJECT.TOOL_CHANGED', 'PROJECT', project.id, { toolType: 'CALENDAR', linkedResourceId: resourceId }, { toolType: 'CALENDAR', isEnabled: false });
+  }
+
   view(actor: ActorContext, project: Project) {
     return {
       ...project,

@@ -72,6 +72,17 @@ function translatePersistError(error: unknown): unknown {
 function translateCollaborationPersistError(candidate: { code?: string; meta?: { target?: unknown }; message?: string } | null): AppError | null {
   const text = `${candidate?.message ?? ''} ${JSON.stringify(candidate?.meta ?? {})}`;
   if (text.includes('RESOURCE_VERSION_CONFLICT')) return new AppError('RESOURCE_VERSION_CONFLICT', 'The resource was changed by someone else. Reload and retry.', 409);
+  if (text.includes('CALENDAR_PERMISSION_INVALID')) return new AppError('CALENDAR_PERMISSION_INVALID', 'Calendar permission subjects must belong to this Workspace.', 400);
+  if (text.includes('CALENDAR_USER_TENANT_INVALID')) return new AppError('CALENDAR_INVALID_OWNER', 'Calendar users must belong to this Workspace.', 400);
+  if (text.includes('EVENT_ATTENDEE_INVALID')) return new AppError('EVENT_ATTENDEE_INVALID', 'Event users must belong to this Workspace.', 400);
+  if (text.includes('EVENT_BINDING_INVALID')) return new AppError('EVENT_BINDING_INVALID', 'Event binding targets must belong to this Workspace.', 400);
+  if (text.includes('RECURRENCE_SCOPE_INVALID')) return new AppError('RECURRENCE_SCOPE_INVALID', 'Recurrence links or value types are invalid.', 400);
+  if (candidate?.code === 'P2002' && /calendar_recurrence_rules_one_live_event|"modelName":"CalendarRecurrence(?:Rule|Exception|Range)"/.test(text)) return new AppError('RESOURCE_VERSION_CONFLICT', 'The recurrence was changed concurrently. Reload and retry.', 409);
+  if (candidate?.code === 'P2002' && /"modelName":"MeetingRecord"/.test(text)) return new AppError('RESOURCE_VERSION_CONFLICT', 'The meeting record was changed concurrently. Reload and retry.', 409);
+  if (candidate?.code === 'P2002' && /"modelName":"IdempotencyRecord"/.test(text)) return new AppError('RESOURCE_VERSION_CONFLICT', 'This request was committed concurrently. Retry with the same idempotency key.', 409);
+  if (candidate?.code === 'P2002' && /calendars_project_id_key|"modelName":"Calendar"/.test(text)) return new AppError('CALENDAR_PROJECT_EXISTS', 'This Project already has a canonical Calendar.', 409);
+  if (candidate?.code === 'P2002' && /"modelName":"UserCalendarPreference"/.test(text)) return new AppError('RESOURCE_VERSION_CONFLICT', 'The preference was changed by someone else. Reload and retry.', 409);
+  if (candidate?.code === 'P2002' && /"modelName":"CalendarPermission"/.test(text)) return new AppError('CALENDAR_PERMISSION_INVALID', 'Calendar permission subjects must be unique.', 400);
   if (text.includes('TASK_DEPENDENCY_CYCLE')) return new AppError('TASK_DEPENDENCY_CYCLE', 'The dependency would create a cycle.', 409);
   if (text.includes('TASK_DEPENDENCY_SELF')) return new AppError('TASK_DEPENDENCY_SELF', 'A Task cannot depend on itself.', 400);
   if (text.includes('task_time_entries_one_active_timer_excl')) return new AppError('TIME_ENTRY_ACTIVE_TIMER_EXISTS', 'A timer is already running for this Task.', 409);

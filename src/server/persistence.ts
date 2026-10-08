@@ -152,6 +152,20 @@ const EXTRA_COLLECTIONS: ExtraCollection[] = [
   { key: 'taskChecklistItems', model: 'taskChecklistItem' },
   { key: 'taskDependencies', model: 'taskDependency' },
   { key: 'taskTimeEntries', model: 'taskTimeEntry' },
+  { key: 'calendars', model: 'calendar' },
+  { key: 'calendarPermissions', model: 'calendarPermission' },
+  { key: 'userCalendarPreferences', model: 'userCalendarPreference' },
+  { key: 'calendarEvents', model: 'calendarEvent', dateOnly: ['startDate', 'endDate'] },
+  { key: 'calendarEventAttendees', model: 'calendarEventAttendee' },
+  { key: 'calendarExternalGuests', model: 'calendarExternalGuest' },
+  { key: 'calendarEventBindings', model: 'calendarEventBinding' },
+  { key: 'calendarEventFiles', model: 'calendarEventFile' },
+  { key: 'calendarEventHistory', model: 'calendarEventHistory' },
+  { key: 'meetingRecords', model: 'meetingRecord' },
+  { key: 'meetingDecisions', model: 'meetingDecision' },
+  { key: 'calendarRecurrenceRules', model: 'calendarRecurrenceRule' },
+  { key: 'calendarRecurrenceExceptions', model: 'calendarRecurrenceException' },
+  { key: 'calendarRecurrenceRanges', model: 'calendarRecurrenceRange' },
 ];
 
 const PACK_COLLECTIONS: Array<keyof DbState> = [
@@ -228,6 +242,10 @@ const DELETE_BEFORE_UPSERT = new Set<keyof DbState>([
   'crmTimelineCommentMentions',
   // Draft action lists are rebuilt on every edit under the (revision, sortOrder) unique key.
   'automationActions',
+  'calendarPermissions',
+  'calendarEventFiles',
+  // An expired retry key may be replaced with a new record under the same unique key.
+  'idempotencyRecords',
 ]);
 
 export async function hydrateState(client: PrismaClient): Promise<DbState> {

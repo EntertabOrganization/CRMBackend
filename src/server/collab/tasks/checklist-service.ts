@@ -1,7 +1,7 @@
 import type { ActorContext } from '../../access-service';
 import { AppError } from '../../errors';
-import type { Body, CollabSupport } from '../support';
-import { notFoundError, validationError } from '../support';
+import type { CollabSupport } from '../support';
+import { Body, notFoundError, validationError } from '../support';
 import type { TasksPolicy } from './policy';
 import type { TaskService } from './task-service';
 import type { Task, TaskChecklist, TaskChecklistItem } from './types';
@@ -89,11 +89,13 @@ export class ChecklistService {
       sortOrder: body.int('sortOrder', { min: 0, max: 1_000_000_000 }) ?? (Math.max(0, ...existing.map((row) => row.sortOrder)) + 100), version: 1, createdAt: now, updatedAt: now,
     };
     const initial = body.array('items', { max: 500 }) ?? [];
-    const parsed = initial.map((raw, index) => {
-      const entry = (raw ?? {}) as Record<string, unknown>;
-      if (typeof entry.title !== 'string' || !entry.title.trim()) throw validationError(`items[${index}].title`, 'title is required.');
-      if (entry.assignedUserId !== undefined && entry.assignedUserId !== null) this.assertAssignable(task, String(entry.assignedUserId));
-      return { title: entry.title.trim().slice(0, 1000), assignedUserId: (entry.assignedUserId as string | undefined) ?? null };
+    const parsed = initial.map((raw) => {
+      const entry = new Body(raw as Record<string, unknown>);
+      entry.only(['title', 'assignedUserId']);
+      const title = entry.str('title', { required: true, max: 1000 });
+      const assignedUserId = entry.uuid('assignedUserId') ?? null;
+      if (assignedUserId) this.assertAssignable(task, assignedUserId);
+      return { title, assignedUserId };
     });
     this.state.taskChecklists.push(checklist);
     parsed.forEach((entry, index) => this.state.taskChecklistItems.push(this.newItem(checklist, null, entry.title, entry.assignedUserId, (index + 1) * 100)));
@@ -225,6 +227,7 @@ export class ChecklistService {
     this.support.require(actor, 'task.checklist_complete');
     if (item.assignedUserId !== actor.user.id) this.policy.requireTaskAction(actor, task, 'task.checklist_complete');
     this.policy.assertTaskWritable(task);
+    body.only(['version']);
     this.support.expectVersion(item, body.raw.version, false);
     if (item.isCompleted === completed) return item;
     item.isCompleted = completed;
