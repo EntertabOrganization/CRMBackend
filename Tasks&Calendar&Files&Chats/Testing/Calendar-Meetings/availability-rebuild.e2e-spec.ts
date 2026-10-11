@@ -1,0 +1,46 @@
+import { randomUUID } from 'node:crypto';
+import { api } from '@/tests/support/api';
+import { call, db, disconnect, expectError, expectOk, prepareCollabDatabase, register } from '../support/e2e';
+import type { Session } from '../support/e2e';
+jest.setTimeout(300_000);
+let owner: Session;
+const previousToken = process.env.INTERNAL_JOB_TOKEN, token = randomUUID();
+const query = { startAt: '2030-01-01T09:00:00Z', endAt: '2030-01-01T10:00:00Z' };
+beforeAll(async () => { await prepareCollabDatabase(); owner = await register('availability-worker'); process.env.INTERNAL_JOB_TOKEN = token; });
+afterAll(async () => { if (previousToken === undefined) delete process.env.INTERNAL_JOB_TOKEN; else process.env.INTERNAL_JOB_TOKEN = previousToken; await disconnect(); });
+const job = (limit = 1) => api('POST', '/api/v1/internal/crm/jobs/[job]', { params: { job: 'calendar-availability' }, headers: { 'x-internal-job-token': token }, body: { limit } });
+describe('Availability rebuild HTTP/PostgreSQL', () => {
+  it('authenticates the scheduler and validates page limits', async () => {
+    const params = { job: 'calendar-availability' };
+    expectError(await api('POST', '/api/v1/internal/crm/jobs/[job]', { params, body: {} }), 401, 'UNAUTHENTICATED');
+    for (const limit of [0, 101, 1.5, '1']) expectError(await api('POST', '/api/v1/internal/crm/jobs/[job]', { params, headers: { 'x-internal-job-token': token }, body: { limit } }), 400, 'VALIDATION_ERROR');
+  });
+  it('commits pending work, resumes separate pages, fences stale writes and serves complete privacy-safe results', async () => {
+    const calendar = expectOk(await call(owner, 'POST', 'calendars', { body: { type: 'PERSONAL', name: 'Dense', timezone: 'UTC' } }));
+    const event = expectOk(await call(owner, 'POST', 'calendar-events', { body: { calendarId: calendar.id, title: 'Secret', startAt: query.startAt, endAt: '2030-01-01T09:01:00Z' } }));
+    expectOk(await call(owner, 'PUT', `calendar-events/${event.id}/recurrence`, { body: { rruleText: 'FREQ=SECONDLY;COUNT=3000', sourceTimezone: 'UTC', version: 0 } }));
+    const pending = expectOk(await call(owner, 'POST', 'availability/free-busy', { body: query }), 202);
+    expect(pending).toMatchObject({ pending: true, users: [], resources: [] });
+    expectOk(await call(owner, 'POST', 'availability/suggest-slots', { body: { ...query, durationMinutes: 5 } }), 202);
+    const prisma = await db();
+    expect(await prisma.calendarAvailabilityRebuild.count({ where: { eventId: event.id } })).toBe(1);
+    expect(expectOk(await job())).toMatchObject({ processed: 1, ready: 0 });
+    const partial = await prisma.calendarAvailabilityRebuild.findFirstOrThrow({ where: { eventId: event.id } });
+    expect(partial.cursorOrdinal).toBe(1000); expect(partial.status).toBe('PENDING');
+    await expect(prisma.calendarAvailabilityRebuild.update({ where: { id: partial.id }, data: { cursorOrdinal: 0, version: partial.version } })).rejects.toThrow('RESOURCE_VERSION_CONFLICT');
+    await expect(prisma.calendarAvailabilityRebuild.update({ where: { id: partial.id }, data: { busy: [{ startAt: 'invalid', endAt: query.endAt }], version: partial.version + 1 } })).rejects.toThrow('AVAILABILITY_INVALID_RANGE');
+    expectOk(await call(owner, 'POST', 'availability/free-busy', { body: query }), 202);
+    await Promise.all([job(), job()]);
+    expectOk(await job(5));
+    const ready = await prisma.calendarAvailabilityRebuild.findUniqueOrThrow({ where: { id: partial.id } });
+    expect(ready.status).toBe('READY'); expect(ready.cursorOrdinal).toBe(3000);
+    const result = expectOk(await call(owner, 'POST', 'availability/free-busy', { body: query }));
+    expect(result.users[0].busy).toEqual([{ startAt: '2030-01-01T09:00:00.000Z', endAt: '2030-01-01T09:50:59.000Z', state: 'BUSY' }]);
+    expect(JSON.stringify(result)).not.toMatch(/Secret|eventId|recurrenceRuleId/);
+    const current = expectOk(await call(owner, 'GET', 'calendar-events/' + event.id));
+    expectOk(await call(owner, 'PATCH', 'calendar-events/' + event.id, { body: { busyStatus: 'FREE', version: current.version } }));
+    expectOk(await call(owner, 'POST', 'availability/free-busy', { body: query }), 202);
+    expectOk(await job(5));
+    expect(expectOk(await call(owner, 'POST', 'availability/free-busy', { body: query })).users[0].busy).toEqual([]);
+  });
+});

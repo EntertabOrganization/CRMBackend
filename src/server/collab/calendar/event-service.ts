@@ -7,12 +7,28 @@ import { Body, isCalendarDate, isIanaTimezone, isUuid, notFoundError, pageOf, va
 import type { CollabSupport } from '../support';
 import type { CalendarService } from './calendar-service';
 import type { CalendarEvent, CalendarExternalGuest, MeetingRecord } from './event-types';
+import type { CalendarBooking } from './booking-types';
 import { CALENDAR_LEVELS } from './types';
 
 const EDITABLE = ['title', 'description', 'location', 'isAllDay', 'startAt', 'endAt', 'startDate', 'endDate', 'sourceTimezone', 'status', 'busyStatus', 'fileIds'];
 const CRM_TYPES = ['LEAD', 'DEAL', 'CONTACT', 'COMPANY'];
 export class CalendarEventService {
   private readonly bindingResolvers = new Map<string, BindingTargetResolver>();
+  private readonly changeListeners: Array<(event: CalendarEvent) => void> = [];
+  private readonly beforeChangeListeners: Array<(event: CalendarEvent) => void> = [];
+  private readonly partyListeners: Array<(event: CalendarEvent, size: number, participantIds: string[]) => void> = [];
+  beforePartyChange(listener: (event: CalendarEvent, size: number, participantIds: string[]) => void) { this.partyListeners.push(listener); }
+  beforeChange(listener: (event: CalendarEvent) => void) { this.beforeChangeListeners.push(listener); }
+  validateChange(event: CalendarEvent) {
+    const booking = this.state.calendarBookings.find((row) => row.eventId === event.id);
+    if (booking && (event.workspaceId !== booking.workspaceId || event.calendarId !== booking.calendarId || event.organizerUserId !== booking.ownerUserId ||
+      event.isAllDay || event.recurrenceRuleId || event.recurrenceParentEventId || event.startAt?.getTime() !== booking.startAt.getTime() ||
+      event.endAt?.getTime() !== booking.endAt.getTime() || booking.status === 'CONFIRMED' && (event.isDeleted || event.status === 'CANCELLED' || event.busyStatus !== 'BUSY') ||
+      booking.status === 'CANCELLED' && !event.isDeleted && event.status !== 'CANCELLED'))
+      throw new AppError('BOOKING_EVENT_MANAGED', 'Change the Event through its Booking.', 409);
+    for (const listener of this.beforeChangeListeners) listener(event);
+  }
+  onChange(listener: (event: CalendarEvent) => void) { this.changeListeners.push(listener); }
   constructor(private readonly support: CollabSupport, private readonly calendars: CalendarService,
     private readonly tasks: TasksProjectsModule, private readonly files: () => FilePort) {}
   private get state() { return this.support.state; }
@@ -55,14 +71,91 @@ export class CalendarEventService {
     if (!c.isActive) throw new AppError('CALENDAR_INACTIVE', 'The Calendar is inactive.', 409);
     if (event.status === 'CANCELLED' && !allowCancelled) throw new AppError('EVENT_CANCELLED', 'The Event is cancelled.', 409);
   }
-  private publish(event: CalendarEvent, actor: ActorContext, type: string, changes: Record<string, unknown> = {}) {
+  assertReminderManage(actor: ActorContext, event: CalendarEvent) {
+    this.support.require(actor, 'event.reminder_manage'); this.writable(event);
+  }
+  assertReminderRecipientManage(actor: ActorContext, event: CalendarEvent) {
+    this.requireEdit(actor, event, 'event.update');
+  }
+  assertResourceManage(actor: ActorContext, event: CalendarEvent, allowCancelled = false) {
+    this.requireEdit(actor, event, 'event.update'); this.writable(event, allowCancelled);
+  }
+  private publish(event: CalendarEvent, actor: ActorContext | null, type: string, changes: Record<string, unknown> = {}) {
+    for (const listener of this.changeListeners) listener(event);
     const audience = this.state.calendarEventAttendees.filter((row) => row.eventId === event.id && !row.removedAt).map((row) => row.userId);
     this.support.event({ workspaceId: event.workspaceId, type, entityType: 'CALENDAR_EVENT', entityId: event.id,
-      actorUserId: actor.user.id, changes, audienceUserIds: type === 'CALENDAR_GUEST_INVITED'
-        ? [...new Set([event.organizerUserId, actor.user.id])]
+      actorUserId: actor?.user.id ?? null, changes, audienceUserIds: type === 'CALENDAR_GUEST_INVITED'
+        ? [...new Set([event.organizerUserId, ...(actor ? [actor.user.id] : [])])]
         : [...new Set([event.organizerUserId, ...audience])] });
     this.state.calendarEventHistory.push({ id: this.support.id(), workspaceId: event.workspaceId, eventId: event.id,
-      actorUserId: actor.user.id, action: type, changes: JSON.parse(JSON.stringify(changes)), occurredAt: this.support.now() });
+      actorUserId: actor?.user.id ?? null, action: type, changes: JSON.parse(JSON.stringify(changes)), occurredAt: this.support.now() });
+  }
+  /** Internal Booking domain port. HTTP Event authority never reaches this method. */
+  confirmBooking(booking: CalendarBooking, host: ActorContext, title: string, timezone: string, actor: ActorContext | null) {
+    if (!this.state.calendarBookings.includes(booking) || booking.status !== 'CONFIRMED' || booking.eventId ||
+      host.workspaceId !== booking.workspaceId || host.user.id !== booking.ownerUserId)
+      throw new AppError('BOOKING_STATE_INVALID', 'The Booking cannot be confirmed.', 409);
+    const calendar = this.calendars.policy.calendar(host, booking.calendarId);
+    this.calendars.policy.requireLevel(host, calendar, 'CREATE', 'event.create'); this.calendars.policy.assertWritable(calendar);
+    if (!calendar.isActive) throw new AppError('BOOKING_SLOT_UNAVAILABLE', 'The target Calendar is unavailable.', 409);
+    const now = this.support.now();
+    const event: CalendarEvent = { id: this.support.id(), workspaceId: booking.workspaceId, calendarId: booking.calendarId,
+      organizerUserId: booking.ownerUserId, title, description: null, location: null, isAllDay: false,
+      startAt: booking.startAt, endAt: booking.endAt, startDate: null, endDate: null, sourceTimezone: timezone,
+      status: 'CONFIRMED', busyStatus: 'BUSY', recurrenceRuleId: null, recurrenceParentEventId: null, recurrenceIdentity: null,
+      statusBeforeCancel: null, cancelledAt: null, isDeleted: false, deletedAt: null, version: 1, createdAt: now, updatedAt: now };
+    booking.eventId = event.id;
+    try { this.validateChange(event); this.validateParty(event, booking.attendeeUserIds ?? [], undefined, 1); }
+    catch (error) { booking.eventId = null; throw error; }
+    this.state.calendarEvents.push(event); booking.eventId = event.id; this.addAttendeeRow(event, booking.ownerUserId);
+    for (const id of booking.attendeeUserIds ?? []) this.addAttendeeRow(event, id);
+    const guest: CalendarExternalGuest = { id: this.support.id(), workspaceId: booking.workspaceId, eventId: event.id,
+      email: booking.guestEmail, name: booking.guestName, response: 'ACCEPTED', inviteTokenHash: null, removedAt: null, createdAt: now };
+    this.state.calendarExternalGuests.push(guest);
+    this.publish(event, actor, 'CALENDAR_EVENT_CREATED', { ...this.snapshot(event), bookingId: booking.id });
+    return event;
+  }
+  /** Contact edits use Booking authority and preserve time, attendee and resource reservations. */
+  updateBookingGuest(booking: CalendarBooking, contact: { guestName: string; guestEmail: string }, actor: ActorContext) {
+    if (!this.state.calendarBookings.includes(booking) || booking.status !== 'CONFIRMED' || actor.workspaceId !== booking.workspaceId)
+      throw new AppError('BOOKING_STATE_INVALID', 'The Booking guest cannot be edited.', 409);
+    const event = this.state.calendarEvents.find(row => row.id === booking.eventId && row.workspaceId === booking.workspaceId &&
+      row.calendarId === booking.calendarId && row.organizerUserId === booking.ownerUserId && !row.isDeleted && row.status !== 'CANCELLED' &&
+      !row.recurrenceRuleId && !row.recurrenceParentEventId);
+    const guest = event && this.state.calendarExternalGuests.find(row => row.eventId === event.id && row.workspaceId === booking.workspaceId &&
+      row.email === booking.guestEmail && !row.removedAt);
+    if (!event || !guest) throw new AppError('BOOKING_EVENT_MANAGED', 'The Booking guest is unavailable.', 409);
+    if (this.state.calendarExternalGuests.some(row => row.id !== guest.id && row.eventId === event.id && row.email === contact.guestEmail))
+      throw new AppError('BOOKING_GUEST_CONFLICT', 'Another Event guest already uses this email address.', 409);
+    const before = { name: guest.name, email: guest.email };
+    guest.name = contact.guestName; guest.email = contact.guestEmail;
+    // Invitation capabilities for the previous address may never survive reassignment.
+    guest.inviteTokenHash = null;
+    this.support.touch(event);
+    this.publish(event, actor, 'CALENDAR_EVENT_UPDATED', { bookingId: booking.id, version: event.version,
+      guestUpdated: guest.id, before, after: { name: guest.name, email: guest.email } });
+  }
+  cancelBooking(booking: CalendarBooking, actor: ActorContext | null) {
+    if (!this.state.calendarBookings.includes(booking) || booking.status !== 'CANCELLED')
+      throw new AppError('BOOKING_STATE_INVALID', 'The Booking cannot be cancelled.', 409);
+    if (!booking.eventId) return;
+    const event = this.state.calendarEvents.find((row) => row.id === booking.eventId && row.workspaceId === booking.workspaceId &&
+      row.calendarId === booking.calendarId && row.organizerUserId === booking.ownerUserId && !row.recurrenceRuleId && !row.recurrenceParentEventId);
+    if (!event) throw new AppError('BOOKING_EVENT_MANAGED', 'The Booking Event is unavailable.', 409);
+    if (event.status === 'CANCELLED') return;
+    event.statusBeforeCancel = event.status; event.status = 'CANCELLED'; event.cancelledAt = this.support.now(); this.support.touch(event);
+    this.publish(event, actor, 'CALENDAR_EVENT_CANCELLED', { bookingId: booking.id, version: event.version });
+  }
+  rescheduleBooking(booking: CalendarBooking, timezone: string, actor: ActorContext | null) {
+    if (!this.state.calendarBookings.includes(booking) || booking.status !== 'CONFIRMED')
+      throw new AppError('BOOKING_STATE_INVALID', 'The Booking cannot be rescheduled.', 409);
+    const event = this.state.calendarEvents.find((row) => row.id === booking.eventId && row.workspaceId === booking.workspaceId &&
+      row.calendarId === booking.calendarId && row.organizerUserId === booking.ownerUserId && !row.isDeleted && row.status !== 'CANCELLED' &&
+      !row.recurrenceRuleId && !row.recurrenceParentEventId);
+    if (!event) throw new AppError('BOOKING_EVENT_MANAGED', 'The Booking Event is unavailable.', 409);
+    const values = { startAt: booking.startAt, endAt: booking.endAt, sourceTimezone: timezone };
+    this.validateChange({ ...event, ...values }); Object.assign(event, values); this.support.touch(event);
+    this.publish(event, actor, 'CALENDAR_EVENT_UPDATED', { bookingId: booking.id, version: event.version, ...values });
   }
   private snapshot(event: CalendarEvent) {
     return { calendarId: event.calendarId, organizerUserId: event.organizerUserId, title: event.title,
@@ -174,6 +267,7 @@ export class CalendarEventService {
       ...range, sourceTimezone, status, busyStatus, recurrenceRuleId: null, recurrenceParentEventId: null, recurrenceIdentity: null,
       statusBeforeCancel: null, cancelledAt: null,
       isDeleted: false, deletedAt: null, version: 1, createdAt: now, updatedAt: now };
+    this.validateChange(event); this.validateParty(event, attendees);
     this.state.calendarEvents.push(event);
     for (const userId of new Set([organizerUserId, ...attendees])) this.addAttendeeRow(event, userId);
     this.replaceFiles(event, fileIds);
@@ -197,6 +291,7 @@ export class CalendarEventService {
     const busyStatus = body.enumOf('busyStatus', ['FREE', 'BUSY'] as const) ?? (replace ? 'BUSY' : event.busyStatus);
     const fileIds = this.fileIds(actor, body);
     const before = this.snapshot(event);
+    this.validateChange({ ...event, ...range, sourceTimezone, status, busyStatus });
     Object.assign(event, range, { title, description, location, sourceTimezone, status, busyStatus });
     if (replace || fileIds !== undefined) this.replaceFiles(event, fileIds ?? []);
     this.support.touch(event); this.publish(event, actor, 'CALENDAR_EVENT_UPDATED', { version: event.version, before, after: this.snapshot(event) });
@@ -222,12 +317,12 @@ export class CalendarEventService {
       busyStatus: body.enumOf('busyStatus', ['FREE', 'BUSY'] as const) ?? base.busyStatus,
     };
   }
-  saveOccurrence(parent: CalendarEvent, recurrenceIdentity: string, values: ReturnType<CalendarEventService['prepareOccurrence']>, existing?: CalendarEvent) {
+  saveOccurrence(parent: CalendarEvent, recurrenceIdentity: string, values: ReturnType<CalendarEventService['prepareOccurrence']>, existing?: CalendarEvent, proposedId?: string) {
     if (existing) {
       Object.assign(existing, values, { cancelledAt: null, statusBeforeCancel: null }); this.support.touch(existing); return existing;
     }
     const now = this.support.now();
-    const override: CalendarEvent = { ...parent, ...values, id: this.support.id(), recurrenceRuleId: null,
+    const override: CalendarEvent = { ...parent, ...values, id: proposedId ?? this.support.id(), recurrenceRuleId: null,
       recurrenceParentEventId: parent.id, recurrenceIdentity, cancelledAt: null, statusBeforeCancel: null,
       version: 1, createdAt: now, updatedAt: now };
     this.state.calendarEvents.push(override); return override;
@@ -238,6 +333,7 @@ export class CalendarEventService {
     body.only(['version']); this.support.expectVersion(event, body.raw.version ?? ifMatch, false);
     if (!restore && event.status === 'CANCELLED') return this.view(actor, event);
     if (restore && event.status !== 'CANCELLED') throw new AppError('EVENT_NOT_CANCELLED', 'The Event is not cancelled.', 409);
+    this.validateChange({ ...event, status: restore ? event.statusBeforeCancel ?? 'CONFIRMED' : 'CANCELLED' });
     if (restore) { event.status = event.statusBeforeCancel ?? 'CONFIRMED'; event.statusBeforeCancel = null; event.cancelledAt = null; }
     else { event.statusBeforeCancel = event.status as 'CONFIRMED' | 'TENTATIVE'; event.status = 'CANCELLED'; event.cancelledAt = this.support.now(); }
     this.support.touch(event); this.publish(event, actor, restore ? 'CALENDAR_EVENT_UPDATED' : 'CALENDAR_EVENT_CANCELLED', { ...this.snapshot(event), restored: restore });
@@ -246,6 +342,7 @@ export class CalendarEventService {
   remove(actor: ActorContext, id: string) {
     const event = this.eventOf(actor, id);
     this.requireEdit(actor, event, 'event.delete_admin'); this.writable(event, true);
+    this.validateChange({ ...event, isDeleted: true });
     event.isDeleted = true; event.deletedAt = this.support.now(); this.support.touch(event);
     this.publish(event, actor, 'CALENDAR_EVENT_UPDATED', { administrativelyDeleted: true });
     this.support.audit(actor, event.workspaceId, 'CALENDAR_EVENT.DELETED', 'CALENDAR_EVENT', id, { title: event.title, status: event.status }, null);
@@ -255,6 +352,12 @@ export class CalendarEventService {
     const event = this.eventOf(actor, id);
     return this.state.calendarEventAttendees.filter((row) => row.eventId === (event.recurrenceParentEventId ?? id) && !row.removedAt);
   }
+  private validateParty(event: CalendarEvent, added: string[] = [], response?: { userId: string; value: string }, guestsAdded = 0) {
+    const participants = new Set([event.organizerUserId, ...this.state.calendarEventAttendees.filter((row) => row.eventId === event.id && !row.removedAt &&
+      (row.userId === response?.userId ? response.value !== 'DECLINED' : row.response !== 'DECLINED')).map((row) => row.userId), ...added]);
+    const size = participants.size + guestsAdded + this.state.calendarExternalGuests.filter((row) => row.eventId === event.id && !row.removedAt && row.response !== 'DECLINED').length;
+    for (const listener of this.partyListeners) listener(event, size, [...participants]);
+  }
   addAttendees(actor: ActorContext, id: string, body: Body) {
     const event = this.eventOf(actor, id);
     this.requireEdit(actor, event, 'event.attendee_manage'); this.writable(event);
@@ -262,6 +365,7 @@ export class CalendarEventService {
     if (body.has('userId') && body.has('attendeeUserIds')) throw validationError('attendeeUserIds', 'Supply userId or attendeeUserIds.');
     const ids = body.has('userId') ? this.attendeeIds(actor, new Body({ attendeeUserIds: [body.uuid('userId', { required: true })] })) : this.attendeeIds(actor, body);
     if (!ids.length) throw validationError('attendeeUserIds', 'At least one attendee is required.');
+    this.validateParty(event, ids.filter((userId) => !this.state.calendarEventAttendees.some((row) => row.eventId === id && row.userId === userId && !row.removedAt)));
     const added = ids.filter((userId) => this.addAttendeeRow(event, userId));
     if (added.length) { this.support.touch(event); this.publish(event, actor, 'CALENDAR_EVENT_UPDATED', { attendeesAdded: added }); }
     return this.attendees(actor, id);
@@ -282,6 +386,7 @@ export class CalendarEventService {
     const row = this.state.calendarEventAttendees.find((item) => item.eventId === id && item.userId === actor.user.id && !item.removedAt);
     if (!row) throw forbidden('Only an invited attendee may respond.');
     const response = body.enumOf('response', ['ACCEPTED', 'TENTATIVE', 'DECLINED'] as const, { required: true });
+    this.validateParty(event, [], { userId: actor.user.id, value: response });
     if (row.response !== response) { row.response = response; row.respondedAt = this.support.now(); this.support.touch(event);
       this.publish(event, actor, 'CALENDAR_ATTENDEE_RESPONDED', { userId: actor.user.id, response }); }
     return row;
@@ -300,6 +405,7 @@ export class CalendarEventService {
     const name = body.str('name', { max: 200 }) ?? null;
     let row = this.state.calendarExternalGuests.find((item) => item.eventId === id && item.email === email);
     if (row && !row.removedAt) return this.guests(actor, id).find((item) => item.id === row!.id)!;
+    this.validateParty(event, [], undefined, 1);
     if (row) Object.assign(row, { name, removedAt: null, response: 'NEEDS_ACTION', inviteTokenHash: null });
     else { row = { id: this.support.id(), workspaceId: event.workspaceId, eventId: id, email, name, response: 'NEEDS_ACTION', inviteTokenHash: null,
       removedAt: null, createdAt: this.support.now() } satisfies CalendarExternalGuest; this.state.calendarExternalGuests.push(row); }
@@ -314,6 +420,9 @@ export class CalendarEventService {
     this.requireEdit(actor, event, 'event.attendee_manage'); this.writable(event);
     const row = this.state.calendarExternalGuests.find((item) => item.id === guestId && item.eventId === id && !item.removedAt);
     if (!row) throw notFoundError('EVENT_GUEST_NOT_FOUND', 'Guest');
+    if (this.state.calendarBookings.some(booking => booking.workspaceId === event.workspaceId && booking.eventId === event.id &&
+      booking.status === 'CONFIRMED' && booking.guestEmail === row.email))
+      throw new AppError('BOOKING_EVENT_MANAGED', 'Edit the Booking to change its guest.', 409);
     row.removedAt = this.support.now(); row.inviteTokenHash = null; this.support.touch(event);
     this.publish(event, actor, 'CALENDAR_EVENT_UPDATED', { guestRemoved: guestId });
     this.support.audit(actor, event.workspaceId, 'CALENDAR_EVENT.GUEST_REMOVED', 'CALENDAR_EVENT', id, { guestId, email: row.email }, null);

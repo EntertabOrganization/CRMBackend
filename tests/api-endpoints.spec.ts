@@ -6,6 +6,7 @@
 import { resetRateLimits } from '@/src/server/rate-limit';
 import { api, coveredAuthenticatedEndpoints, coveredEndpoints, disconnectTestDatabase, discoverEndpoints, prepareTestDatabase } from './support/api';
 import fs from 'node:fs';
+import { randomUUID } from 'node:crypto';
 
 jest.setTimeout(120_000);
 
@@ -1302,7 +1303,7 @@ describe('Timeline API', () => {
     expect(await prisma.crmTimelineComment.findUnique({ where: { id: created.data.id } })).toMatchObject({ isDeleted: true, body: 'Edited text', version: 3 });
     expect(await prisma.crmTimelineCommentMention.count({ where: { commentId: created.data.id } })).toBe(1);
     expectError(await api('POST', '/api/v1/crm/[entityType]/[entityId]/timeline/comments', authed({ params: { entityType: 'DEAL', entityId: ctx.typedDeal.id }, body: { body: '   ' } })), 400, 'FIELD_VALIDATION_FAILED');
-    expectError(await api('POST', '/api/v1/crm/[entityType]/[entityId]/timeline/comments', authed({ params: { entityType: 'DEAL', entityId: ctx.typedDeal.id }, body: { body: 'x', fileIds: [MISSING_ID] } })), 400, 'FILES_UNAVAILABLE');
+    expectError(await api('POST', '/api/v1/crm/[entityType]/[entityId]/timeline/comments', authed({ params: { entityType: 'DEAL', entityId: ctx.typedDeal.id }, body: { body: 'x', fileIds: [MISSING_ID] } })), 400, 'FIELD_REFERENCE_INVALID');
     expectError(await api('GET', '/api/v1/crm/timeline/comments/[commentId]', authed({ params: { commentId: MISSING_ID } })), 404, 'TIMELINE_COMMENT_NOT_FOUND');
     expectError(await api('POST', '/api/v1/crm/[entityType]/[entityId]/timeline/comments', { token: ctx.other.token, workspaceId: ws.owner.workspaceId, params: { entityType: 'DEAL', entityId: ctx.typedDeal.id }, body: { body: 'intruder' } }), 403);
   });
@@ -1328,6 +1329,9 @@ describe('Realtime and operational jobs', () => {
     const { prisma } = await import('@/src/server/prisma-client');
     expect(await prisma.crmActivityOverdueOccurrence.count({ where: { activityId: ctx.overdueActivity.id } })).toBe(1);
     expectOk(await run('reminders'));
+    expectOk(await run('calendar-reminders', { limit: 10 }));
+    expectError(await run('calendar-reminders', { limit: 0 }), 400, 'VALIDATION_ERROR');
+    expectError(await run('calendar-reminders', {}, { 'x-internal-job-token': 'wrong' }), 401, 'UNAUTHENTICATED');
     expectOk(await run('timeline-project'));
     const before = await prisma.crmTimelineEntry.count({ where: { workspaceId: ws.owner.workspaceId } });
     expectOk(await run('timeline-rebuild', { workspaceId: ws.owner.workspaceId }));
@@ -1480,7 +1484,7 @@ describe('Products & Catalog API', () => {
     expectOk(await call('GET', '/api/v1/catalog/variants/[variantId]/prices', { params: { variantId: ctx.variant.id } }));
     expectOk(await call('PUT', '/api/v1/catalog/variants/[variantId]/media', { params: { variantId: ctx.variant.id }, body: { media: [] } }));
     expectOk(await call('GET', '/api/v1/catalog/variants/[variantId]/media', { params: { variantId: ctx.variant.id } }));
-    expectError(await call('PUT', '/api/v1/catalog/products/[productId]/media', { params: { productId: parent.data.id }, body: { media: [{ fileId: MISSING_ID }] } }), 503, 'FILES_UNAVAILABLE');
+    expectError(await call('PUT', '/api/v1/catalog/products/[productId]/media', { params: { productId: parent.data.id }, body: { media: [{ fileId: MISSING_ID }] } }), 400, 'CATALOG_FILE_INVALID');
     expectOk(await call('PUT', '/api/v1/catalog/products/[productId]/media', { params: { productId: parent.data.id }, body: { media: [] } }));
     expectOk(await call('GET', '/api/v1/catalog/products/[productId]/media', { params: { productId: parent.data.id } }));
 
@@ -1609,8 +1613,8 @@ describe('Automation Rules & Triggers API', () => {
     expectOk(actions);
     const codes = actions.data.map((a: any) => a.code);
     expect(codes).toEqual(expect.arrayContaining(['crm.update_fields', 'crm.move_stage', 'activities.create_activity', 'tasks.create_task', 'integrations.call_webhook']));
-    // Modules that are not connected (Notifications, Communication, Documents) are not offered.
-    expect(codes).not.toContain('notifications.notify_user');
+    // Shared Notifications is connected; remaining unavailable module actions stay hidden.
+    expect(codes).toContain('notifications.notify_user');
     const meta = await call('GET', '/api/v1/crm/automation/condition-metadata', { query: { targetType: 'DEAL', triggerCode: 'crm.stage.entered' } });
     expectOk(meta);
     expect(meta.data.operatorsByType.NUMBER).toContain('GTE');
@@ -1789,6 +1793,12 @@ describe('Cross-cutting behaviour', () => {
     'POST /api/v1/auth/refresh',
     'POST /api/v1/auth/logout',
     'GET /api/v1/public/forms/[publicKey]',
+    'GET /api/v1/public/booking/[[...path]]',
+    'GET /api/v1/public/folders/[[...path]]',
+    'GET /api/v1/public/files/[[...path]]',
+    'GET /api/v1/file-delivery/[id]',
+    'POST /api/v1/public/booking/[[...path]]',
+    'POST /api/v1/public/bookings/[[...path]]',
     'POST /api/v1/public/forms/[publicKey]/submissions',
     'POST /api/v1/public/forms/[publicKey]/uploads',
     'POST /api/v1/public/forms/[publicKey]/uploads/[uploadId]/finalize',
@@ -1807,7 +1817,7 @@ describe('Cross-cutting behaviour', () => {
       const [method, template] = endpoint.split(' ');
       const params = Object.fromEntries([...template.matchAll(/\[(\w+)\]/g)].map((match) => [match[1], MISSING_ID]));
       for (const token of [undefined, 'garbage']) {
-        const res = await api(method as any, template, { params, token, workspaceId: ws.owner.workspaceId });
+        const res = await api(method as any, template, { params, token, workspaceId: ws.owner.workspaceId, retryAuthProbe: true });
         if (res.status !== 401 || res.body?.error?.code !== 'UNAUTHENTICATED') {
           leaks.push(`  -> ${res.status}`);
         }
@@ -1944,6 +1954,238 @@ describe('Cross-cutting behaviour', () => {
     expectOk(await api('PATCH', template, { ...authenticated, params: { path: [eventId, 'recurrence', 'future'] }, body: { recurrenceId: rule.data.upcoming[2].recurrenceId, title: 'Future occurrences', version: 3 } }));
     expectOk(await api('POST', template, { ...authenticated, params: { path: [eventId, 'occurrences', rule.data.upcoming[0].recurrenceId, 'cancel'] }, body: { version: 4 } }));
     expectOk(await api('DELETE', template, { ...authenticated, params: { path: [eventId, 'recurrence'] }, headers: { 'if-match': '"5"' } }));
+  });
+
+  it('exercises reminder configuration with real workspace credentials', async () => {
+    const authenticated = { token: ws.owner.token, workspaceId: ws.owner.workspaceId };
+    const calendar = await api('POST', '/api/v1/calendars/[[...path]]', { ...authenticated, params: { path: [] }, body: { type: 'PERSONAL', name: 'Reminders', timezone: 'UTC' } });
+    expectOk(calendar);
+    const events = '/api/v1/calendar-events/[[...path]]';
+    const event = await api('POST', events, { ...authenticated, params: { path: [] }, body: { calendarId: calendar.data.id, title: 'Reminder meeting', startAt: '2030-01-01T09:00:00Z', endAt: '2030-01-01T10:00:00Z' } });
+    expectOk(event);
+    const reminder = await api('POST', events, { ...authenticated, params: { path: [event.data.id, 'reminders'] }, body: { offsetSeconds: 900, channel: 'IN_APP' } });
+    expectOk(reminder);
+    expectOk(await api('GET', events, { ...authenticated, params: { path: [event.data.id, 'reminders'] } }));
+    const template = '/api/v1/calendar-reminders/[[...path]]', params = { path: [reminder.data.id] };
+    expectOk(await api('PATCH', template, { ...authenticated, params, body: { offsetSeconds: 600, version: 1 } }));
+    expectOk(await api('DELETE', template, { ...authenticated, params, headers: { 'if-match': '"2"' } }));
+  });
+
+  it('exercises resource configuration with real workspace credentials', async () => {
+    const template = '/api/v1/calendar-resources/[[...path]]';
+    const authenticated = { token: ws.owner.token, workspaceId: ws.owner.workspaceId };
+    const created = await api('POST', template, { ...authenticated, params: { path: [] }, body: { type: 'ROOM', name: 'Room', timezone: 'UTC' } });
+    expectOk(created); const params = { path: [created.data.id] };
+    expectOk(await api('GET', template, { ...authenticated, params }));
+    expectOk(await api('PATCH', template, { ...authenticated, params, body: { name: 'Updated', version: 1 } }));
+    expectOk(await api('PUT', template, { ...authenticated, params, body: { type: 'EQUIPMENT', name: 'Projector', timezone: 'UTC', version: 2 } }));
+    expectOk(await api('DELETE', template, { ...authenticated, params }));
+  });
+
+  it('exercises free/busy, suggestions and schedule configuration with real credentials', async () => {
+    const template = '/api/v1/availability/[[...path]]';
+    const authenticated = { token: ws.owner.token, workspaceId: ws.owner.workspaceId };
+    const range = { startAt: '2030-01-07T08:00:00Z', endAt: '2030-01-07T18:00:00Z' };
+    expectOk(await api('POST', template, { ...authenticated, params: { path: ['free-busy'] }, body: range }));
+    expectOk(await api('POST', template, { ...authenticated, params: { path: ['suggest-slots'] }, body: { ...range, durationMinutes: 60 } }));
+    expectOk(await api('GET', template, { ...authenticated, params: { path: ['business-calendar'] } }));
+    expectOk(await api('PUT', template, { ...authenticated, params: { path: ['business-calendar'] }, body: { timezone: 'UTC', weekly: [{ dayOfWeek: 1, localStartTime: '09:00', localEndTime: '17:00' }], version: 0 } }));
+  });
+
+  it('exercises booking page configuration with real workspace credentials', async () => {
+    const authenticated = { token: ws.owner.token, workspaceId: ws.owner.workspaceId };
+    const calendar = await api('POST', '/api/v1/calendars/[[...path]]', { ...authenticated, params: { path: [] }, body: { type: 'PERSONAL', name: 'Booking host', timezone: 'UTC' } }); expectOk(calendar);
+    const template = '/api/v1/booking-pages/[[...path]]';
+    const input = { calendarId: calendar.data.id, title: 'Meet host', slug: 'meet-' + RUN, durationMinutes: 30 };
+    const page = await api('POST', template, { ...authenticated, params: { path: [] }, body: input }); expectOk(page);
+    const params = { path: [page.data.id] };
+    expectOk(await api('GET', template, { ...authenticated, params }));
+    expectOk(await api('PATCH', template, { ...authenticated, params, body: { title: 'Updated', version: 1 } }));
+    expectOk(await api('PUT', template, { ...authenticated, params, body: { ...input, version: 2 } }));
+    expectOk(await api('PUT', template, { ...authenticated, params: { path: [page.data.id, 'rules'] }, body: { timezone: 'UTC', weekly: [1, 2, 3, 4, 5, 6, 7].map((dayOfWeek) => ({ dayOfWeek, localStartTime: '09:00', localEndTime: '17:00' })), version: 0 } }));
+    expectOk(await api('POST', template, { ...authenticated, params: { path: [page.data.id, 'publish'] }, body: { version: 4 } }));
+    const publicTemplate = '/api/v1/public/booking/[[...path]]';
+    expectOk(await api('GET', publicTemplate, { params: { path: [input.slug] } }));
+    const slots = await api('GET', publicTemplate, { params: { path: [input.slug, 'slots'] }, query: { startAt: new Date(Date.now() + 86_400_000).toISOString(), endAt: new Date(Date.now() + 8 * 86_400_000).toISOString() } }); expectOk(slots);
+    expect(slots.data.slots.length).toBeGreaterThan(0);
+    const booking = await api('POST', publicTemplate, { params: { path: [input.slug, 'bookings'] }, body: { guestName: 'Guest', guestEmail: 'booking@example.com', startAt: slots.data.slots[0].startAt, clientRequestId: randomUUID() } }); expectOk(booking);
+    expectOk(await api('PATCH', '/api/v1/bookings/[[...path]]', { ...authenticated, params: { path: [booking.data.bookingId] }, body: { guestName: 'Updated guest', version: 1 } }));
+    expectOk(await api('POST', '/api/v1/bookings/[[...path]]', { ...authenticated, params: { path: [booking.data.bookingId, 'cancel'] }, body: { version: 2 } }));
+    expectError(await api('POST', '/api/v1/public/bookings/[[...path]]', { params: { path: [booking.data.cancellationToken, 'cancel'] }, body: {} }), 404, 'BOOKING_TOKEN_INVALID');
+    expectOk(await api('POST', template, { ...authenticated, params: { path: [page.data.id, 'unpublish'] }, body: { version: 5 } }));
+    expectOk(await api('DELETE', template, { ...authenticated, params }));
+  });
+
+  it('exercises protected Booking reads with real workspace credentials', async () => {
+    const authenticated = { token: ws.owner.token, workspaceId: ws.owner.workspaceId };
+    expectOk(await api('GET', '/api/v1/bookings/[[...path]]', { ...authenticated, params: { path: [] } }));
+    expectError(await api('GET', '/api/v1/bookings/[[...path]]', { ...authenticated, params: { path: [MISSING_ID] } }), 404, 'BOOKING_NOT_FOUND');
+    expectError(await api('POST', '/api/v1/bookings/[[...path]]', { ...authenticated, params: { path: [MISSING_ID, 'approve'] }, body: { version: 1 } }), 404, 'BOOKING_NOT_FOUND');
+    expectError(await api('POST', '/api/v1/public/booking/[[...path]]', { params: { path: ['unavailable-page', 'bookings'] }, body: {} }), 404, 'BOOKING_PAGE_NOT_FOUND');
+    expectError(await api('POST', '/api/v1/public/bookings/[[...path]]', { params: { path: ['invalid-token', 'cancel'] }, body: {} }), 404, 'BOOKING_TOKEN_INVALID');
+  });
+
+  it('exercises shared Notifications with real workspace credentials', async () => {
+    const authenticated = { token: ws.owner.token, workspaceId: ws.owner.workspaceId };
+    const inbox = '/api/v1/notifications/[[...path]]', preferences = '/api/v1/notification-preferences/[[...path]]';
+    expectOk(await api('GET', inbox, { ...authenticated, params: { path: [] } }));
+    expectError(await api('POST', inbox, { ...authenticated, params: { path: [MISSING_ID, 'read'] }, body: {} }), 404, 'NOTIFICATION_NOT_FOUND');
+    expectOk(await api('GET', preferences, { ...authenticated, params: { path: [] } }));
+    expectOk(await api('PUT', preferences, { ...authenticated, params: { path: [] }, body: { notificationType: 'CALENDAR_REMINDER', channel: 'IN_APP', enabled: true } }));
+  });
+
+  it('exercises canonical Project Chat and Drive routes with real workspace credentials', async () => {
+    const auth = { token: ws.owner.token, workspaceId: ws.owner.workspaceId };
+    const project = await api('POST', '/api/v1/projects/[[...path]]', { ...auth, params: { path: [] },
+      body: { name: 'Canonical resources', tools: ['TASKS', 'CHAT', 'CALENDAR', 'DRIVE'] } }); expectOk(project);
+    const linked = await api('GET', '/api/v1/projects/[[...path]]', { ...auth, params: { path: [project.data.id, 'linked-resources'] } }); expectOk(linked);
+    const chatId = linked.data.CHAT.resourceId, storageId = linked.data.DRIVE.resourceId;
+    const chatRoute = '/api/v1/chats/[[...path]]';
+    expectOk(await api('GET', chatRoute, { ...auth, params: { path: [chatId] } }));
+    expectOk(await api('GET', chatRoute, { ...auth, params: { path: [chatId, 'members'] } }));
+    expectOk(await api('POST', chatRoute, { ...auth, params: { path: [chatId, 'members'] }, body: { userId: ws.owner.userId } }));
+    expectOk(await api('DELETE', chatRoute, { ...auth, params: { path: [chatId, 'members', ws.owner.userId] } }));
+    const storageRoute = '/api/v1/file-storages/[[...path]]';
+    expectOk(await api('POST', storageRoute, { ...auth, params: { path: [] }, body: { type: 'SYSTEM', name: 'System read smoke' } }));
+    expectOk(await api('GET', storageRoute, { ...auth, params: { path: [] } }));
+    expectOk(await api('GET', storageRoute, { ...auth, params: { path: [storageId] } }));
+    const root = await api('GET', storageRoute, { ...auth, params: { path: [storageId, 'root'] } }); expectOk(root);
+    const child = await api('POST', '/api/v1/folders/[[...path]]', { ...auth, params: { path: [] }, body: { storageId, parentFolderId: root.data.id, name: 'Nested smoke' } }); expectOk(child);
+    expectOk(await api('GET', '/api/v1/folders/[[...path]]', { ...auth, params: { path: [child.data.id] } }));
+    expectOk(await api('PATCH', storageRoute, { ...auth, params: { path: [storageId] }, body: { name: 'Drive smoke', version: 1 } }));
+    const storageAcl = await api('GET', storageRoute, { ...auth, params: { path: [storageId, 'permissions'] } }); expectOk(storageAcl);
+    expectOk(await api('PUT', storageRoute, { ...auth, params: { path: [storageId, 'permissions'] }, body: { assignments: [], version: storageAcl.data.version } }));
+    const folderAcl = await api('GET', '/api/v1/folders/[[...path]]', { ...auth, params: { path: [root.data.id, 'permissions'] } }); expectOk(folderAcl);
+    expectOk(await api('PUT', '/api/v1/folders/[[...path]]', { ...auth, params: { path: [root.data.id, 'permissions'] }, body: { assignments: [], version: folderAcl.data.version } }));
+    const renamed = await api('PATCH', '/api/v1/folders/[[...path]]', { ...auth, params: { path: [child.data.id] }, body: { name: 'Renamed smoke', version: child.data.version } }); expectOk(renamed);
+    expectOk(await api('DELETE', '/api/v1/folders/[[...path]]', { ...auth, params: { path: [child.data.id] }, body: { version: renamed.data.version } }));
+    const group = await api('POST', chatRoute, { ...auth, params: { path: [] }, body: { type: 'GROUP', title: 'Group smoke' } }); expectOk(group);
+    expectOk(await api('GET', chatRoute, { ...auth, params: { path: [] } }));
+    const putGroup = await api('PUT', chatRoute, { ...auth, params: { path: [group.data.id] }, body: { title: 'Group smoke', version: group.data.version } }); expectOk(putGroup);
+    expectOk(await api('PATCH', chatRoute, { ...auth, params: { path: [group.data.id] }, body: { title: 'Group smoke 2', version: putGroup.data.version } }));
+    const smokeMessage = await api('POST', chatRoute, { ...auth, params: { path: [group.data.id, 'messages'] }, body: { clientMessageId: randomUUID(), body: 'Smoke message' } }); expectOk(smokeMessage);
+    const channelRoute = '/api/v1/channels/[[...path]]';
+    const smokeChannel = await api('POST', channelRoute, { ...auth, params: { path: [] }, body: { name: 'Smoke channel' } }); expectOk(smokeChannel);
+    expectOk(await api('GET', channelRoute, { ...auth, params: { path: [] } }));
+    const putChannel = await api('PUT', channelRoute, { ...auth, params: { path: [smokeChannel.data.id] }, body: { name: 'Smoke channel', version: smokeChannel.data.version } }); expectOk(putChannel);
+    expectOk(await api('PATCH', channelRoute, { ...auth, params: { path: [smokeChannel.data.id] }, body: { description: 'Smoke', version: putChannel.data.version } }));
+    const smokePost = await api('POST', channelRoute, { ...auth, params: { path: [smokeChannel.data.id, 'posts'] }, body: { body: 'Smoke post' } }); expectOk(smokePost);
+    const postRoute = '/api/v1/channel-posts/[[...path]]';
+    expectOk(await api('GET', postRoute, { ...auth, params: { path: [smokePost.data.id] } }));
+    expectOk(await api('PATCH', postRoute, { ...auth, params: { path: [smokePost.data.id] }, body: { body: 'Smoke post edited', version: 1 } }));
+    const smokeComment = await api('POST', postRoute, { ...auth, params: { path: [smokePost.data.id, 'comments'] }, body: { body: 'Smoke comment' } }); expectOk(smokeComment);
+    const commentRoute = '/api/v1/channel-comments/[[...path]]';
+    expectOk(await api('PATCH', commentRoute, { ...auth, params: { path: [smokeComment.data.id] }, body: { body: 'Edited comment', version: 1 } }));
+    expectOk(await api('DELETE', commentRoute, { ...auth, params: { path: [smokeComment.data.id] }, body: {} }));
+    expectOk(await api('DELETE', postRoute, { ...auth, params: { path: [smokePost.data.id] }, body: {} }));
+    const channelVersion = (await api('GET', channelRoute, { ...auth, params: { path: [smokeChannel.data.id] } })).data.version;
+    expectOk(await api('DELETE', channelRoute, { ...auth, params: { path: [smokeChannel.data.id] }, body: { version: channelVersion } }));
+    const collabRoute = '/api/v1/collabs/[[...path]]';
+    const smokeCollab = await api('POST', collabRoute, { ...auth, params: { path: [] }, body: { name: 'Smoke collab' } }); expectOk(smokeCollab);
+    expectOk(await api('GET', collabRoute, { ...auth, params: { path: [] } }));
+    const putCollab = await api('PUT', collabRoute, { ...auth, params: { path: [smokeCollab.data.id] }, body: { name: 'Smoke collab', version: smokeCollab.data.version } }); expectOk(putCollab);
+    expectOk(await api('PATCH', collabRoute, { ...auth, params: { path: [smokeCollab.data.id] }, body: { description: 'Smoke', version: putCollab.data.version } }));
+    const smokeInvite = await api('POST', collabRoute, { ...auth, params: { path: [smokeCollab.data.id, 'invitations'] }, body: { email: `smoke-${randomUUID()}@example.com` } }); expectOk(smokeInvite);
+    expectError(await api('POST', '/api/v1/public/collab-invitations/[[...path]]', { token: auth.token, params: { path: [smokeInvite.data.token, 'accept'] }, body: {} }), 403, 'COLLAB_INVITATION_INVALID');
+    expectOk(await api('DELETE', collabRoute, { ...auth, params: { path: [smokeCollab.data.id, 'invitations', smokeInvite.data.id] }, body: {} }));
+    const callRoute = '/api/v1/calls/[[...path]]';
+    const syncRoute = '/api/v1/calendar-sync/[[...path]]';
+    const syncCalendar = await api('POST', '/api/v1/calendars/[[...path]]', { ...auth, params: { path: [] }, body: { type: 'PERSONAL', name: 'Sync smoke', timezone: 'UTC' } }); expectOk(syncCalendar);
+    const smokeIcs = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:smoke\r\nDTSTART;VALUE=DATE:20261101\r\nDTEND;VALUE=DATE:20261102\r\nSUMMARY:Smoke\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n';
+    const smokeSync = await api('POST', syncRoute, { ...auth, params: { path: ['connections', 'ics', 'import'] }, body: { calendarId: syncCalendar.data.id, icsContent: smokeIcs } }); expectOk(smokeSync);
+    expectOk(await api('GET', syncRoute, { ...auth, params: { path: ['connections'] } }));
+    expectOk(await api('GET', syncRoute, { ...auth, params: { path: ['connections', smokeSync.data.connection.id, 'mappings'] } }));
+    expect((await api('GET', syncRoute, { ...auth, params: { path: ['ics', 'export'] }, query: { calendarId: syncCalendar.data.id } })).status).toBe(200);
+    expectOk(await api('DELETE', syncRoute, { ...auth, params: { path: ['connections', smokeSync.data.connection.id] }, body: {} }));
+    expectOk(await api('GET', callRoute, { ...auth, params: { path: [] } }));
+    // No media provider is configured in the endpoint smoke: start fails visibly and durably.
+    const failedCall = await api('POST', callRoute, { ...auth, params: { path: [] }, body: { inviteeUserIds: [] } });
+    expectError(failedCall, 502, 'CALL_PROVIDER_ERROR');
+    expect((await api('GET', callRoute, { ...auth, params: { path: [failedCall.body.error.details.callId] } })).data.status).toBe('FAILED');
+    expectError(await api('POST', '/api/v1/public/calls/[[...path]]', { params: { path: ['a'.repeat(43), 'join'] }, body: {} }), 404, 'CALL_EXTERNAL_TOKEN_INVALID');
+    const feedRoute = '/api/v1/feed/[[...path]]';
+    const smokeFeedPost = await api('POST', feedRoute, { ...auth, params: { path: ['posts'] }, body: { postType: 'POLL', body: 'Smoke poll', publish: false, recipients: [{ recipientType: 'WORKSPACE' }] } }); expectOk(smokeFeedPost);
+    expectOk(await api('GET', feedRoute, { ...auth, params: { path: [] } }));
+    const putFeedPost = await api('PUT', feedRoute, { ...auth, params: { path: ['posts', smokeFeedPost.data.id] }, body: { body: 'Smoke poll?', recipients: [{ recipientType: 'WORKSPACE' }], version: smokeFeedPost.data.version } }); expectOk(putFeedPost);
+    expectOk(await api('PATCH', feedRoute, { ...auth, params: { path: ['posts', smokeFeedPost.data.id] }, body: { title: 'Smoke', version: putFeedPost.data.version } }));
+    const smokePoll = await api('POST', feedRoute, { ...auth, params: { path: ['posts', smokeFeedPost.data.id, 'polls'] }, body: { question: 'Works?', options: ['Yes', 'No'] } }); expectOk(smokePoll);
+    expectOk(await api('POST', feedRoute, { ...auth, params: { path: ['posts', smokeFeedPost.data.id, 'publish'] }, body: {} }));
+    const pollRoute = '/api/v1/polls/[[...path]]';
+    expectOk(await api('POST', pollRoute, { ...auth, params: { path: [smokePoll.data.poll.id, 'votes'] }, body: { optionIds: [smokePoll.data.poll.options[0].id] } }));
+    expectOk(await api('DELETE', pollRoute, { ...auth, params: { path: [smokePoll.data.poll.id, 'votes', 'me'] }, body: {} }));
+    expectOk(await api('DELETE', feedRoute, { ...auth, params: { path: ['posts', smokeFeedPost.data.id] }, body: {} }));
+    const messageRoute = '/api/v1/messages/[[...path]]';
+    expectOk(await api('GET', messageRoute, { ...auth, params: { path: [smokeMessage.data.id] } }));
+    expectOk(await api('GET', messageRoute, { ...auth, params: { path: ['search'] }, query: { q: 'Smoke' } }));
+    expectOk(await api('PATCH', messageRoute, { ...auth, params: { path: [smokeMessage.data.id] }, body: { body: 'Smoke edited', version: 1 } }));
+    expectOk(await api('POST', messageRoute, { ...auth, params: { path: [smokeMessage.data.id, 'pin'] }, body: {} }));
+    expectOk(await api('DELETE', messageRoute, { ...auth, params: { path: [smokeMessage.data.id] }, body: {} }));
+    expectOk(await api('GET', chatRoute, { ...auth, params: { path: [group.data.id, 'members'] } }));
+    expectOk(await api('GET', '/api/v1/folders/[[...path]]', { ...auth, params: { path: [root.data.id] } }));
+    const { prisma } = await import('@/src/server/prisma-client');
+    const fileId = randomUUID(), versionId = randomUUID(), createdAt = new Date();
+    await prisma.$transaction(async tx => {
+      await tx.driveFile.create({ data: { id: fileId, workspaceId: auth.workspaceId, storageId, folderId: root.data.id, name: 'File smoke.pdf', extension: 'pdf', mimeType: 'application/pdf',
+        currentVersionId: versionId, status: 'ACTIVE', sizeBytesCurrent: 10, version: 1, publicShareVersion: 1, createdAt, updatedAt: createdAt } });
+      await tx.driveFileVersion.create({ data: { id: versionId, workspaceId: auth.workspaceId, fileId, versionNumber: 1, objectKey: `${auth.workspaceId}/smoke/${versionId}`, sizeBytes: 10,
+        checksum: 'a'.repeat(64), mimeType: 'application/pdf', createdByUserId: ws.owner.userId, createdAt, processedAt: createdAt, scanStatus: 'CLEAN' } });
+    });
+    const fileRoute = '/api/v1/files/[[...path]]';
+    const uploadRoute = '/api/v1/upload-sessions/[[...path]]';
+    const upload = await api('POST', uploadRoute, { ...auth, params: { path: [] }, body: { targetFolderId: root.data.id, desiredFileName: 'Upload smoke.txt', expectedSizeBytes: 0,
+      expectedChecksum: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855', mimeType: 'text/plain', idempotencyKey: randomUUID() } }); expectOk(upload);
+    expectOk(await api('GET', uploadRoute, { ...auth, params: { path: [upload.data.id] } }));
+    expectOk(await api('POST', uploadRoute, { ...auth, params: { path: [upload.data.id, 'abort'] }, body: {} }));
+    expectOk(await api('GET', fileRoute, { ...auth, params: { path: [fileId] } }));
+    const fileAcl = await api('PUT', fileRoute, { ...auth, params: { path: [fileId, 'permissions'] }, body: { version: 1, assignments: [] } }); expectOk(fileAcl);
+    const updatedFile = await api('PATCH', fileRoute, { ...auth, params: { path: [fileId] }, body: { name: 'File smoke renamed.pdf', version: fileAcl.data.version } }); expectOk(updatedFile);
+    expectOk(await api('POST', fileRoute, { ...auth, params: { path: [fileId, 'copy'] }, body: { folderId: root.data.id, name: 'File smoke copy.pdf' } }));
+    const attachmentRoute = '/api/v1/attachments/[[...path]]';
+    const attachment = await api('POST', attachmentRoute, { ...auth, params: { path: [] }, body: { fileId, entityType: 'PROJECT', entityId: project.data.id } }); expectOk(attachment);
+    expectOk(await api('GET', attachmentRoute, { ...auth, params: { path: [] } }));
+    expectOk(await api('GET', attachmentRoute, { ...auth, params: { path: [attachment.data.id] } }));
+    expectOk(await api('GET', '/api/v1/entities/[[...path]]', { ...auth, params: { path: ['PROJECT', project.data.id, 'attachments'] } }));
+    expectOk(await api('DELETE', attachmentRoute, { ...auth, params: { path: [attachment.data.id] }, body: {} }));
+    const detachedFile = await api('GET', fileRoute, { ...auth, params: { path: [fileId] } }); expectOk(detachedFile);
+    expectOk(await api('GET', fileRoute, { ...auth, params: { path: [fileId, 'edit-sessions'] } }));
+    expectError(await api('POST', fileRoute, { ...auth, params: { path: [fileId, 'edit-sessions'] }, body: {} }), 409, 'FILE_NOT_EDITABLE');
+    const editRoute = '/api/v1/edit-sessions/[[...path]]';
+    expectError(await api('GET', editRoute, { ...auth, params: { path: [MISSING_ID] } }), 404, 'EDIT_SESSION_NOT_FOUND');
+    for (const action of ['heartbeat', 'complete', 'abort'])
+      expectError(await api('POST', editRoute, { ...auth, params: { path: [MISSING_ID, action] }, body: {} }), 404, 'EDIT_SESSION_NOT_FOUND');
+    const lease = await api('POST', fileRoute, { ...auth, params: { path: [fileId, 'locks'] }, body: {} }); expectOk(lease);
+    expectOk(await api('DELETE', fileRoute, { ...auth, params: { path: [fileId, 'locks', lease.data.id] }, body: { lockToken: lease.data.lockToken } }));
+    const forcedLease = await api('POST', fileRoute, { ...auth, params: { path: [fileId, 'locks'] }, body: {} }); expectOk(forcedLease);
+    expectOk(await api('POST', fileRoute, { ...auth, params: { path: [fileId, 'locks', forcedLease.data.id, 'force-release'] }, body: { version: 1, reason: 'Endpoint smoke cleanup' } }));
+    expectOk(await api('DELETE', fileRoute, { ...auth, params: { path: [fileId] }, body: { version: detachedFile.data.version } }));
+    const publicLink = await api('POST', '/api/v1/folders/[[...path]]', { ...auth, params: { path: [root.data.id, 'public-links'] }, body: { includeChildren: true } }); expectOk(publicLink);
+    expectOk(await api('GET', '/api/v1/public-links/[[...path]]', { ...auth, params: { path: [] } }));
+    expectOk(await api('GET', '/api/v1/public-links/[[...path]]', { ...auth, params: { path: [publicLink.data.id] } }));
+    expectOk(await api('GET', '/api/v1/public/folders/[[...path]]', { params: { path: [publicLink.data.token] } }));
+    expectError(await api('GET', '/api/v1/public/files/[[...path]]', { params: { path: [publicLink.data.token] } }), 404, 'PUBLIC_LINK_NOT_FOUND');
+    expectError(await api('GET', '/api/v1/public/files/[[...path]]', { params: { path: [publicLink.data.token, 'download'] } }), 404, 'PUBLIC_LINK_NOT_FOUND');
+    expectError(await api('GET', '/api/v1/public/folders/[[...path]]', { params: { path: [publicLink.data.token, 'download'] }, query: { fileId: MISSING_ID } }), 403, 'PERMISSION_DENIED');
+    expectError(await api('GET', '/api/v1/file-delivery/[id]', { params: { id: MISSING_ID } }), 410, 'FILE_DELIVERY_UNAVAILABLE');
+    const changedLink = await api('PATCH', '/api/v1/public-links/[[...path]]', { ...auth, params: { path: [publicLink.data.id] }, body: { includeChildren: false, version: 1 } }); expectOk(changedLink);
+    expectOk(await api('DELETE', '/api/v1/public-links/[[...path]]', { ...auth, params: { path: [publicLink.data.id] }, body: { version: changedLink.data.version } }));
+    const templateRoute = '/api/v1/document-templates/[[...path]]', generatedRoute = '/api/v1/generated-documents/[[...path]]';
+    const docTemplate = await api('POST', templateRoute, { ...auth, params: { path: [] }, body: { name: 'Smoke template', templateType: 'HTML', entityType: 'PROJECT',
+      documentType: 'SMOKE', htmlTemplate: '<p>{{entity.name}}</p>' } }); expectOk(docTemplate);
+    expectOk(await api('GET', templateRoute, { ...auth, params: { path: [] } }));
+    expectOk(await api('GET', templateRoute, { ...auth, params: { path: [docTemplate.data.id] } }));
+    expectOk(await api('POST', templateRoute, { ...auth, params: { path: [docTemplate.data.id, 'preview'] }, body: { entityId: project.data.id } }));
+    const putTemplate = await api('PUT', templateRoute, { ...auth, params: { path: [docTemplate.data.id] }, body: { version: 1, name: 'Smoke template', documentType: 'SMOKE',
+      htmlTemplate: '<h1>{{entity.name}}</h1>' } }); expectOk(putTemplate);
+    expectOk(await api('PATCH', templateRoute, { ...auth, params: { path: [docTemplate.data.id] }, body: { version: putTemplate.data.version, description: 'Smoke' } }));
+    const generatedDoc = await api('POST', generatedRoute, { ...auth, params: { path: [] }, body: { templateId: docTemplate.data.id, entityId: project.data.id,
+      folderId: root.data.id, generationKey: randomUUID() } });
+    expect(generatedDoc.status).toBe(202);
+    expectOk(await api('GET', generatedRoute, { ...auth, params: { path: [] } }));
+    expectOk(await api('GET', generatedRoute, { ...auth, params: { path: [generatedDoc.data.id] } }));
+    expectError(await api('GET', generatedRoute, { ...auth, params: { path: [generatedDoc.data.id, 'download'] } }), 409, 'DOCUMENT_STATE_INVALID');
+    expectError(await api('POST', generatedRoute, { ...auth, params: { path: [generatedDoc.data.id, 'regenerate'] }, body: { generationKey: randomUUID() } }), 409, 'DOCUMENT_STATE_INVALID');
+    expectOk(await api('DELETE', generatedRoute, { ...auth, params: { path: [generatedDoc.data.id] }, body: { version: generatedDoc.data.version } }));
+    expectOk(await api('DELETE', templateRoute, { ...auth, params: { path: [docTemplate.data.id] }, body: { version: putTemplate.data.version + 1 } }));
   });
 
   it('exercises every route handler exposed under app/', async () => {

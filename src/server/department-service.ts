@@ -5,7 +5,7 @@ import type { InMemoryStore } from './store';
 import { WorkspaceService } from './workspace-service';
 
 export class DepartmentService {
-  constructor(private readonly store: InMemoryStore) {}
+  constructor(private readonly store: InMemoryStore, private readonly onChanged?: (workspaceId: string, departmentId: string, actorUserId: string) => void) {}
 
   create(user: User, workspaceId: string, input: { name: string; description?: string | null; parentDepartmentId?: string | null; managerId?: string | null }) {
     const { role } = new WorkspaceService(this.store).assertMembership(user.id, workspaceId);
@@ -31,6 +31,7 @@ export class DepartmentService {
       entityId: department.id,
       afterData: department,
     });
+    this.onChanged?.(workspaceId, department.id, user.id);
     return department;
   }
 
@@ -90,6 +91,7 @@ export class DepartmentService {
     }
     department.isDeleted = true;
     new AuditService(this.store).write({ workspaceId, actorUserId: user.id, action: 'DEPARTMENT.SOFT_DELETED', entityType: 'Department', entityId: id });
+    this.onChanged?.(workspaceId, department.id, user.id);
     return department;
   }
 
@@ -117,6 +119,7 @@ export class DepartmentService {
       entityType: 'DepartmentMember',
       metadata: { departmentId, userIds, count: userIds.length },
     });
+    this.onChanged?.(workspaceId, departmentId, user.id);
     return created;
   }
 
@@ -129,6 +132,7 @@ export class DepartmentService {
     if (!member) throw notFound('Department member');
     member.isDeleted = true;
     new AuditService(this.store).write({ workspaceId, actorUserId: user.id, action: 'DEPARTMENT.MEMBER_REMOVED', entityType: 'DepartmentMember', entityId: member.id });
+    this.onChanged?.(workspaceId, departmentId, user.id);
     return member;
   }
 

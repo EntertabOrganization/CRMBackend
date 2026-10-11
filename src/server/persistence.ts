@@ -2,10 +2,12 @@ import { Prisma } from '@prisma/client';
 import type { PrismaClient } from '@prisma/client';
 import { canonicalDecimal } from './fields/decimal';
 import type { DbState } from './store';
+import { AppError } from './errors';
 
 type Delegate = {
   findMany: (args?: unknown) => Promise<unknown[]>;
   upsert: (args: { where: { id: string }; create: unknown; update: unknown }) => Promise<unknown>;
+  update: (args: { where: { id: string }; data: unknown }) => Promise<unknown>;
   deleteMany: (args: { where: { id: { in: string[] } } }) => Promise<unknown>;
 };
 
@@ -102,6 +104,8 @@ type ExtraCollection = {
   nullableJson?: string[];
 };
 const EXTRA_COLLECTIONS: ExtraCollection[] = [
+  // Reservations persist before Events; the deferred Event FK/consistency guard validates the final transaction.
+  { key: 'calendarBookings', model: 'calendarBooking' },
   { key: 'catalogSettings', model: 'catalogSettings' },
   { key: 'catalogs', model: 'catalog' },
   { key: 'catalogUnits', model: 'catalogUnit' },
@@ -166,6 +170,70 @@ const EXTRA_COLLECTIONS: ExtraCollection[] = [
   { key: 'calendarRecurrenceRules', model: 'calendarRecurrenceRule' },
   { key: 'calendarRecurrenceExceptions', model: 'calendarRecurrenceException' },
   { key: 'calendarRecurrenceRanges', model: 'calendarRecurrenceRange' },
+  { key: 'calendarEventReminders', model: 'calendarEventReminder' },
+  { key: 'calendarResources', model: 'calendarResource' },
+  { key: 'calendarResourceBookings', model: 'calendarResourceBooking' },
+  { key: 'businessCalendars', model: 'businessCalendar' },
+  { key: 'userWorkingSchedules', model: 'userWorkingSchedule' },
+  { key: 'calendarAvailabilityRebuilds', model: 'calendarAvailabilityRebuild' },
+  { key: 'calendarBookingPages', model: 'calendarBookingPage' },
+  { key: 'calendarBookingPageRules', model: 'calendarBookingPageRules' },
+  { key: 'calendarAvailabilityEpochs', model: 'calendarAvailabilityEpoch' },
+  { key: 'collabSpaces', model: 'collabSpace' },
+  { key: 'collabSpaceMembers', model: 'collabSpaceMember' },
+  { key: 'chats', model: 'collaborationChat' },
+  { key: 'directChatPairs', model: 'directChatPair' },
+  { key: 'fileStorages', model: 'projectFileStorage' },
+  { key: 'fileFolders', model: 'projectRootFolder' },
+  { key: 'driveFiles', model: 'driveFile' },
+  { key: 'driveFileVersions', model: 'driveFileVersion' },
+  { key: 'uploadSessions', model: 'uploadSession' },
+  { key: 'fileObjectGarbage', model: 'fileObjectGarbage' },
+  { key: 'filePermissionAssignments', model: 'filePermissionAssignment' },
+  { key: 'filePublicLinks', model: 'filePublicLink' },
+  { key: 'fileDeliveryGrants', model: 'fileDeliveryGrant' },
+  { key: 'fileAttachments', model: 'fileAttachment' },
+  { key: 'fileLocks', model: 'fileLock' },
+  { key: 'documentEditSessions', model: 'documentEditSession' },
+  { key: 'documentTemplates', model: 'documentTemplate' },
+  { key: 'documentTemplateRevisions', model: 'documentTemplateRevision' },
+  { key: 'generatedDocuments', model: 'generatedDocument' },
+  { key: 'storageAccessSources', model: 'storageAccessSource' },
+  { key: 'chatMembers', model: 'collaborationChatMember' },
+  { key: 'chatMembershipSources', model: 'collaborationChatMembershipSource' },
+  { key: 'chatMessages', model: 'chatMessage' },
+  { key: 'chatMessageVersions', model: 'chatMessageVersion' },
+  { key: 'chatMessageReactions', model: 'chatMessageReaction' },
+  { key: 'chatMessagePins', model: 'chatMessagePin' },
+  { key: 'chatMessageFavorites', model: 'chatMessageFavorite' },
+  { key: 'chatMessageReads', model: 'chatMessageRead' },
+  { key: 'chatReadStates', model: 'chatReadState' },
+  { key: 'chatDrafts', model: 'chatDraft' },
+  { key: 'communicationBindings', model: 'communicationBinding' },
+  { key: 'channels', model: 'channel' },
+  { key: 'channelMembers', model: 'channelMember' },
+  { key: 'channelMembershipSources', model: 'channelMembershipSource' },
+  { key: 'channelPosts', model: 'channelPost' },
+  { key: 'channelComments', model: 'channelComment' },
+  { key: 'collabInvitations', model: 'collabInvitation' },
+  { key: 'calls', model: 'communicationCall' },
+  { key: 'callParticipants', model: 'communicationCallParticipant' },
+  { key: 'callInvitations', model: 'communicationCallInvitation' },
+  { key: 'feedPosts', model: 'feedPost' },
+  { key: 'feedPostRecipients', model: 'feedPostRecipient' },
+  { key: 'feedAudienceSnapshots', model: 'feedAudienceSnapshot' },
+  { key: 'feedComments', model: 'feedComment' },
+  { key: 'feedReactions', model: 'feedReaction' },
+  { key: 'feedFavorites', model: 'feedFavorite' },
+  { key: 'feedReads', model: 'feedRead' },
+  { key: 'feedAcknowledgements', model: 'feedAcknowledgement' },
+  { key: 'feedPolls', model: 'feedPoll' },
+  { key: 'feedPollOptions', model: 'feedPollOption' },
+  { key: 'feedPollVotes', model: 'feedPollVote' },
+  { key: 'calendarSyncConnections', model: 'calendarSyncConnection' },
+  { key: 'calendarSyncCredentials', model: 'calendarSyncCredential' },
+  { key: 'calendarSyncMappings', model: 'calendarSyncMapping' },
+  { key: 'calendarSyncConflicts', model: 'calendarSyncConflict' },
 ];
 
 const PACK_COLLECTIONS: Array<keyof DbState> = [
@@ -244,6 +312,15 @@ const DELETE_BEFORE_UPSERT = new Set<keyof DbState>([
   'automationActions',
   'calendarPermissions',
   'calendarEventFiles',
+  // Per-user toggles keyed by (message|chat, user[, reaction]) can be removed and re-added under a new id.
+  'chatMessageReactions',
+  'chatMessagePins',
+  'chatMessageFavorites',
+  'chatDrafts',
+  'feedPostRecipients',
+  'feedReactions',
+  'feedFavorites',
+  'feedPollVotes',
   // An expired retry key may be replaced with a new record under the same unique key.
   'idempotencyRecords',
 ]);
@@ -472,6 +549,38 @@ function decimalsToStrings(row: Record<string, unknown>, columns: string[]) {
 export async function persistState(client: PrismaClient, before: DbState, after: DbState): Promise<void> {
   await client.$transaction(
     async (tx: Prisma.TransactionClient) => {
+      const fileScopes = new Set<string>();
+      for (const key of ['fileStorages', 'fileFolders', 'driveFiles', 'driveFileVersions', 'uploadSessions', 'fileObjectGarbage', 'fileDeliveryGrants', 'fileAttachments', 'fileLocks', 'documentEditSessions', 'documentTemplates', 'documentTemplateRevisions', 'generatedDocuments', 'crmActivities', 'crmTimelineComments', 'catalogProductMedia', 'crmCustomFieldValues', 'filePermissionAssignments', 'filePublicLinks', 'storageAccessSources', 'retentionRecords', 'entitlementGrants', 'calendarEventFiles', 'taskResults', 'taskTemplates'] as const) {
+        const previous = new Map(before[key].map(row => [row.id, row]));
+        const remaining = new Set(after[key].map(row => row.id));
+        for (const row of after[key]) if (JSON.stringify(previous.get(row.id)) !== JSON.stringify(row)) fileScopes.add(row.workspaceId);
+        for (const row of before[key]) if (!remaining.has(row.id)) fileScopes.add(row.workspaceId);
+      }
+      for (const workspaceId of [...fileScopes].sort()) {
+        const expected = before.calendarAvailabilityEpochs.find(row => row.workspaceId === workspaceId)?.epoch ?? 0;
+        const [locked] = await tx.$queryRaw<Array<{ epoch: number }>>`SELECT calendar_booking_lock_workspace(CAST(${workspaceId} AS uuid)) AS epoch`;
+        if (locked.epoch !== expected) throw new AppError('CONCURRENCY_CONFLICT', 'Storage, authorization or retention changed concurrently. Reload and retry.', 409);
+      }
+      // Recurrence/attendee preflight uses a hydrated graph. Lock its source revision before any writes,
+      // so a Booking acquired after that read cannot be crossed by a stale recurring Event edit.
+      const calendarSources = ['calendarSyncConnections', 'calendarSyncCredentials', 'calendarSyncMappings', 'calendarSyncConflicts', 'calendarBookings', 'calendarExternalGuests', 'calendarEvents', 'calendarEventAttendees', 'calendarRecurrenceRules',
+        'calendarRecurrenceExceptions', 'calendarRecurrenceRanges', 'calendarResources', 'calendarResourceBookings'] as const;
+      const workspaces = new Set<string>();
+      for (const key of calendarSources) {
+        const previous = new Map(before[key].map((row) => [row.id, row]));
+        for (const row of after[key]) if (JSON.stringify(previous.get(row.id)) !== JSON.stringify(row)) workspaces.add(row.workspaceId);
+        const remaining = new Set(after[key].map((row) => row.id));
+        for (const row of before[key]) if (!remaining.has(row.id)) workspaces.add(row.workspaceId);
+      }
+      for (const workspaceId of [...workspaces].sort()) {
+        const expected = before.calendarAvailabilityEpochs.find((row) => row.workspaceId === workspaceId)?.epoch ?? 0;
+        const [locked] = await tx.$queryRaw<Array<{ epoch: number }>>`SELECT calendar_booking_lock_workspace(CAST(${workspaceId} AS uuid)) AS epoch`;
+        if (locked.epoch !== expected) {
+          const resourceOnly = JSON.stringify(before.calendarResourceBookings) !== JSON.stringify(after.calendarResourceBookings) &&
+            JSON.stringify(before.calendarEvents) === JSON.stringify(after.calendarEvents);
+          throw new AppError(resourceOnly ? 'RESOURCE_BOOKING_CONFLICT' : 'BOOKING_SLOT_UNAVAILABLE', 'Availability changed concurrently. Reload and retry.', 409);
+        }
+      }
       // Upserts run before deletes: a request can both remove a parent (e.g. hard-delete
       // a workspace) and write a new row that references it (e.g. the audit log entry
       // for that very deletion). Writing first lets the FK check succeed while the
@@ -494,8 +603,20 @@ export async function persistState(client: PrismaClient, before: DbState, after:
           return !previous || JSON.stringify(previous) !== JSON.stringify(row);
         });
         if (changed.length === 0) continue;
+        // Series links must be created/reactivated before their occurrence reservations,
+        // regardless of the row order returned by PostgreSQL during hydration.
+        if (key === 'calendarResourceBookings') changed.sort((a, b) =>
+          Number(Boolean((a as { seriesBookingId?: string | null }).seriesBookingId)) -
+          Number(Boolean((b as { seriesBookingId?: string | null }).seriesBookingId)));
         const d = delegate(tx);
         for (const row of changed) {
+          // Existing Booking contact writes must use UPDATE. INSERT-before-conflict
+          // triggers validate current publication/availability even for metadata-only
+          // edits, incorrectly rejecting retained holds after page or policy changes.
+          if ((key === 'calendarBookings' || key === 'calendarSyncConnections' || key === 'calendarSyncCredentials' || key === 'calendarSyncMappings' || key === 'calendarSyncConflicts') && beforeById.has(row.id)) {
+            await d.update({ where: { id: row.id }, data: row });
+            continue;
+          }
           await d.upsert({ where: { id: row.id }, create: row, update: row });
         }
       }

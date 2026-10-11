@@ -4,7 +4,7 @@ import { NextRequest } from 'next/server';
 import { appContext } from '@/src/server/app-context';
 import { badRequest, unauthorized } from '@/src/server/errors';
 import { readJson } from '@/src/server/request';
-import { fail, ok, route, runAutomationDue } from '@/src/server/response';
+import { fail, ok, route, runAutomationDue, runCalendarReminders, runCalendarAvailability, runUploadCleanup, runUploadProcessing, runFileObjectGarbage, runDocumentEditCleanup, runDocumentGeneration } from '@/src/server/response';
 
 function assertJobToken(request: NextRequest) {
   const fixturePath = process.env.TEST_INTERNAL_JOB_TOKEN_FILE;
@@ -25,12 +25,27 @@ function assertJobToken(request: NextRequest) {
  */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ job: string }> }) {
   const jobName = (await params).job;
-  if (jobName === 'automation-run') {
-    // Runs OUTSIDE the request transaction wrapper: it claims jobs atomically (lease + SKIP LOCKED) and every step
-    // (including slow external calls) manages its own transactions, so it must not hold the request queue.
+  if (jobName === 'automation-run' || jobName === 'calendar-reminders' || jobName === 'calendar-availability' || jobName === 'booking-notifications' || jobName === 'upload-cleanup' || jobName === 'upload-processing' || jobName === 'file-object-garbage' || jobName === 'document-edit-cleanup' || jobName === 'document-generation') {
+    // Runs outside the request transaction wrapper. Reminder/automation claims use leases; availability pages
+    // use optimistic version fencing. Each worker commits its own bounded steps without nesting the request queue.
     try {
       assertJobToken(request);
-      const body = await readJson<Record<string, unknown>>(request);
+      const uploadJob = jobName === 'upload-cleanup' || jobName === 'upload-processing' || jobName === 'file-object-garbage' || jobName === 'document-edit-cleanup' || jobName === 'document-generation';
+      const body = await readJson<Record<string, unknown>>(request, uploadJob ? 64 * 1024 : undefined);
+      if (uploadJob && (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(key => key !== 'limit')))
+        throw badRequest('VALIDATION_ERROR', 'Supply an object containing only limit.');
+      if (jobName === 'calendar-reminders' || jobName === 'calendar-availability' || jobName === 'booking-notifications' || uploadJob) {
+        if (body.limit !== undefined && (typeof body.limit !== 'number' || !Number.isInteger(body.limit) || body.limit < 1 || body.limit > 100))
+          throw badRequest('VALIDATION_ERROR', 'limit must be an integer between 1 and 100.');
+        const limit = typeof body.limit === 'number' ? body.limit : 25;
+        if (jobName === 'upload-cleanup') return ok(await runUploadCleanup(limit));
+        if (jobName === 'document-edit-cleanup') return ok(await runDocumentEditCleanup(limit));
+        if (jobName === 'document-generation') return ok(await runDocumentGeneration(limit));
+        if (jobName === 'file-object-garbage') return ok(await runFileObjectGarbage(limit));
+        if (jobName === 'upload-processing') return ok(await runUploadProcessing(limit));
+        if (jobName === 'booking-notifications') return ok(await appContext.bookingNotifications.runDue(limit));
+        return ok(await (jobName === 'calendar-availability' ? runCalendarAvailability(limit) : runCalendarReminders(limit)));
+      }
       return ok(await runAutomationDue(typeof body.limit === 'number' ? Math.min(Math.max(body.limit, 1), 100) : 25));
     } catch (error) {
       return fail(error);

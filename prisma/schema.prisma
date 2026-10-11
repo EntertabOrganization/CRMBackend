@@ -7,6 +7,278 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model CalendarBookingNotificationEvent {
+  eventId String @id @map("event_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@map("calendar_booking_notification_events")
+}
+
+model CalendarBookingNotificationDelivery {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  bookingId String @map("booking_id") @db.Uuid
+  eventId String @map("event_id") @db.Uuid
+  sourceVersion Int @map("source_version")
+  notificationType String @map("notification_type")
+  recipientKey String @map("recipient_key")
+  recipientUserId String? @map("recipient_user_id") @db.Uuid
+  guestEmail String? @map("guest_email")
+  status String
+  attempts Int @default(0)
+  nextAttemptAt DateTime? @map("next_attempt_at") @db.Timestamptz(6)
+  claimToken String? @map("claim_token") @db.Uuid
+  leaseExpiresAt DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  lastErrorCode String? @map("last_error_code")
+  sentAt DateTime? @map("sent_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  @@unique([eventId, recipientKey])
+  @@index([status, nextAttemptAt])
+  @@map("calendar_booking_notification_deliveries")
+}
+
+model ProjectFileStorage {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  type String
+  ownerUserId String? @map("owner_user_id") @db.Uuid
+  projectId String? @unique @map("project_id") @db.Uuid
+  name String
+  isActive Boolean @map("is_active")
+  isReadOnly Boolean @map("is_read_only")
+  version Int @default(1)
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  @@unique([workspaceId, id])
+  @@map("file_storages")
+}
+
+model ProjectRootFolder {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  storageId String @map("storage_id") @db.Uuid
+  parentFolderId String? @map("parent_folder_id") @db.Uuid
+  name String
+  status String
+  originalParentFolderId String? @map("original_parent_folder_id") @db.Uuid
+  trashedAt DateTime? @map("trashed_at") @db.Timestamptz(6)
+  purgeAfter DateTime? @map("purge_after") @db.Timestamptz(6)
+  publicShareVersion Int @default(1) @map("public_share_version")
+  version Int @default(1)
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  @@unique([workspaceId, id])
+  @@map("file_folders")
+}
+
+model StorageAccessSource {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  storageId String @map("storage_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  sourceType String @map("source_type")
+  sourceId String @map("source_id") @db.Uuid
+  permissionLevel String @map("permission_level")
+  active Boolean
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  @@unique([storageId, userId, sourceType, sourceId])
+  @@map("storage_access_sources")
+}
+
+model CollaborationChat {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  type String
+  title String?
+  linkedTaskId String? @unique @map("linked_task_id") @db.Uuid
+  linkedProjectId String? @unique @map("linked_project_id") @db.Uuid
+  linkedDepartmentId String? @unique @map("linked_department_id") @db.Uuid
+  linkedCollabId String? @unique @map("linked_collab_id") @db.Uuid
+  createdByUserId String @map("created_by_user_id") @db.Uuid
+  status String
+  version Int @default(1)
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  @@unique([workspaceId, id])
+  @@map("collaboration_chats")
+}
+
+model CollabSpace {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  name String
+  ownerUserId String @map("owner_user_id") @db.Uuid
+  status String
+  version Int @default(1)
+  description String?
+  createdByUserId String? @map("created_by_user_id") @db.Uuid
+  archivedAt DateTime? @map("archived_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  @@unique([workspaceId, id])
+  @@map("collab_spaces")
+}
+
+model CollabSpaceMember {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  collabId String @map("collab_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  memberType String @map("member_type")
+  role String
+  status String
+  joinedAt DateTime? @map("joined_at") @db.Timestamptz(6)
+  leftAt DateTime? @map("left_at") @db.Timestamptz(6)
+  @@unique([collabId, userId])
+  @@map("collab_space_members")
+}
+
+model DirectChatPair {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  chatId String @unique @map("chat_id") @db.Uuid
+  userAId String @map("user_a_id") @db.Uuid
+  userBId String @map("user_b_id") @db.Uuid
+  @@unique([workspaceId, userAId, userBId])
+  @@map("direct_chat_pairs")
+}
+
+model FilePublicLink {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  resourceType String @map("resource_type")
+  resourceId String @map("resource_id") @db.Uuid
+  tokenHash String @unique @map("token_hash")
+  permissionMode String @map("permission_mode")
+  passwordHash String? @map("password_hash")
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  maxDownloads Int? @map("max_downloads")
+  downloadCount Int @default(0) @map("download_count")
+  accessCount Int @default(0) @map("access_count")
+  includeChildren Boolean @map("include_children")
+  isActive Boolean @map("is_active")
+  createdByUserId String @map("created_by_user_id") @db.Uuid
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+  resourceShareVersion Int @map("resource_share_version")
+  version Int @default(1)
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  @@index([workspaceId, resourceType, resourceId])
+  @@map("file_public_links")
+}
+
+model DriveFile {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  storageId String @map("storage_id") @db.Uuid
+  folderId String @map("folder_id") @db.Uuid
+  name String
+  extension String
+  mimeType String @map("mime_type")
+  currentVersionId String? @map("current_version_id") @db.Uuid
+  status String
+  sizeBytesCurrent Float @map("size_bytes_current")
+  version Int @default(1)
+  trashedAt DateTime? @map("trashed_at") @db.Timestamptz(6)
+  purgeAfter DateTime? @map("purge_after") @db.Timestamptz(6)
+  originalFolderId String? @map("original_folder_id") @db.Uuid
+  statusBeforeTrash String? @map("status_before_trash")
+  publicShareVersion Int @default(1) @map("public_share_version")
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  @@unique([workspaceId, id])
+  @@index([workspaceId, storageId, folderId])
+  @@map("drive_files")
+}
+
+model DriveFileVersion {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  fileId String @map("file_id") @db.Uuid
+  versionNumber Int @map("version_number")
+  objectKey String @map("object_key")
+  sizeBytes Float @map("size_bytes")
+  checksum String
+  mimeType String @map("mime_type")
+  createdByUserId String @map("created_by_user_id") @db.Uuid
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  scanStatus String @map("scan_status")
+  processedAt DateTime? @map("processed_at") @db.Timestamptz(6)
+  @@unique([fileId, versionNumber])
+  @@unique([workspaceId, fileId, id])
+  @@map("drive_file_versions")
+}
+
+model FilePermissionAssignment {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  resourceType String @map("resource_type")
+  resourceId String @map("resource_id") @db.Uuid
+  subjectType String @map("subject_type")
+  subjectId String? @map("subject_id")
+  permissionLevel String @map("permission_level")
+  inheritanceMode String @map("inheritance_mode")
+  @@index([workspaceId, resourceType, resourceId])
+  @@map("file_permission_assignments")
+}
+
+model CollaborationChatMember {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  chatId String @map("chat_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  role String
+  joinedAt DateTime @map("joined_at") @db.Timestamptz(6)
+  leftAt DateTime? @map("left_at") @db.Timestamptz(6)
+  @@unique([chatId, userId])
+  lastReadMessageId String? @map("last_read_message_id") @db.Uuid
+  @@map("collaboration_chat_members")
+}
+
+model CollaborationChatMembershipSource {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  chatId String @map("chat_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  sourceType String @map("source_type")
+  sourceId String @map("source_id") @db.Uuid
+  active Boolean
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  @@unique([chatId, userId, sourceType, sourceId])
+  @@map("collaboration_chat_membership_sources")
+}
+
+model UserNotification {
+  id               String   @id @default(uuid()) @db.Uuid
+  workspaceId      String   @map("workspace_id") @db.Uuid
+  recipientUserId  String   @map("recipient_user_id") @db.Uuid
+  notificationType String   @map("notification_type")
+  title            String
+  message          String
+  link             String?
+  idempotencyKey   String   @map("idempotency_key")
+  readAt           DateTime? @map("read_at") @db.Timestamptz(3)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([workspaceId, recipientUserId, idempotencyKey])
+  @@index([workspaceId, recipientUserId, createdAt])
+  @@map("user_notifications")
+}
+
+model NotificationPreference {
+  id               String  @id @default(uuid()) @db.Uuid
+  workspaceId      String  @map("workspace_id") @db.Uuid
+  userId           String  @map("user_id") @db.Uuid
+  notificationType String  @map("notification_type")
+  channel          String
+  enabled          Boolean @default(true)
+
+  @@unique([workspaceId, userId, notificationType, channel])
+  @@map("notification_preferences")
+}
+
 enum UserStatus {
   PENDING_VERIFICATION
   ACTIVE
@@ -2576,6 +2848,8 @@ model CalendarEvent {
   recurrenceParent CalendarEvent? @relation("OccurrenceParent", fields: [workspaceId, recurrenceParentEventId], references: [workspaceId, id], onDelete: NoAction)
   recurrenceOverrides CalendarEvent[] @relation("OccurrenceParent")
   recurrenceExceptions CalendarRecurrenceException[]
+  reminders CalendarEventReminder[]
+    resourceBookings CalendarResourceBooking[]
   @@unique([workspaceId, id])
   @@index([workspaceId, calendarId, startAt])
   @@index([workspaceId, calendarId, startDate])
@@ -2598,11 +2872,243 @@ model CalendarRecurrenceRule {
   activeEvents CalendarEvent[] @relation("ActiveRecurrence")
   exceptions CalendarRecurrenceException[]
   ranges CalendarRecurrenceRange[]
+  reminders CalendarEventReminder[]
   @@unique([workspaceId, id])
   @@unique([workspaceId, eventId, id])
   @@index([workspaceId, eventId])
   @@index([workspaceId, isDeleted])
   @@map("calendar_recurrence_rules")
+}
+enum CalendarReminderChannel {
+  IN_APP
+  EMAIL
+  PUSH
+}
+enum CalendarReminderStatus {
+  SCHEDULED
+  SENT
+  CANCELLED
+  FAILED
+}
+model CalendarAvailabilityEpoch {
+  id String @id @db.Uuid
+  workspaceId String @unique @map("workspace_id") @db.Uuid
+  epoch Int @default(0)
+  @@map("calendar_availability_epochs")
+}
+model CalendarBooking {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  bookingPageId String @map("booking_page_id") @db.Uuid
+  ownerUserId String @map("owner_user_id") @db.Uuid
+  attendeeUserIds String[] @default([]) @map("attendee_user_ids") @db.Uuid
+  resourceIds String[] @default([]) @map("resource_ids") @db.Uuid
+  calendarId String @map("calendar_id") @db.Uuid
+  eventId String? @unique @map("event_id") @db.Uuid
+  guestName String @map("guest_name")
+  guestEmail String @map("guest_email")
+  guestPhone String? @map("guest_phone")
+  startAt DateTime @map("start_at") @db.Timestamptz(6)
+  endAt DateTime @map("end_at") @db.Timestamptz(6)
+  reservedStartAt DateTime @map("reserved_start_at") @db.Timestamptz(6)
+  reservedEndAt DateTime @map("reserved_end_at") @db.Timestamptz(6)
+  status String
+  idempotencyKey String @map("idempotency_key") @db.Uuid
+  requestHash String @map("request_hash")
+  tokenNonce String @map("token_nonce")
+  tokenGeneration Int @default(1) @map("token_generation")
+  tokenExpiresAt DateTime @map("token_expires_at") @db.Timestamptz(6)
+  cancellationTokenHash String? @unique @map("cancellation_token_hash")
+  rescheduleTokenHash String? @unique @map("reschedule_token_hash")
+  publicReceiptRevoked Boolean @default(false) @map("public_receipt_revoked")
+  sourceEpoch Int @map("source_epoch")
+  pageVersion Int @map("page_version")
+  rulesVersion Int @map("rules_version")
+  version Int @default(1)
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  @@unique([bookingPageId, idempotencyKey])
+    @@unique([workspaceId, id])
+  @@index([workspaceId, ownerUserId, status])
+  @@map("calendar_bookings")
+}
+model CalendarBookingPage {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  ownerUserId String @map("owner_user_id") @db.Uuid
+  attendeeUserIds String[] @default([]) @map("attendee_user_ids") @db.Uuid
+  resourceIds String[] @default([]) @map("resource_ids") @db.Uuid
+  calendarId String @map("calendar_id") @db.Uuid
+  createdByUserId String @map("created_by_user_id") @db.Uuid
+  title String
+  slug String @unique
+  status String @default("DRAFT")
+  bookingMode String @default("AUTO_CONFIRM") @map("booking_mode")
+  durationMinutes Int @map("duration_minutes")
+  timezonePolicy String @default("HOST") @map("timezone_policy")
+  timezone String
+  requireName Boolean @default(true) @map("require_name")
+  requireEmail Boolean @default(true) @map("require_email")
+  requirePhone Boolean @default(false) @map("require_phone")
+  minNoticeMinutes Int @default(0) @map("min_notice_minutes")
+  maxAdvanceDays Int @default(90) @map("max_advance_days")
+  bufferBeforeMinutes Int @default(0) @map("buffer_before_minutes")
+  bufferAfterMinutes Int @default(0) @map("buffer_after_minutes")
+  isDeleted Boolean @default(false) @map("is_deleted")
+  version Int @default(1)
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  @@unique([workspaceId, id])
+  @@index([workspaceId, ownerUserId, status])
+  @@map("calendar_booking_pages")
+}
+model CalendarBookingPageRules {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  pageId String @unique @map("page_id") @db.Uuid
+  timezone String
+  weekly Json
+  holidays Json
+  overrides Json
+  version Int @default(1)
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  @@map("calendar_availability_rules")
+}
+model CalendarAvailabilityRebuild {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  eventId String @map("event_id") @db.Uuid
+  recurrenceRuleId String @map("recurrence_rule_id") @db.Uuid
+  eventVersion Int @map("event_version")
+  ruleVersion Int @map("rule_version")
+  startAt DateTime @map("start_at") @db.Timestamptz(6)
+  endAt DateTime @map("end_at") @db.Timestamptz(6)
+  status String @default("PENDING")
+  cursorRecurrenceId String? @map("cursor_recurrence_id")
+  cursorOrdinal Int @default(0) @map("cursor_ordinal")
+  busy Json
+  failures Int @default(0)
+  nextAttemptAt DateTime? @map("next_attempt_at") @db.Timestamptz(6)
+  lastErrorCode String? @map("last_error_code")
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  version Int @default(1)
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  @@unique([workspaceId, eventId, recurrenceRuleId, eventVersion, ruleVersion, startAt, endAt])
+  @@index([status, nextAttemptAt, updatedAt])
+  @@map("calendar_availability_rebuilds")
+}
+model BusinessCalendar {
+  id String @id @db.Uuid
+  workspaceId String @unique @map("workspace_id") @db.Uuid
+  timezone String
+  weekly Json
+  holidays Json
+  overrides Json
+  version Int @default(1)
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  @@map("business_calendars")
+}
+model UserWorkingSchedule {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  timezone String
+  weekly Json
+  holidays Json
+  overrides Json
+  version Int @default(1)
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  @@unique([workspaceId, userId])
+  @@map("user_working_schedules")
+}
+model CalendarResource {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  createdByUserId String @map("created_by_user_id") @db.Uuid
+  type String
+  name String
+  description String?
+  capacity Int?
+  timezone String
+  isExclusive Boolean @default(true) @map("is_exclusive")
+  isActive Boolean @default(true) @map("is_active")
+  isDeleted Boolean @default(false) @map("is_deleted")
+  version Int @default(1)
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  bookings CalendarResourceBooking[]
+  @@unique([workspaceId, id])
+  @@index([workspaceId, isDeleted, isActive])
+  @@map("calendar_resources")
+}
+model CalendarResourceBooking {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  resourceId String @map("resource_id") @db.Uuid
+  eventId String @map("event_id") @db.Uuid
+  recurrenceId String @default("SINGLE") @map("recurrence_id")
+  seriesBookingId String? @map("series_booking_id") @db.Uuid
+  startAt DateTime @map("start_at") @db.Timestamptz(6)
+  endAt DateTime @map("end_at") @db.Timestamptz(6)
+  exclusive Boolean
+  status String
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  resource CalendarResource @relation(fields: [workspaceId, resourceId], references: [workspaceId, id], onDelete: NoAction)
+  event CalendarEvent @relation(fields: [workspaceId, eventId], references: [workspaceId, id], onDelete: NoAction)
+  @@unique([resourceId, eventId, recurrenceId])
+  @@unique([workspaceId, id])
+  @@index([workspaceId, eventId, status])
+  @@map("calendar_resource_bookings")
+}
+model CalendarEventReminder {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  eventId String @map("event_id") @db.Uuid
+  attendeeUserId String @map("attendee_user_id") @db.Uuid
+  recurrenceRuleId String? @map("recurrence_rule_id") @db.Uuid
+  recurrenceId String? @map("recurrence_id")
+  offsetSeconds Int? @map("offset_seconds")
+  remindAt DateTime? @map("remind_at") @db.Timestamptz(6)
+  dueAt DateTime? @map("due_at") @db.Timestamptz(6)
+  isSeries Boolean @default(false) @map("is_series")
+  seriesReminderId String? @map("series_reminder_id") @db.Uuid
+  isSeriesOverride Boolean @default(false) @map("is_series_override")
+  recurrenceOrdinal Int? @map("recurrence_ordinal")
+  sourceRuleVersion Int? @map("source_rule_version")
+    sourceEventVersion Int? @map("source_event_version")
+  cursorRecurrenceId String? @map("cursor_recurrence_id")
+  cursorOrdinal Int @default(0) @map("cursor_ordinal")
+  cursorRuleVersion Int? @map("cursor_rule_version")
+    cursorEventVersion Int? @map("cursor_event_version")
+  scanComplete Boolean @default(false) @map("scan_complete")
+  materializedAt DateTime? @map("materialized_at") @db.Timestamptz(6)
+  channel CalendarReminderChannel
+  status CalendarReminderStatus @default(SCHEDULED)
+  deliveryGeneration Int @default(1) @map("delivery_generation")
+  attempts Int @default(0)
+  nextAttemptAt DateTime? @map("next_attempt_at") @db.Timestamptz(6)
+  claimToken String? @map("claim_token") @db.Uuid
+  leaseExpiresAt DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  sentAt DateTime? @map("sent_at") @db.Timestamptz(6)
+  deliveryReference String? @map("delivery_reference")
+  lastErrorCode String? @map("last_error_code")
+  version Int @default(1)
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  event CalendarEvent @relation(fields: [workspaceId, eventId], references: [workspaceId, id], onDelete: NoAction)
+  rule CalendarRecurrenceRule? @relation(fields: [workspaceId, eventId, recurrenceRuleId], references: [workspaceId, eventId, id], onDelete: NoAction)
+  seriesReminder CalendarEventReminder? @relation("SeriesReminder", fields: [workspaceId, seriesReminderId], references: [workspaceId, id], onDelete: NoAction)
+  occurrenceReminders CalendarEventReminder[] @relation("SeriesReminder")
+  @@unique([workspaceId, id])
+  @@unique([seriesReminderId, recurrenceId])
+  @@index([workspaceId, eventId, attendeeUserId])
+  @@index([status, dueAt])
+  @@map("calendar_event_reminders")
 }
 enum CalendarRecurrenceExceptionType {
   CANCELLED
@@ -2733,4 +3239,703 @@ model MeetingDecision {
   event CalendarEvent @relation(fields: [workspaceId, eventId], references: [workspaceId, id], onDelete: NoAction)
   @@index([workspaceId, eventId, createdAt, id])
   @@map("meeting_decisions")
+}
+
+model UploadSession {
+  purgedAt DateTime? @map("purged_at") @db.Timestamptz(6)
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  createdByUserId String @map("created_by_user_id") @db.Uuid
+  targetFolderId String @map("target_folder_id") @db.Uuid
+  desiredFileName String @map("desired_file_name")
+  mimeType String @map("mime_type")
+  expectedSizeBytes Float @map("expected_size_bytes")
+  expectedChecksum String @map("expected_checksum")
+  targetFileId String? @map("target_file_id") @db.Uuid
+  editSessionId String? @map("edit_session_id") @db.Uuid
+  status String
+  conflictMode String? @map("conflict_mode")
+  idempotencyKey String @map("idempotency_key")
+  fingerprint String
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  parts Json
+  resultFileId String? @map("result_file_id") @db.Uuid
+  resultVersionId String? @map("result_version_id") @db.Uuid
+  version Int @default(1)
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  cleanupClaimId String? @map("cleanup_claim_id") @db.Uuid
+  cleanupLeaseExpiresAt DateTime? @map("cleanup_lease_expires_at") @db.Timestamptz(6)
+  cleanupNextAttemptAt DateTime? @map("cleanup_next_attempt_at") @db.Timestamptz(6)
+  cleanupAttempts Int @default(0) @map("cleanup_attempts")
+  cleanupErrorCode String? @map("cleanup_error_code")
+  cleanedAt DateTime? @map("cleaned_at") @db.Timestamptz(6)
+  processingClaimId String? @map("processing_claim_id") @db.Uuid
+  processingLeaseExpiresAt DateTime? @map("processing_lease_expires_at") @db.Timestamptz(6)
+  processingNextAttemptAt DateTime? @map("processing_next_attempt_at") @db.Timestamptz(6)
+  processingAttempts Int @default(0) @map("processing_attempts")
+  processingErrorCode String? @map("processing_error_code")
+  @@unique([workspaceId, createdByUserId, idempotencyKey])
+  @@map("upload_sessions")
+}
+
+model FileObjectGarbage {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  objectKey String @map("object_key")
+  claimId String? @map("claim_id") @db.Uuid
+  leaseExpiresAt DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  nextAttemptAt DateTime @map("next_attempt_at") @db.Timestamptz(6)
+  attempts Int @default(0)
+  errorCode String? @map("error_code")
+  cleanedAt DateTime? @map("cleaned_at") @db.Timestamptz(6)
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  @@unique([workspaceId, objectKey])
+  @@index([nextAttemptAt, id])
+  @@map("file_object_garbage")
+}
+
+model FileDeliveryGrant {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  fileId String @map("file_id") @db.Uuid
+  versionId String @map("version_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  tokenHash String @map("token_hash")
+  resourceShareVersion Int @map("resource_share_version")
+  publicLinkId String? @map("public_link_id") @db.Uuid
+  publicLinkVersion Int? @map("public_link_version")
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  consumedAt DateTime? @map("consumed_at") @db.Timestamptz(6)
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  @@index([workspaceId, fileId])
+  @@map("file_delivery_grants")
+}
+
+model FileAttachment {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  fileId String @map("file_id") @db.Uuid
+  entityType String @map("entity_type")
+  entityId String @map("entity_id") @db.Uuid
+  role String
+  attachedByUserId String @map("attached_by_user_id") @db.Uuid
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  @@unique([workspaceId, fileId, entityType, entityId, role])
+  @@index([workspaceId, entityType, entityId])
+  @@map("file_attachments")
+}
+
+model FileLock {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  fileId String @map("file_id") @db.Uuid
+  lockType String @map("lock_type")
+  lockedByUserId String? @map("locked_by_user_id") @db.Uuid
+  lockTokenHash String @map("lock_token_hash")
+  lockedAt DateTime @map("locked_at") @db.Timestamptz(6)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  releasedAt DateTime? @map("released_at") @db.Timestamptz(6)
+  version Int
+  @@index([workspaceId,fileId])
+  @@map("file_locks")
+}
+model DocumentEditSession {
+  providerReady Boolean @default(false) @map("provider_ready")
+  saveRequestHash String? @map("save_request_hash")
+  uploadSessionId String? @map("upload_session_id") @db.Uuid
+  cleanupRequired Boolean @default(false) @map("cleanup_required")
+  cleanupClaimId String? @map("cleanup_claim_id") @db.Uuid
+  cleanupLeaseExpiresAt DateTime? @map("cleanup_lease_expires_at") @db.Timestamptz(6)
+  cleanupNextAttemptAt DateTime? @map("cleanup_next_attempt_at") @db.Timestamptz(6)
+  cleanupAttempts Int @default(0) @map("cleanup_attempts")
+  cleanupErrorCode String? @map("cleanup_error_code")
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  fileId String @map("file_id") @db.Uuid
+  provider String
+  providerSessionId String @map("provider_session_id")
+  userId String @map("user_id") @db.Uuid
+  mode String
+  status String
+  startedAt DateTime @map("started_at") @db.Timestamptz(6)
+  lastActivityAt DateTime @map("last_activity_at") @db.Timestamptz(6)
+  endedAt DateTime? @map("ended_at") @db.Timestamptz(6)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  lockId String? @map("lock_id") @db.Uuid
+  baseVersionId String @map("base_version_id") @db.Uuid
+  resultVersionId String? @map("result_version_id") @db.Uuid
+  version Int
+  @@index([workspaceId,fileId])
+  @@map("document_edit_sessions")
+}
+
+model DocumentTemplate {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  name String
+  description String?
+  documentType String @map("document_type")
+  entityType String @map("entity_type")
+  templateType String @map("template_type")
+  outputFormats String[] @map("output_formats")
+  numberPrefix String? @map("number_prefix")
+  sourceFileId String? @map("source_file_id") @db.Uuid
+  htmlTemplate String? @map("html_template")
+  schemaJson Json @map("schema_json")
+  currentRevisionId String @map("current_revision_id") @db.Uuid
+  currentRevision Int @map("current_revision")
+  isActive Boolean @map("is_active")
+  isDeleted Boolean @map("is_deleted")
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdByUserId String @map("created_by_user_id") @db.Uuid
+  updatedByUserId String @map("updated_by_user_id") @db.Uuid
+  version Int
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  @@index([workspaceId, entityType])
+  @@map("document_templates")
+}
+
+model DocumentTemplateRevision {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  templateId String @map("template_id") @db.Uuid
+  revision Int
+  templateType String @map("template_type")
+  entityType String @map("entity_type")
+  htmlTemplate String? @map("html_template")
+  sourceFileId String? @map("source_file_id") @db.Uuid
+  sourceVersionId String? @map("source_version_id") @db.Uuid
+  sourceObjectKey String? @map("source_object_key")
+  sourceChecksum String? @map("source_checksum")
+  sourceSizeBytes Float? @map("source_size_bytes")
+  schemaJson Json @map("schema_json")
+  variables String[]
+  contentHash String @map("content_hash")
+  createdByUserId String @map("created_by_user_id") @db.Uuid
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  @@unique([templateId, revision])
+  @@map("document_template_revisions")
+}
+
+model GeneratedDocument {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  documentType String @map("document_type")
+  entityType String @map("entity_type")
+  entityId String @map("entity_id") @db.Uuid
+  templateId String @map("template_id") @db.Uuid
+  templateRevisionId String @map("template_revision_id") @db.Uuid
+  outputFormat String @map("output_format")
+  targetFolderId String @map("target_folder_id") @db.Uuid
+  fileName String? @map("file_name")
+  fileId String? @map("file_id") @db.Uuid
+  fileVersionId String? @map("file_version_id") @db.Uuid
+  documentNumber String? @map("document_number")
+  status String
+  generationKey String @map("generation_key")
+  requestHash String @map("request_hash")
+  inputs Json
+  contextHash String? @map("context_hash")
+  errorCode String? @map("error_code")
+  regeneratedFromId String? @map("regenerated_from_id") @db.Uuid
+  supersededById String? @map("superseded_by_id") @db.Uuid
+  attempts Int
+  claimId String? @map("claim_id") @db.Uuid
+  leaseExpiresAt DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  nextAttemptAt DateTime? @map("next_attempt_at") @db.Timestamptz(6)
+  generatedAt DateTime? @map("generated_at") @db.Timestamptz(6)
+  archivedAt DateTime? @map("archived_at") @db.Timestamptz(6)
+  createdByUserId String @map("created_by_user_id") @db.Uuid
+  version Int
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  @@unique([workspaceId, generationKey])
+  @@index([workspaceId, entityType, entityId])
+  @@map("generated_documents")
+}
+
+model ChatMessage {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  chatId String @map("chat_id") @db.Uuid
+  sequence Int
+  senderType String @map("sender_type")
+  senderId String? @map("sender_id") @db.Uuid
+  clientMessageId String @map("client_message_id")
+  requestHash String @map("request_hash")
+  messageType String @map("message_type")
+  body String?
+  fileIds String[] @map("file_ids") @db.Uuid
+  replyToMessageId String? @map("reply_to_message_id") @db.Uuid
+  status String
+  sentAt DateTime @map("sent_at") @db.Timestamptz(6)
+  editedAt DateTime? @map("edited_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+  deletedByUserId String? @map("deleted_by_user_id") @db.Uuid
+  version Int
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  @@unique([chatId, sequence])
+  @@unique([chatId, senderId, clientMessageId])
+  @@map("chat_messages")
+}
+
+model ChatMessageVersion {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  messageId String @map("message_id") @db.Uuid
+  versionNumber Int @map("version_number")
+  body String?
+  editedByUserId String @map("edited_by_user_id") @db.Uuid
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  @@unique([messageId, versionNumber])
+  @@map("chat_message_versions")
+}
+
+model ChatMessageReaction {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  messageId String @map("message_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  reaction String
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  @@unique([messageId, userId, reaction])
+  @@map("chat_message_reactions")
+}
+
+model ChatMessagePin {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  chatId String @map("chat_id") @db.Uuid
+  messageId String @unique @map("message_id") @db.Uuid
+  pinnedByUserId String @map("pinned_by_user_id") @db.Uuid
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  @@map("chat_message_pins")
+}
+
+model ChatMessageFavorite {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  messageId String @map("message_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  @@unique([messageId, userId])
+  @@map("chat_message_favorites")
+}
+
+model ChatMessageRead {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  chatId String @map("chat_id") @db.Uuid
+  messageId String @map("message_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  readAt DateTime @map("read_at") @db.Timestamptz(6)
+  @@unique([messageId, userId])
+  @@map("chat_message_reads")
+}
+
+model ChatReadState {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  chatId String @map("chat_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  lastReadSequence Int @map("last_read_sequence")
+  lastReadMessageId String? @map("last_read_message_id") @db.Uuid
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  @@unique([chatId, userId])
+  @@map("chat_read_states")
+}
+
+model ChatDraft {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  chatId String @map("chat_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  body String
+  replyToMessageId String? @map("reply_to_message_id") @db.Uuid
+  version Int
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  @@unique([chatId, userId])
+  @@map("chat_drafts")
+}
+
+model CommunicationBinding {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  sourceType String @map("source_type")
+  sourceId String @map("source_id") @db.Uuid
+  chatId String @map("chat_id") @db.Uuid
+  targetType String @map("target_type")
+  targetId String @map("target_id") @db.Uuid
+  createdByUserId String @map("created_by_user_id") @db.Uuid
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  @@unique([sourceId, targetType, targetId])
+  @@map("communication_bindings")
+}
+
+model Channel {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  name String
+  description String?
+  visibility String
+  commentPolicy String @map("comment_policy")
+  ownerUserId String @map("owner_user_id") @db.Uuid
+  status String
+  isDeleted Boolean @map("is_deleted")
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdByUserId String @map("created_by_user_id") @db.Uuid
+  version Int
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  @@unique([workspaceId, id])
+  @@map("channels")
+}
+
+model ChannelMember {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  channelId String @map("channel_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  role String
+  joinedAt DateTime @map("joined_at") @db.Timestamptz(6)
+  leftAt DateTime? @map("left_at") @db.Timestamptz(6)
+  @@unique([channelId, userId])
+  @@map("channel_members")
+}
+
+model ChannelMembershipSource {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  channelId String @map("channel_id") @db.Uuid
+  userId String? @map("user_id") @db.Uuid
+  sourceType String @map("source_type")
+  sourceId String @map("source_id") @db.Uuid
+  role String
+  active Boolean
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  @@map("channel_membership_sources")
+}
+
+model ChannelPost {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  channelId String @map("channel_id") @db.Uuid
+  authorUserId String @map("author_user_id") @db.Uuid
+  title String?
+  body String?
+  status String
+  publishedAt DateTime @map("published_at") @db.Timestamptz(6)
+  editedAt DateTime? @map("edited_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+  deletedByUserId String? @map("deleted_by_user_id") @db.Uuid
+  version Int
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  @@index([channelId, publishedAt])
+  @@map("channel_posts")
+}
+
+model ChannelComment {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  channelId String @map("channel_id") @db.Uuid
+  postId String @map("post_id") @db.Uuid
+  authorUserId String @map("author_user_id") @db.Uuid
+  body String?
+  status String
+  editedAt DateTime? @map("edited_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+  deletedByUserId String? @map("deleted_by_user_id") @db.Uuid
+  version Int
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  @@index([postId, createdAt])
+  @@map("channel_comments")
+}
+
+model CollabInvitation {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  collabId String @map("collab_id") @db.Uuid
+  email String
+  role String
+  tokenHash String @unique @map("token_hash")
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  acceptedAt DateTime? @map("accepted_at") @db.Timestamptz(6)
+  acceptedUserId String? @map("accepted_user_id") @db.Uuid
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+  invitedByUserId String @map("invited_by_user_id") @db.Uuid
+  sendCount Int @map("send_count")
+  version Int
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  @@index([collabId, email])
+  @@map("collab_invitations")
+}
+
+model CommunicationCall {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  chatId String? @map("chat_id") @db.Uuid
+  collabId String? @map("collab_id") @db.Uuid
+  callType String @map("call_type")
+  title String?
+  startedByUserId String @map("started_by_user_id") @db.Uuid
+  status String
+  provider String
+  providerRoomId String? @map("provider_room_id")
+  errorCode String? @map("error_code")
+  recordingEnabled Boolean @map("recording_enabled")
+  recordingFileId String? @map("recording_file_id") @db.Uuid
+  inviteeUserIds String[] @map("invitee_user_ids") @db.Uuid
+  idempotencyKey String? @map("idempotency_key")
+  startedAt DateTime @map("started_at") @db.Timestamptz(6)
+  endedAt DateTime? @map("ended_at") @db.Timestamptz(6)
+  endedByUserId String? @map("ended_by_user_id") @db.Uuid
+  version Int
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  @@unique([workspaceId, id])
+  @@map("communication_calls")
+}
+
+model CommunicationCallParticipant {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  callId String @map("call_id") @db.Uuid
+  userId String? @map("user_id") @db.Uuid
+  externalGuestId String? @map("external_guest_id") @db.Uuid
+  displayName String? @map("display_name")
+  role String
+  status String
+  joinedAt DateTime? @map("joined_at") @db.Timestamptz(6)
+  leftAt DateTime? @map("left_at") @db.Timestamptz(6)
+  @@map("communication_call_participants")
+}
+
+model CommunicationCallInvitation {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  callId String @map("call_id") @db.Uuid
+  displayName String @map("display_name")
+  email String?
+  tokenHash String @unique @map("token_hash")
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdByUserId String @map("created_by_user_id") @db.Uuid
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  @@map("communication_call_invitations")
+}
+
+model FeedPost {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  authorUserId String @map("author_user_id") @db.Uuid
+  postType String @map("post_type")
+  title String?
+  body String?
+  status String
+  statusBeforeDelete String? @map("status_before_delete")
+  requiresAcknowledgement Boolean @map("requires_acknowledgement")
+  mentionUserIds String[] @map("mention_user_ids") @db.Uuid
+  isPinned Boolean @map("is_pinned")
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(6)
+  editedAt DateTime? @map("edited_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+  deletedByUserId String? @map("deleted_by_user_id") @db.Uuid
+  version Int
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  @@unique([workspaceId, id])
+  @@map("feed_posts")
+}
+
+model FeedPostRecipient {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  postId String @map("post_id") @db.Uuid
+  recipientType String @map("recipient_type")
+  recipientId String? @map("recipient_id") @db.Uuid
+  @@map("feed_post_recipients")
+}
+
+model FeedAudienceSnapshot {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  postId String @map("post_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  reason String
+  publishedAt DateTime @map("published_at") @db.Timestamptz(6)
+  @@unique([postId, userId])
+  @@map("feed_post_audience_snapshots")
+}
+
+model FeedComment {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  postId String @map("post_id") @db.Uuid
+  authorUserId String @map("author_user_id") @db.Uuid
+  body String?
+  status String
+  editedAt DateTime? @map("edited_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+  deletedByUserId String? @map("deleted_by_user_id") @db.Uuid
+  version Int
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  @@map("feed_comments")
+}
+
+model FeedReaction {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  postId String @map("post_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  reaction String
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  @@unique([postId, userId, reaction])
+  @@map("feed_reactions")
+}
+
+model FeedFavorite {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  postId String @map("post_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  @@unique([postId, userId])
+  @@map("feed_favorites")
+}
+
+model FeedRead {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  postId String @map("post_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  readAt DateTime @map("read_at") @db.Timestamptz(6)
+  @@unique([postId, userId])
+  @@map("feed_post_reads")
+}
+
+model FeedAcknowledgement {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  postId String @map("post_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  acknowledgedAt DateTime @map("acknowledged_at") @db.Timestamptz(6)
+  @@unique([postId, userId])
+  @@map("feed_announcement_acknowledgements")
+}
+
+model FeedPoll {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  postId String @unique @map("post_id") @db.Uuid
+  question String
+  isAnonymous Boolean @map("is_anonymous")
+  allowMultiple Boolean @map("allow_multiple")
+  closesAt DateTime? @map("closes_at") @db.Timestamptz(6)
+  createdByUserId String @map("created_by_user_id") @db.Uuid
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  @@map("polls")
+}
+
+model FeedPollOption {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  pollId String @map("poll_id") @db.Uuid
+  label String
+  position Int
+  @@unique([pollId, position])
+  @@map("poll_options")
+}
+
+model FeedPollVote {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  pollId String @map("poll_id") @db.Uuid
+  optionId String @map("option_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  @@unique([pollId, userId, optionId])
+  @@map("poll_votes")
+}
+
+model CalendarSyncConnection {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  calendarId String @map("calendar_id") @db.Uuid
+  provider String
+  name String
+  externalCalendarId String @map("external_calendar_id")
+  accountEmail String? @map("account_email")
+  status String
+  syncCursor String? @map("sync_cursor")
+  lastSyncedAt DateTime? @map("last_synced_at") @db.Timestamptz(6)
+  lastError String? @map("last_error")
+  failureCount Int @map("failure_count")
+  claimId String? @map("claim_id") @db.Uuid
+  leaseExpiresAt DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  version Int
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  @@unique([workspaceId, id])
+  @@map("calendar_sync_connections")
+}
+
+model CalendarSyncCredential {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  connectionId String @map("connection_id") @db.Uuid
+  provider String
+  credentialRef String @map("credential_ref")
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+  @@map("integration_calendar_credentials")
+}
+
+model CalendarSyncMapping {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  connectionId String @map("connection_id") @db.Uuid
+  localEventId String @map("local_event_id") @db.Uuid
+  externalCalendarId String @map("external_calendar_id")
+  externalEventId String @map("external_event_id")
+  externalVersion String? @map("external_version")
+  localVersionAtLastSync Int @map("local_version_at_last_sync")
+  lastDirection String @map("last_direction")
+  lastSyncedAt DateTime @map("last_synced_at") @db.Timestamptz(6)
+  version Int
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  @@unique([connectionId, externalCalendarId, externalEventId])
+  @@unique([connectionId, localEventId])
+  @@map("calendar_sync_mappings")
+}
+
+model CalendarSyncConflict {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  connectionId String @map("connection_id") @db.Uuid
+  mappingId String @map("mapping_id") @db.Uuid
+  localEventId String @map("local_event_id") @db.Uuid
+  localSnapshotJson Json @map("local_snapshot_json")
+  externalSnapshotJson Json @map("external_snapshot_json")
+  externalVersion String @map("external_version")
+  localVersion Int @map("local_version")
+  status String
+  resolution String?
+  resolvedByUserId String? @map("resolved_by_user_id") @db.Uuid
+  resolvedAt DateTime? @map("resolved_at") @db.Timestamptz(6)
+  version Int
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(6)
+  @@map("calendar_sync_conflicts")
 }

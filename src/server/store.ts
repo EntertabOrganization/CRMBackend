@@ -115,6 +115,10 @@ import { emptyCalendarEventsState } from './collab/calendar/event-types';
 import type { CalendarEventsState } from './collab/calendar/event-types';
 import { emptyCalendarRecurrenceState } from './collab/calendar/recurrence-types';
 import type { CalendarRecurrenceState } from './collab/calendar/recurrence-types';
+import type { CalendarResource, CalendarResourceBooking } from './collab/calendar/resource-types';
+import type { CalendarBookingPage, CalendarBookingPageRules, CalendarBooking, CalendarAvailabilityEpoch } from './collab/calendar/booking-types';
+import type { WorkingSchedule, UserWorkingSchedule, CalendarAvailabilityRebuild } from './collab/calendar/availability-types';
+import type { Chat, ChatMember, ChatMembershipSource } from './collab/communication/types';
 
 /** Tasks & Projects collections (one Prisma table each). */
 export type TasksProjectsState = {
@@ -153,6 +157,70 @@ export function emptyTasksProjectsState(): TasksProjectsState {
 }
 
 export type DbState = TasksProjectsState & CalendarEventsState & CalendarRecurrenceState & {
+  fileStorages: import('./collab/files/types').ProjectFileStorage[];
+  fileFolders: import('./collab/files/types').ProjectRootFolder[];
+  storageAccessSources: import('./collab/files/types').StorageAccessSource[];
+  chats: Chat[];
+  directChatPairs: import('./collab/communication/types').DirectChatPair[];
+  collabSpaces: import('./collab/communication/types').CollabSpace[];
+  collabSpaceMembers: import('./collab/communication/types').CollabSpaceMember[];
+  filePermissionAssignments: import('./collab/files/types').FilePermissionAssignment[];
+  filePublicLinks: import('./collab/files/types').FilePublicLink[];
+  fileDeliveryGrants: import('./collab/files/delivery-service').FileDeliveryGrant[];
+  fileAttachments: import('./collab/files/attachment-service').FileAttachment[];
+  fileLocks: import('./collab/files/editing-types').FileLock[];
+  documentEditSessions: import('./collab/files/editing-types').DocumentEditSession[];
+  documentTemplates: import('./collab/files/document-types').DocumentTemplate[];
+  documentTemplateRevisions: import('./collab/files/document-types').DocumentTemplateRevision[];
+  generatedDocuments: import('./collab/files/document-types').GeneratedDocument[];
+  driveFiles: import('./collab/files/types').DriveFile[];
+  driveFileVersions: import('./collab/files/types').DriveFileVersion[];
+  uploadSessions: import('./collab/files/types').UploadSession[];
+  fileObjectGarbage: import('./collab/files/types').FileObjectGarbage[];
+  chatMembers: ChatMember[];
+  chatMembershipSources: ChatMembershipSource[];
+  chatMessages: import('./collab/communication/message-types').ChatMessage[];
+  chatMessageVersions: import('./collab/communication/message-types').ChatMessageVersion[];
+  chatMessageReactions: import('./collab/communication/message-types').ChatMessageReaction[];
+  chatMessagePins: import('./collab/communication/message-types').ChatMessagePin[];
+  chatMessageFavorites: import('./collab/communication/message-types').ChatMessageFavorite[];
+  chatMessageReads: import('./collab/communication/message-types').ChatMessageRead[];
+  chatReadStates: import('./collab/communication/message-types').ChatReadState[];
+  chatDrafts: import('./collab/communication/message-types').ChatDraft[];
+  communicationBindings: import('./collab/communication/message-types').CommunicationBinding[];
+  channels: import('./collab/communication/channel-types').Channel[];
+  channelMembers: import('./collab/communication/channel-types').ChannelMember[];
+  channelMembershipSources: import('./collab/communication/channel-types').ChannelMembershipSource[];
+  channelPosts: import('./collab/communication/channel-types').ChannelPost[];
+  channelComments: import('./collab/communication/channel-types').ChannelComment[];
+  collabInvitations: import('./collab/communication/types').CollabInvitation[];
+  calls: import('./collab/communication/call-types').CommunicationCall[];
+  callParticipants: import('./collab/communication/call-types').CommunicationCallParticipant[];
+  callInvitations: import('./collab/communication/call-types').CommunicationCallInvitation[];
+  feedPosts: import('./collab/communication/feed-types').FeedPost[];
+  feedPostRecipients: import('./collab/communication/feed-types').FeedPostRecipient[];
+  feedAudienceSnapshots: import('./collab/communication/feed-types').FeedAudienceSnapshot[];
+  feedComments: import('./collab/communication/feed-types').FeedComment[];
+  feedReactions: import('./collab/communication/feed-types').FeedReaction[];
+  feedFavorites: import('./collab/communication/feed-types').FeedFavorite[];
+  feedReads: import('./collab/communication/feed-types').FeedRead[];
+  feedAcknowledgements: import('./collab/communication/feed-types').FeedAcknowledgement[];
+  feedPolls: import('./collab/communication/feed-types').FeedPoll[];
+  feedPollOptions: import('./collab/communication/feed-types').FeedPollOption[];
+  feedPollVotes: import('./collab/communication/feed-types').FeedPollVote[];
+  calendarSyncConnections: import('./collab/calendar/sync-types').CalendarSyncConnection[];
+  calendarSyncCredentials: import('./collab/calendar/sync-types').CalendarSyncCredential[];
+  calendarSyncMappings: import('./collab/calendar/sync-types').CalendarSyncMapping[];
+  calendarSyncConflicts: import('./collab/calendar/sync-types').CalendarSyncConflict[];
+  calendarResources: CalendarResource[];
+  calendarBookingPages: CalendarBookingPage[];
+  calendarBookingPageRules: CalendarBookingPageRules[];
+  calendarBookings: CalendarBooking[];
+  calendarAvailabilityEpochs: CalendarAvailabilityEpoch[];
+  calendarResourceBookings: CalendarResourceBooking[];
+  businessCalendars: WorkingSchedule[];
+  userWorkingSchedules: UserWorkingSchedule[];
+  calendarAvailabilityRebuilds: CalendarAvailabilityRebuild[];
   calendars: Calendar[];
   calendarPermissions: CalendarPermission[];
   userCalendarPreferences: UserCalendarPreference[];
@@ -490,9 +558,20 @@ export class InMemoryStore {
       reportScheduleRuns: [],
       biCredentials: [],
       ...emptyTasksProjectsState(),
+      fileStorages: [], fileFolders: [], storageAccessSources: [], filePermissionAssignments: [], filePublicLinks: [], driveFiles: [], driveFileVersions: [], uploadSessions: [], fileObjectGarbage: [], fileDeliveryGrants: [], fileAttachments: [], fileLocks: [], documentEditSessions: [], documentTemplates: [], documentTemplateRevisions: [], generatedDocuments: [],
+      directChatPairs: [], collabSpaces: [], collabSpaceMembers: [],
+      chats: [], chatMembers: [], chatMembershipSources: [], chatMessages: [], chatMessageVersions: [], chatMessageReactions: [], chatMessagePins: [],
+      chatMessageFavorites: [], chatMessageReads: [], chatReadStates: [], chatDrafts: [], communicationBindings: [],
+      channels: [], channelMembers: [], channelMembershipSources: [], channelPosts: [], channelComments: [], collabInvitations: [], calls: [], callParticipants: [], callInvitations: [],
+      feedPosts: [], feedPostRecipients: [], feedAudienceSnapshots: [], feedComments: [], feedReactions: [], feedFavorites: [], feedReads: [], feedAcknowledgements: [], feedPolls: [], feedPollOptions: [], feedPollVotes: [], calendarSyncConnections: [], calendarSyncCredentials: [], calendarSyncMappings: [], calendarSyncConflicts: [],
       calendars: [], calendarPermissions: [], userCalendarPreferences: [],
       ...emptyCalendarEventsState(),
       ...emptyCalendarRecurrenceState(),
+      calendarResources: [], calendarResourceBookings: [],
+      calendarBookingPages: [], calendarBookingPageRules: [],
+      calendarBookings: [], calendarAvailabilityEpochs: [],
+      businessCalendars: [], userWorkingSchedules: [],
+      calendarAvailabilityRebuilds: [],
       ...seed,
     };
   }

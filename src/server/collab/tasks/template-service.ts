@@ -235,6 +235,14 @@ export class TemplateService {
   get(actor: ActorContext, id: string) {
     return this.view(this.template(actor, id));
   }
+  authorizeAttachment(actor: ActorContext, id: string, write: boolean) {
+    const template = this.template(actor, id);
+    if (write) {
+      this.requireManage(actor, template, 'task_template.update');
+      const projectId = template.scopeType === 'PROJECT' ? template.scopeId : template.projectId;
+      if (projectId) this.policy.assertNotArchived(this.policy.project(actor, projectId));
+    }
+  }
 
   /** Editing a template never rewrites Tasks already created from it. */
   update(actor: ActorContext, id: string, body: Body, replace: boolean, ifMatch?: number) {

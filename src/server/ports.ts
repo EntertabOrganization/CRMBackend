@@ -2,9 +2,8 @@ import type { ActorContext } from './access-service';
 import type { ReferenceCheck } from './fields/field-types';
 
 /**
- * Narrow contracts to modules that are owned elsewhere (Files, Calendar, Tasks, Communication). These modules are not
- * part of this codebase yet, so the Custom Fields / Activities / Timeline modules depend on ports, never on tables of
- * another module, and never re-implement the specialist behaviour.
+ * Contracts to the owning Files, Calendar, Tasks and Communication modules. Custom Fields, Activities and Timeline use
+ * these ports rather than accessing owning-module tables or reimplementing their behavior.
  */
 
 export interface FilePort {
@@ -12,7 +11,7 @@ export interface FilePort {
   check(workspaceId: string, actor: ActorContext, fileId: string): ReferenceCheck;
 }
 
-/** Default until the shared Files/Documents module is wired: refuses references instead of trusting unknown ids. */
+/** Fail-closed adapter for configurations without a Files provider. The application normally wires the real Files authority. */
 export class UnconfiguredFilePort implements FilePort {
   check(): ReferenceCheck {
     return 'UNAVAILABLE';
@@ -91,6 +90,11 @@ export class AdapterUnavailableError extends Error {}
 export type PortResult = { reference?: string | null };
 
 export interface NotificationPort {
+  /** Optional owning email provider for external booking guests; absence remains a retryable failure. */
+  notifyGuests?(input: { workspaceId: string; recipientEmails: string[]; title: string; message: string;
+    link?: string | null; idempotencyKey: string; notificationType: string; signal?: AbortSignal }): Promise<PortResult> | PortResult;
+  /** The owning Notifications service evaluates live channel permissions and user preferences. */
+  canDeliver?(input: { workspaceId: string; recipientUserId: string; channel: 'IN_APP' | 'EMAIL' | 'PUSH'; notificationType: string }): Promise<boolean> | boolean;
   notifyUsers(input: {
     workspaceId: string;
     actorUserId: string;
@@ -99,6 +103,9 @@ export interface NotificationPort {
     message: string;
     link?: string | null;
     idempotencyKey: string;
+    channel?: 'IN_APP' | 'EMAIL' | 'PUSH';
+    notificationType?: string;
+    signal?: AbortSignal;
   }): Promise<PortResult> | PortResult;
 }
 
@@ -152,6 +159,14 @@ export class InMemorySecretPort implements SecretPort {
 /** Test doubles that record what Automation asked the owning modules to do. */
 export class RecordingNotificationPort implements NotificationPort {
   readonly sent: Array<Parameters<NotificationPort['notifyUsers']>[0]> = [];
+  private readonly denied = new Set<string>();
+  setChannelAllowed(workspaceId: string, userId: string, channel: 'IN_APP' | 'EMAIL' | 'PUSH', allowed: boolean) {
+    const key = `${workspaceId}:${userId}:${channel}`;
+    if (allowed) this.denied.delete(key); else this.denied.add(key);
+  }
+  canDeliver(input: Parameters<NonNullable<NotificationPort['canDeliver']>>[0]) {
+    return !this.denied.has(`${input.workspaceId}:${input.recipientUserId}:${input.channel}`);
+  }
   notifyUsers(input: Parameters<NotificationPort['notifyUsers']>[0]) {
     if (!this.sent.some((item) => item.idempotencyKey === input.idempotencyKey)) this.sent.push(input);
     return { reference: input.idempotencyKey };

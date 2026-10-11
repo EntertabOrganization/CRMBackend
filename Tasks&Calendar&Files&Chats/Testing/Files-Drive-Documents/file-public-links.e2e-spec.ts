@@ -1,0 +1,96 @@
+import { createHash, randomUUID } from 'node:crypto';
+import { NextRequest } from 'next/server';
+import { api } from '@/tests/support/api';
+import { LocalObjectStorage } from '@/src/server/collab/files/object-storage';
+import { call, db, disconnect, expectError, expectOk, member, prepareCollabDatabase, register } from '../support/e2e';
+jest.setTimeout(180_000);
+beforeAll(prepareCollabDatabase); afterAll(disconnect);
+const read = (token: string, password?: string) => api('GET', '/api/v1/public/files/[[...path]]', { params: { path: [token] }, headers: password ? { 'x-share-password': password } : {} });
+async function fixture() {
+  const owner = await register('file-links'), prisma = await db();
+  await prisma.workspace.update({ where: { id: owner.workspaceId }, data: { settings: { fileRetentionDays: 0 } } });
+  const storage = expectOk(await call(owner, 'POST', 'file-storages', { body: { type: 'PERSONAL', name: 'Public' } }));
+  const root = expectOk(await call(owner, 'GET', `file-storages/${storage.id}/root`));
+  const { appContext } = await import('@/src/server/app-context');
+  appContext.collab.files.uploads.configure(new LocalObjectStorage(), { async process() { return { scanStatus: 'CLEAN', processed: true }; } });
+  const bytes = Buffer.from('real public content'), checksum = createHash('sha256').update(bytes).digest('hex');
+  const session = expectOk(await call(owner, 'POST', 'upload-sessions', { body: { targetFolderId: root.id, desiredFileName: 'public.txt', mimeType: 'text/plain', expectedSizeBytes: bytes.length, expectedChecksum: checksum, idempotencyKey: randomUUID() } }));
+  expectOk(await call(owner, 'POST', `upload-sessions/${session.id}/parts`, { body: { partNumber: 1, checksum, dataBase64: bytes.toString('base64') } }));
+  const receipt = expectOk(await call(owner, 'POST', `upload-sessions/${session.id}/complete`, { body: {} }));
+  const file = expectOk(await call(owner, 'GET', `files/${receipt.resultFileId}`));
+  const create = (body = {}) => call(owner, 'POST', `files/${file.id}/public-links`, { body });
+  return { owner, prisma, file, root, create, appContext };
+}
+it('persists typed File links, validates every management route and keeps secrets out of public data and evidence', async () => {
+  const x = await fixture(), denied = await member(x.owner, 'file-link-denied', []), foreign = await register('file-link-foreign');
+  expectError(await call(null, 'POST', `files/${x.file.id}/public-links`, { body: {} }), 401, 'UNAUTHENTICATED');
+  expectError(await call(denied, 'POST', `files/${x.file.id}/public-links`, { body: {} }), 403, 'PERMISSION_DENIED');
+  expectError(await call(foreign, 'POST', `files/${x.file.id}/public-links`, { body: {} }), 404, 'FILE_NOT_FOUND');
+  const link = expectOk(await x.create({ password: 'sharing-password', permissionMode: 'DOWNLOAD', maxDownloads: 1 }));
+  expectError(await read(link.id), 404, 'PUBLIC_LINK_NOT_FOUND'); expectError(await read(link.token, 'incorrect'), 403, 'PUBLIC_LINK_PASSWORD_INVALID');
+  expectError(await api('GET', '/api/v1/public/folders/[[...path]]', { params: { path: [link.token] } }), 404, 'PUBLIC_LINK_NOT_FOUND');
+  const responses = await Promise.all([1, 2].map(() => read(link.token, 'sharing-password')));
+  responses.forEach(result => expect(expectOk(result)).toMatchObject({ file: { id: x.file.id, name: 'public.txt' } }));
+  expect(JSON.stringify(responses)).not.toMatch(/objectKey|workspaceId|storageId|folderId|tokenHash|passwordHash/);
+  const stored = await x.prisma.filePublicLink.findUniqueOrThrow({ where: { id: link.id } });
+  expect(stored).toMatchObject({ resourceType: 'FILE', accessCount: 2, downloadCount: 0 }); expect(stored.tokenHash).not.toBe(link.token);
+  expectError(await call(foreign, 'GET', `public-links/${link.id}`), 404, 'PUBLIC_LINK_NOT_FOUND');
+  expect(expectOk(await call(x.owner, 'GET', 'public-links', { query: { resourceType: 'FILE' } })).map((row: any) => row.id)).toEqual([link.id]);
+  const updated = expectOk(await call(x.owner, 'PATCH', `public-links/${link.id}`, { body: { password: null, version: 1 } }));
+  expectError(await call(x.owner, 'PATCH', `public-links/${link.id}`, { body: { version: 1 } }), 409, 'RESOURCE_VERSION_CONFLICT');
+  expectError(await call(x.owner, 'PATCH', `public-links/${link.id}`, { body: { includeChildren: true, version: updated.version } }), 400, 'VALIDATION_ERROR');
+  const revoked = expectOk(await call(x.owner, 'DELETE', `public-links/${link.id}`, { body: { version: updated.version } }));
+  expectError(await read(link.token), 410, 'PUBLIC_LINK_REVOKED');
+  expectError(await call(x.owner, 'PATCH', `public-links/${link.id}`, { body: { version: revoked.version, isActive: true } }), 410, 'PUBLIC_LINK_REVOKED');
+  await expect(x.prisma.filePublicLink.update({ where: { id: link.id }, data: { isActive: true, revokedAt: null } })).rejects.toThrow('PUBLIC_LINK_REVOKED');
+  await expect(x.prisma.filePublicLink.create({ data: { ...stored, id: randomUUID(), tokenHash: 'a'.repeat(64), workspaceId: foreign.workspaceId, createdByUserId: foreign.userId } })).rejects.toThrow('PUBLIC_LINK_NOT_FOUND');
+  await expect(x.prisma.filePublicLink.create({ data: { ...stored, id: randomUUID(), tokenHash: 'b'.repeat(64), resourceType: 'FOLDER' } })).rejects.toThrow('PUBLIC_LINK_NOT_FOUND');
+  const audits = await x.prisma.auditLog.findMany({ where: { entityId: link.id } });
+  expect(JSON.stringify(audits)).not.toMatch(/sharing-password|tokenHash|passwordHash/); expect(JSON.stringify(audits)).not.toContain(link.token);
+  expect(await x.prisma.outboxEvent.count({ where: { entityId: link.id, eventType: 'PUBLIC_LINK_ACCESSED' } })).toBe(2);
+  const { GET } = await import('@/app/api/v1/public/files/[[...path]]/route');
+  const response = await GET(new NextRequest(`http://localhost/api/v1/public/files/${link.id}`), { params: Promise.resolve({ path: [link.id] }) });
+  expect(response.headers.get('cache-control')).toContain('no-store'); expect(response.headers.get('referrer-policy')).toBe('no-referrer');
+});
+it('rechecks business bindings and fences public-access commits against independently committed binding changes', async () => {
+  const x = await fixture(), link = expectOk(await x.create());
+  const calendar = expectOk(await call(x.owner, 'POST', 'calendars', { body: { type: 'PERSONAL', name: 'Private', timezone: 'UTC' } }));
+  const event = expectOk(await call(x.owner, 'POST', 'calendar-events', { body: { calendarId: calendar.id, title: 'Private', startAt: '2030-01-01T10:00:00Z', endAt: '2030-01-01T11:00:00Z', sourceTimezone: 'UTC' } }));
+  const { runStateUnit } = await import('@/src/server/response');
+  await expect(runStateUnit(async () => {
+    await x.appContext.collab.files.publicLinks.publicFile(link.token, new URLSearchParams(), null, 'client');
+    await x.prisma.calendarEventFile.create({ data: { id: randomUUID(), workspaceId: x.owner.workspaceId, eventId: event.id, fileId: x.file.id, createdAt: new Date() } });
+  })).rejects.toMatchObject({ code: 'CONCURRENCY_CONFLICT' });
+  expect((await x.prisma.filePublicLink.findUniqueOrThrow({ where: { id: link.id } })).accessCount).toBe(0);
+  expectError(await read(link.token), 410, 'PUBLIC_LINK_REVOKED'); expectError(await x.create(), 410, 'PUBLIC_LINK_REVOKED');
+  await x.prisma.calendarEventFile.deleteMany({ where: { eventId: event.id } }); expectOk(await read(link.token));
+  await x.prisma.workspaceMembership.update({ where: { workspaceId_userId: { workspaceId: x.owner.workspaceId, userId: x.owner.userId } }, data: { status: 'SUSPENDED' } });
+  expectError(await read(link.token), 410, 'PUBLIC_LINK_REVOKED');
+});
+it('revokes through folder trash permanently and purges File capabilities in the same metadata transaction', async () => {
+  const x = await fixture(), branch = expectOk(await call(x.owner, 'POST', 'folders', { body: { storageId: x.file.storageId, parentFolderId: x.root.id, name: 'Branch' } }));
+  let file = expectOk(await call(x.owner, 'PATCH', `files/${x.file.id}/move`, { body: { folderId: branch.id, version: x.file.version } }));
+  const link = expectOk(await x.create());
+  let folder = expectOk(await call(x.owner, 'DELETE', `folders/${branch.id}`, { body: { version: branch.version } }));
+  expectError(await read(link.token), 410, 'PUBLIC_LINK_REVOKED');
+  folder = expectOk(await call(x.owner, 'PATCH', `folders/${branch.id}/restore`, { body: { version: folder.version } }));
+  expectError(await read(link.token), 410, 'PUBLIC_LINK_REVOKED');
+  file = expectOk(await call(x.owner, 'GET', `files/${x.file.id}`));
+  const newLink = expectOk(await x.create());
+  file = expectOk(await call(x.owner, 'DELETE', `files/${file.id}`, { body: { version: file.version } }));
+  expectOk(await call(x.owner, 'DELETE', `files/${file.id}/hard`, { body: { version: file.version } }));
+  expect(await x.prisma.filePublicLink.count({ where: { resourceType: 'FILE', resourceId: file.id } })).toBe(0);
+  expectError(await read(link.token), 404, 'PUBLIC_LINK_NOT_FOUND'); expectError(await read(newLink.token), 404, 'PUBLIC_LINK_NOT_FOUND');
+});
+it('applies the same anonymous binding restriction to durable Task results and templates', async () => {
+  const x = await fixture(), link = expectOk(await x.create());
+  const task = expectOk(await call(x.owner, 'POST', 'tasks', { body: { title: 'Private result', responsibleUserId: x.owner.userId } }));
+  const result = await x.prisma.taskResult.create({ data: { id: randomUUID(), workspaceId: x.owner.workspaceId, taskId: task.id,
+    resultType: 'FILE', fileId: x.file.id, submittedByUserId: x.owner.userId, createdAt: new Date() } });
+  expectError(await read(link.token), 410, 'PUBLIC_LINK_REVOKED');
+  await x.prisma.taskResult.delete({ where: { id: result.id } }); expectOk(await read(link.token));
+  const template = expectOk(await call(x.owner, 'POST', 'task-templates', { body: { name: 'Private template', titleTemplate: 'Private work' } }));
+  await x.prisma.taskTemplate.update({ where: { id: template.id }, data: { fileIds: [x.file.id], version: template.version + 1 } });
+  expectError(await read(link.token), 410, 'PUBLIC_LINK_REVOKED'); expectError(await x.create(), 410, 'PUBLIC_LINK_REVOKED');
+  await x.prisma.taskTemplate.update({ where: { id: template.id }, data: { fileIds: [], version: template.version + 2 } }); expectOk(await read(link.token));
+});

@@ -3,6 +3,7 @@ import type { Config } from 'jest';
 const config: Config = {
   preset: 'ts-jest',
   testEnvironment: 'node',
+  cacheDirectory: '<rootDir>/.local-postgres/jest-cache',
   roots: ['<rootDir>/tests', '<rootDir>/Commercial_Capture_ContactCenter/Testing', '<rootDir>/Data_Integration_Intelligence_Analytics/Testing', '<rootDir>/Tasks&Calendar&Files&Chats/Testing'],
   testMatch: [
     '**/*.spec.ts',

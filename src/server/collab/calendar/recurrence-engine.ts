@@ -20,6 +20,9 @@ export function wallClockOf(instant: Date, timezone: string) {
 export function recurrenceInstant(local: string, timezone: string): Date | null {
   const nominal = Date.parse(`${local}Z`);
   if (!Number.isFinite(nominal)) return null;
+  if (timezone === 'UTC' || timezone === 'Etc/UTC') {
+    const instant = new Date(nominal); return instant.toISOString().slice(0, -1) === local ? instant : null;
+  }
   const offsets = new Set<number>();
   // Sampling both sides also handles half-hour DST and whole-day date-line changes.
   for (let hours = -36; hours <= 36; hours += 12) offsets.add(zoneOffsetMs(new Date(nominal + hours * 3_600_000), timezone));
@@ -109,4 +112,111 @@ export function expandRecurrence(definition: RecurrenceDefinition, options: { af
     return result.length < limit;
   });
   return result;
+}
+
+/** Resume inside the last validated frequency period, retaining the original DTSTART defaults.
+ * Starting at the period boundary preserves BYSETPOS and interval phase without replaying earlier periods.
+ */
+function resumeRule(rule: RRule, cursor: Date): RRule {
+  const period = new Date(cursor), { freq, wkst, dtstart } = rule.options;
+  if (freq === RRule.YEARLY) period.setUTCMonth(0, 1);
+  if (freq === RRule.MONTHLY) period.setUTCDate(1);
+  if (freq === RRule.WEEKLY) period.setUTCDate(period.getUTCDate() - ((period.getUTCDay() + 6) % 7 - wkst + 7) % 7);
+  if (freq <= RRule.DAILY) period.setUTCHours(0, 0, 0, dtstart.getUTCMilliseconds());
+  else if (freq === RRule.HOURLY) period.setUTCMinutes(0, 0, dtstart.getUTCMilliseconds());
+  else if (freq === RRule.MINUTELY) period.setUTCSeconds(0, dtstart.getUTCMilliseconds());
+  if (period <= dtstart) return rule;
+  const options = { ...rule.origOptions, dtstart: period };
+  for (const key of ['bymonth', 'bymonthday', 'byweekday', 'byhour', 'byminute', 'bysecond'] as const) {
+    if (options[key] == null && rule.options[key]?.length) options[key] = rule.options[key];
+  }
+  return new RRule(options, true);
+}
+
+/** Fast-forward an uncounted rule to the frequency period containing a query boundary.
+ * Unlike a durable cursor, the boundary need not be an occurrence, so INTERVAL must retain its DTSTART phase.
+ */
+function windowRule(rule: RRule, boundary: Date) {
+  const { freq, interval, dtstart, wkst } = rule.options;
+  if (boundary <= dtstart) return rule;
+  const period = new Date(dtstart), target = new Date(boundary);
+  if (freq === RRule.YEARLY) {
+    const year = dtstart.getUTCFullYear() + Math.floor((boundary.getUTCFullYear() - dtstart.getUTCFullYear()) / interval) * interval;
+    period.setUTCFullYear(year, 0, 1);
+  } else if (freq === RRule.MONTHLY) {
+    const months = (boundary.getUTCFullYear() - dtstart.getUTCFullYear()) * 12 + boundary.getUTCMonth() - dtstart.getUTCMonth();
+    period.setUTCDate(1); period.setUTCMonth(dtstart.getUTCMonth() + Math.floor(months / interval) * interval);
+  } else {
+    const unit = freq === RRule.WEEKLY ? 7 * 86_400_000 : freq === RRule.DAILY ? 86_400_000 : freq === RRule.HOURLY ? 3_600_000 : freq === RRule.MINUTELY ? 60_000 : 1000;
+    if (freq <= RRule.DAILY) {
+      period.setUTCHours(0, 0, 0, dtstart.getUTCMilliseconds()); target.setUTCHours(0, 0, 0, dtstart.getUTCMilliseconds());
+      if (freq === RRule.WEEKLY) {
+        for (const date of [period, target]) date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7 - wkst + 7) % 7);
+      }
+    } else if (freq === RRule.HOURLY) { period.setUTCMinutes(0, 0, dtstart.getUTCMilliseconds()); target.setUTCMinutes(0, 0, dtstart.getUTCMilliseconds()); }
+    else if (freq === RRule.MINUTELY) { period.setUTCSeconds(0, dtstart.getUTCMilliseconds()); target.setUTCSeconds(0, dtstart.getUTCMilliseconds()); }
+    period.setTime(period.getTime() + Math.floor((target.getTime() - period.getTime()) / (unit * interval)) * unit * interval);
+  }
+  return resumeRule(rule, period);
+}
+
+/** Identity-only window expansion for availability. No Event metadata or invented original ordinal is returned. */
+export function recurrenceIdsBetween(definition: RecurrenceDefinition, options: { from: string; through: string; limit?: number }): string[] {
+  const { rule, count, until } = parse(definition), limit = options.limit ?? 1000;
+  const date = (id: string) => new Date(`${id}${definition.isAllDay ? 'T00:00:00.000' : ''}Z`);
+  const from = date(options.from), through = date(options.through);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 1000 || !Number.isFinite(from.getTime()) || !Number.isFinite(through.getTime()) || through < from)
+    throw scopeInvalid('Invalid recurrence availability window.');
+  const result: string[] = [];
+  let ordinal = 0, examined = 0;
+  const scanner = count === null ? windowRule(rule, from) : rule;
+  scanner.between(count === null ? from : rule.options.dtstart, through, true, (nominal) => {
+    if (++examined > MAX_CANDIDATES) throw scopeInvalid('Availability exceeds the synchronous recurrence budget.');
+    const recurrenceId = nominal.toISOString().slice(0, definition.isAllDay ? 10 : -1);
+    const startAt = definition.isAllDay ? null : recurrenceInstant(recurrenceId, definition.sourceTimezone);
+    if (!definition.isAllDay && !startAt) return true;
+    if (until && (typeof until === 'string' ? recurrenceId > until : startAt! > until)) return false;
+    if (count !== null && ordinal >= count) return false;
+    ordinal += 1;
+    if (nominal >= from) {
+      if (result.length >= limit) throw scopeInvalid('Availability occurrence output exceeds its budget.');
+      result.push(recurrenceId);
+    }
+    return count === null || ordinal < count;
+  });
+  return result;
+}
+
+/** Durable jobs resume by nominal identity and valid-occurrence ordinal, including across skipped DST gaps. */
+export function advanceRecurrence(definition: RecurrenceDefinition, options: {
+  after: string | null; ordinal: number; through: string; candidateLimit?: number;
+}) {
+  const { rule, count, until, dtstart } = parse(definition), candidateLimit = options.candidateLimit ?? 1000;
+  if (!Number.isInteger(candidateLimit) || candidateLimit < 1 || candidateLimit > 1000 || !Number.isInteger(options.ordinal) || options.ordinal < 0)
+    throw scopeInvalid('Invalid recurrence job cursor.');
+  const validBoundary = (value: string) => definition.isAllDay ? isCalendarDate(value) :
+    /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d\.\d{3}$/.test(value) && isCalendarDate(value.slice(0, 10));
+  if (!validBoundary(options.through) || (options.after !== null && !validBoundary(options.after))) throw scopeInvalid('Invalid recurrence job boundary.');
+  const date = (id: string) => new Date(`${id}${definition.isAllDay ? 'T00:00:00.000' : ''}Z`);
+  const start = options.after ? new Date(date(options.after).getTime() + 1) : dtstart;
+  const end = date(options.through);
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) throw scopeInvalid('Invalid recurrence job boundary.');
+  const occurrences: RecurrenceOccurrence[] = [];
+  let cursor = options.after, ordinal = options.ordinal, examined = 0, exhausted = count !== null && ordinal >= count, bounded = false;
+  const scanner = options.after ? resumeRule(rule, date(options.after)) : rule;
+  if (!exhausted && start <= end) scanner.between(start, end, true, (nominal) => {
+    if (examined >= candidateLimit) { bounded = true; return false; }
+    examined += 1;
+    const recurrenceId = nominal.toISOString().slice(0, definition.isAllDay ? 10 : -1);
+    const startAt = definition.isAllDay ? null : recurrenceInstant(recurrenceId, definition.sourceTimezone);
+    cursor = recurrenceId;
+    if (!definition.isAllDay && !startAt) return true;
+    if (until && (typeof until === 'string' ? recurrenceId > until : startAt! > until)) { exhausted = true; return false; }
+    ordinal += 1;
+    occurrences.push({ recurrenceId, startAt, startDate: definition.isAllDay ? recurrenceId : null, ordinal });
+    if (count !== null && ordinal >= count) { exhausted = true; return false; }
+    return true;
+  });
+  if (!bounded && until && (typeof until === 'string' ? options.through > until : end.getTime() > until.getTime() + 2 * 86_400_000)) exhausted = true;
+  return { occurrences, cursor, ordinal, exhausted, bounded, examined };
 }

@@ -1,4 +1,4 @@
-import { CollabRouter, listed } from '../http';
+import { CollabRouter, listed, WithStatus } from '../http';
 import type { CalendarModule } from './index';
 
 export function calendarRoutes(router: CollabRouter, module: () => CalendarModule) {
@@ -46,5 +46,56 @@ export function calendarRoutes(router: CollabRouter, module: () => CalendarModul
     .post('calendar-events/:id/occurrences/:recurrenceId/cancel', (r) => recurrence().cancelOccurrence(r.actor, r.params.id, r.params.recurrenceId, r.body, r.ifMatch))
     .patch('calendar-events/:id/occurrences/:recurrenceId', (r) => recurrence().editOccurrence(r.actor, r.params.id, r.params.recurrenceId, r.body, r.ifMatch))
     .patch('calendar-events/:id/recurrence/future', (r) => recurrence().editFuture(r.actor, r.params.id, r.body, r.ifMatch));
+  const reminders = () => module().reminders;
+  router
+    .get('calendar-events/:id/reminders', (r) => reminders().list(r.actor, r.params.id))
+    .post('calendar-events/:id/reminders', (r) => reminders().create(r.actor, r.params.id, r.body, r.idempotencyKey))
+    .patch('calendar-reminders/:id', (r) => reminders().update(r.actor, r.params.id, r.body, r.ifMatch))
+    .delete('calendar-reminders/:id', (r) => reminders().remove(r.actor, r.params.id, r.body, r.ifMatch));
+  const resources = () => module().resources;
+  router
+    .get('calendar-resources', (r) => listed(resources().list(r.actor, r.query)))
+    .post('calendar-resources', (r) => resources().create(r.actor, r.body))
+    .get('calendar-resources/:id', (r) => resources().get(r.actor, r.params.id))
+    .put('calendar-resources/:id', (r) => resources().update(r.actor, r.params.id, r.body, true, r.ifMatch))
+    .patch('calendar-resources/:id', (r) => resources().update(r.actor, r.params.id, r.body, false, r.ifMatch))
+    .delete('calendar-resources/:id', (r) => resources().remove(r.actor, r.params.id))
+    .get('calendar-resources/:id/availability', (r) => resources().availability(r.actor, r.params.id, r.query))
+    .post('calendar-events/:id/resources', (r) => resources().book(r.actor, r.params.id, r.body))
+    .delete('calendar-events/:id/resources/:resourceId', (r) => resources().unbook(r.actor, r.params.id, r.params.resourceId));
+  const availability = () => module().availability, schedules = () => module().schedules;
+  const pages = () => module().bookingPages;
+  router
+    .get('bookings', (r) => listed(module().bookings.list(r.actor, r.query)))
+    .get('bookings/:id', (r) => module().bookings.get(r.actor, r.params.id))
+    .patch('bookings/:id', (r) => module().bookings.update(r.actor, r.params.id, r.body, r.ifMatch))
+    .post('bookings/:id/approve', (r) => module().bookings.approve(r.actor, r.params.id, r.body, r.ifMatch))
+    .post('bookings/:id/reject', (r) => module().bookings.cancel(r.actor, r.params.id, r.body, true, r.ifMatch))
+    .post('bookings/:id/reschedule', (r) => module().bookings.reschedule(r.actor, r.params.id, r.body, r.ifMatch))
+    .post('bookings/:id/cancel', (r) => module().bookings.cancel(r.actor, r.params.id, r.body, false, r.ifMatch));
+  router
+    .post('booking-pages', (r) => pages().create(r.actor, r.body))
+    .get('booking-pages', (r) => listed(pages().list(r.actor, r.query)))
+    .get('booking-pages/:id', (r) => pages().get(r.actor, r.params.id))
+    .put('booking-pages/:id', (r) => pages().update(r.actor, r.params.id, r.body, true, r.ifMatch))
+    .patch('booking-pages/:id', (r) => pages().update(r.actor, r.params.id, r.body, false, r.ifMatch))
+    .delete('booking-pages/:id', (r) => pages().remove(r.actor, r.params.id))
+    .post('booking-pages/:id/publish', (r) => pages().publication(r.actor, r.params.id, r.body, true, r.ifMatch))
+    .post('booking-pages/:id/unpublish', (r) => pages().publication(r.actor, r.params.id, r.body, false, r.ifMatch))
+    .get('booking-pages/:id/rules', (r) => pages().rules(r.actor, r.params.id))
+    .put('booking-pages/:id/rules', (r) => pages().setRules(r.actor, r.params.id, r.body, r.ifMatch));
+  const availabilityResult = <T extends { pending: boolean }>(result: T) => result.pending ? new WithStatus(202, result) : result;
+  router.publicRoute('GET', 'public/booking/:slug', (r) => pages().publicView(r.params.slug))
+    .publicRoute('GET', 'public/booking/:slug/slots', (r) => availabilityResult(module().bookingPublic.slots(r.params.slug, r.query)))
+    .publicRoute('POST', 'public/booking/:slug/bookings', (r) => module().bookings.create(r.params.slug, r.body, r.idempotencyKey))
+    .publicRoute('POST', 'public/bookings/:token/cancel', (r) => module().bookings.publicCancel(r.params.token, r.body))
+    .publicRoute('POST', 'public/bookings/:token/reschedule', (r) => module().bookings.publicReschedule(r.params.token, r.body));
+  router
+    .post('availability/free-busy', (r) => availabilityResult(availability().freeBusy(r.actor, r.body)))
+    .post('availability/suggest-slots', (r) => availabilityResult(availability().suggest(r.actor, r.body)))
+    .get('availability/business-calendar', (r) => schedules().business(r.actor))
+    .put('availability/business-calendar', (r) => schedules().setBusiness(r.actor, r.body, r.ifMatch))
+    .get('availability/working-schedules/:userId', (r) => schedules().user(r.actor, r.params.userId))
+    .put('availability/working-schedules/:userId', (r) => schedules().setUser(r.actor, r.params.userId, r.body, r.ifMatch));
   return router;
 }

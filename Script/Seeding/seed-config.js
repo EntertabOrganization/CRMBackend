@@ -120,7 +120,19 @@ const PERMISSIONS = [
   'task_template.create', 'task_template.read', 'task_template.update', 'task_template.delete', 'task_template.recurrence_manage',
   'calendar.create', 'calendar.read', 'calendar.update', 'calendar.delete', 'calendar.permission_manage',
   'event.create', 'event.read', 'event.update', 'event.cancel', 'event.delete_admin', 'event.attendee_manage', 'event.meeting_record_manage',
-  'event.recurrence_manage',
+  'event.recurrence_manage', 'event.reminder_manage',
+  'resource.read', 'resource.manage', 'resource.book', 'calendar.free_busy',
+  'booking_page.create', 'booking_page.update', 'booking_page.publish', 'booking.read', 'booking.approve', 'booking.update', 'booking.cancel',
+  'calendar.business_calendar_manage', 'calendar.working_schedule_manage',
+  'chat.create', 'chat.read', 'chat.member_manage', 'chat.message_send', 'chat.send', 'chat.manage',
+  'chat.update', 'chat.message_edit_own', 'chat.message_delete_own', 'chat.moderate', 'chat.read_receipts',
+  'channel.create', 'channel.read', 'channel.update', 'channel.member_manage', 'channel.publish', 'channel.comment', 'channel.moderate',
+  'collab.create', 'collab.read', 'collab.update', 'collab.member_manage', 'collab.invite_external', 'collab.archive',
+  'call.create', 'call.read', 'call.join', 'call.end', 'call.external_invite', 'call.recording_read',
+  'feed.post', 'feed.post_workspace', 'feed.read', 'feed.update_own', 'feed.delete_own', 'feed.moderate', 'feed.announcement', 'feed.poll',
+  'calendar_sync.connect', 'calendar_sync.read', 'calendar_sync.run', 'calendar_sync.resolve',
+  'storage.read', 'storage.manage', 'folder.read', 'folder.create', 'folder.update', 'folder.move', 'folder.delete', 'folder.restore', 'folder.purge', 'file.permission_manage', 'file.public_link_manage', 'file.create', 'file.read', 'file.download', 'file.update', 'file.move', 'file.copy', 'file.delete', 'file.restore', 'file.purge', 'file.version_create', 'file.version_restore', 'file.attach', 'file.detach', 'file.edit', 'file.lock', 'file.force_unlock',
+  'document_template.create', 'document_template.read', 'document_template.update', 'document_template.delete', 'document.generate', 'document.read', 'document.delete',
 ];
 
 module.exports = {

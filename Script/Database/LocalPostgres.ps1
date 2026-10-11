@@ -99,6 +99,11 @@ function Remove-StalePostmasterPid([int]$Port) {
   $removed = $false
   for ($attempt = 1; $attempt -le 10 -and -not $removed; $attempt++) {
     try {
+      if (-not (Test-Path -LiteralPath $pidFile)) { return }
+      $currentPid = [System.IO.File]::ReadAllLines($pidFile) | Select-Object -First 1
+      if ($currentPid -ne $recordedPid -or (Test-OurServerRunning) -or (Test-PortOccupied $Port)) {
+        throw 'PostgreSQL state changed during stale-PID recovery. Refusing to remove its lock file.'
+      }
       [System.IO.File]::Delete($pidFile)
       $removed = $true
     } catch [System.IO.IOException] {
@@ -131,7 +136,7 @@ function Start-Cluster($settings, [bool]$AllowRebuild) {
   Remove-StalePostmasterPid $settings.Port
   if (Test-PortOccupied $settings.Port) { throw "Port $($settings.Port) is occupied by another process." }
   $logPath = Join-Path $LocalRoot 'postgres-utf8.log'
-  & $PgCtl start -D $DataDir -l $logPath -o "-p $($settings.Port) -h 127.0.0.1" -w
+  & $PgCtl start -D $DataDir -l $logPath -o "-p $($settings.Port) -h 127.0.0.1" -w -t 600
   if ($LASTEXITCODE -eq 0) { return }
   if (-not $AllowRebuild) { throw "PostgreSQL could not start. Inspect $logPath or run 'npm run db:setup' for preserved recovery." }
 
@@ -141,7 +146,7 @@ function Start-Cluster($settings, [bool]$AllowRebuild) {
   Move-Item -LiteralPath $DataDir -Destination $failedPath
   Write-Warning "Recovery failed. The original cluster remains at $preserved and $failedPath. Initializing a clean cluster."
   Initialize-Cluster $settings
-  & $PgCtl start -D $DataDir -l $logPath -o "-p $($settings.Port) -h 127.0.0.1" -w
+  & $PgCtl start -D $DataDir -l $logPath -o "-p $($settings.Port) -h 127.0.0.1" -w -t 600
   Assert-CommandSucceeded 'PostgreSQL startup after clean initialization'
 }
 
@@ -192,7 +197,13 @@ function Deploy-And-Seed($settings) {
 $settings = Get-DatabaseSettings
 Assert-LocalConfiguration $settings
 
-switch ($Action) {
+$clusterMutex = [System.Threading.Mutex]::new($false, ('Local\EntertabPostgres_' + ($RepoRoot.ToUpperInvariant() -replace '[^A-Z0-9]', '_')))
+$clusterLockHeld = $false
+try {
+  try { $clusterLockHeld = $clusterMutex.WaitOne(0) }
+  catch [System.Threading.AbandonedMutexException] { $clusterLockHeld = $true }
+  if (-not $clusterLockHeld) { throw 'Another project-local PostgreSQL management command is already running.' }
+  switch ($Action) {
   'setup' {
     Start-Cluster $settings $true
     Assert-DatabaseReady $settings
@@ -217,4 +228,8 @@ switch ($Action) {
     Assert-DatabaseReady $settings
     Write-Host 'Project-local PostgreSQL is healthy.'
   }
+}
+} finally {
+  if ($clusterLockHeld) { $clusterMutex.ReleaseMutex() }
+  $clusterMutex.Dispose()
 }

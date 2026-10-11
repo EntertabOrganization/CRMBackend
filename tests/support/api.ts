@@ -1,10 +1,10 @@
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { NextRequest } from 'next/server';
 
 export const TEST_DB_NAME = 'entertabcrm_test';
-const DEFAULT_TEST_URL = `postgresql://entertabcrm:entertabcrm@localhost:5432/${TEST_DB_NAME}?schema=public`;
+const DEFAULT_TEST_URL = `postgresql://entertabcrm:entertabcrm@127.0.0.1:5432/${TEST_DB_NAME}?schema=public`;
 const ROOT = path.resolve(__dirname, '..', '..');
 const APP_DIR = path.join(ROOT, 'app');
 
@@ -12,6 +12,7 @@ export const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as const;
 export type Method = (typeof METHODS)[number];
 
 export type ApiOptions = {
+  retryAuthProbe?: boolean;
   token?: string;
   workspaceId?: string;
   body?: unknown;
@@ -39,7 +40,10 @@ let requestCounter = 0;
  */
 export async function prepareTestDatabase() {
   if (process.env.TEST_DATABASE_PREPARED === '1') return;
-  const url = process.env.TEST_DATABASE_URL ?? DEFAULT_TEST_URL;
+  const testUrl = new URL(process.env.TEST_DATABASE_URL ?? DEFAULT_TEST_URL);
+  // The project-local server binds IPv4. Avoid localhost resolving to an unbound IPv6 address.
+  if (testUrl.hostname === 'localhost') testUrl.hostname = '127.0.0.1';
+  const url = testUrl.toString();
   const dbName = new URL(url).pathname.replace(/^\//, '');
   if (!dbName.endsWith('_test')) {
     throw new Error(`Refusing to run endpoint tests against "${dbName}". The database name must end with _test.`);
@@ -57,8 +61,8 @@ export async function prepareTestDatabase() {
   }
 
   const env = { ...process.env, DATABASE_URL: url };
-  execSync('npx prisma migrate deploy', { cwd: ROOT, env, stdio: 'pipe' });
-  execSync('node Script/Seeding/SeedPermissions.js', { cwd: ROOT, env, stdio: 'pipe' });
+  execFileSync(process.execPath, [require.resolve('prisma/build/index.js'), 'migrate', 'deploy'], { cwd: ROOT, env, stdio: 'pipe' });
+  execFileSync(process.execPath, [path.join(ROOT, 'Script/Seeding/SeedPermissions.js')], { cwd: ROOT, env, stdio: 'pipe' });
   process.env.DATABASE_URL = url;
 }
 
@@ -93,12 +97,23 @@ export async function api<T = any>(method: Method, template: string, options: Ap
 
   let response: Response;
   if (process.env.API_TEST_BASE_URL) {
-    response = await fetch(url, {
-      method,
-      headers,
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
-      redirect: 'manual',
-    });
+    // Next can close an idle keep-alive socket between auth probes. Retry only empty requests with
+    // no credentials or the explicitly invalid test token; authorized/public mutations are never replayed.
+    const authProbe = options.retryAuthProbe === true && (options.token === undefined || options.token === 'garbage') && options.body === undefined &&
+      !options.headers?.['x-internal-job-token'] && !options.headers?.['x-automation-integration-key'];
+    let received: Response | undefined;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        received = await fetch(url, {
+          method, headers, body: options.body === undefined ? undefined : JSON.stringify(options.body), redirect: 'manual',
+        });
+        break;
+      } catch (error) {
+        const code = (error as { cause?: { code?: string } }).cause?.code;
+        if (!authProbe || attempt === 2 || !['ECONNRESET', 'UND_ERR_SOCKET'].includes(code ?? '')) throw error;
+      }
+    }
+    response = received!;
   } else {
     const routeModule = await import(`@/app${template === '/' ? '' : template}/route`);
     const handler = routeModule[method];

@@ -49,7 +49,8 @@ export class WithStatus<T> {
 
 type Handler = (ctx: AuthedContext) => unknown;
 type PublicHandler = (ctx: PublicContext) => unknown;
-type RouteEntry = { method: Method; segments: string[]; handler: Handler | PublicHandler; isPublic: boolean };
+type StagedHandler = (request: NextRequest, params: Record<string, string>) => Promise<NextResponse>;
+type RouteEntry = { method: Method; segments: string[]; handler: Handler | PublicHandler; isPublic: boolean; staged?: StagedHandler };
 
 export class CollabRouter {
   private readonly routes: RouteEntry[] = [];
@@ -65,6 +66,10 @@ export class CollabRouter {
   patch(path: string, handler: Handler) { return this.add('PATCH', path, handler, false); }
   delete(path: string, handler: Handler) { return this.add('DELETE', path, handler, false); }
   publicRoute(method: Method, path: string, handler: PublicHandler) { return this.add(method, path, handler, true); }
+  /** The handler owns fresh authentication and state units around external I/O. */
+  staged(method: Method, path: string, handler: StagedHandler) {
+    this.routes.push({ method, segments: path.split('/').filter(Boolean), handler: () => undefined, isPublic: false, staged: handler }); return this;
+  }
 
   /** Literal segments win over parameters at the first position where candidates differ (`/tasks/planner` beats `/tasks/:id`). */
   match(method: Method, segments: string[]) {
@@ -104,7 +109,8 @@ function ifMatchOf(request: NextRequest) {
   return Number.isInteger(value) ? value : undefined;
 }
 
-async function bodyOf(request: NextRequest, method: Method) {
+async function bodyOf(request: NextRequest, method: Method, maxBytes?: number) {
+  if (maxBytes !== undefined) return new Body(await readJson<Record<string, unknown>>(request, maxBytes));
   if (method === 'GET' || method === 'DELETE') {
     const text = await request.text().catch(() => '');
     if (!text.trim()) return new Body({});
@@ -140,11 +146,14 @@ async function respond(task: () => Promise<unknown>) {
 type Params = { params: Promise<{ path?: string[] | string }> };
 
 /** Builds the exported handlers of `app/api/v1/<prefix>/[[...path]]/route.ts`. */
-export function collabRouteHandlers(prefix: string, router: () => CollabRouter) {
+export function collabRouteHandlers(prefix: string, router: () => CollabRouter,
+  externalRead?: (request: NextRequest, rest: string[]) => Promise<{ data: unknown } | null>) {
   const handle = (method: Method) => async (request: NextRequest, context: Params) => {
     const raw = (await context.params).path;
     const rest = raw === undefined ? [] : Array.isArray(raw) ? raw : [raw];
     const segments = [...prefix.split('/'), ...rest];
+    const staged = router().match(method, segments);
+    if (staged?.entry.staged) return staged.entry.staged(request, staged.params);
     return respond(async () => {
       const found = router().match(method, segments);
       if (found?.entry.isPublic) {
@@ -152,13 +161,19 @@ export function collabRouteHandlers(prefix: string, router: () => CollabRouter) 
         const clientKey = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
         return (found.entry.handler as PublicHandler)({ request, params: found.params, query: request.nextUrl.searchParams, body, idempotencyKey: request.headers.get('idempotency-key') ?? undefined, ifMatch: ifMatchOf(request), clientKey });
       }
+      if (method === 'GET' && externalRead) {
+        const external = await externalRead(request, rest);
+        if (external) return external.data;
+      }
       const { actor, user, workspaceId } = await requireWorkspaceContext(request);
       if (!found) {
         throw router().pathExists(segments)
           ? new AppError('METHOD_NOT_ALLOWED', `${method} is not supported for this resource.`, 405)
           : new AppError('ROUTE_NOT_FOUND', 'The requested endpoint does not exist.', 404);
       }
-      const body = await bodyOf(request, method);
+      const bodyLimit = prefix === 'upload-sessions' ? (rest[1] === 'parts' ? 6 * 1024 * 1024 : 64 * 1024)
+        : prefix === 'edit-sessions' || prefix === 'files' && (rest[1] === 'locks' || rest[1] === 'edit-sessions' || method === 'POST' && rest.length === 2 && rest[1] === 'versions') ? 64 * 1024 : undefined;
+      const body = await bodyOf(request, method, bodyLimit);
       return (found.entry.handler as Handler)({
         request,
         actor,
