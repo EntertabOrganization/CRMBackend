@@ -2,7 +2,7 @@ import type { User } from './domain';
 import { AuditService } from './audit-service';
 import { badRequest, conflict, forbidden, notFound } from './errors';
 import type { MailService } from './providers';
-import { addDays, hashSecret, newSecretToken, normalizeEmail } from './security';
+import { addDays, hashSecret, newSecretToken, normalizeEmail, verifyHash } from './security';
 import { safeUser } from './sanitize';
 import type { InMemoryStore } from './store';
 import { WorkspaceService } from './workspace-service';
@@ -72,12 +72,16 @@ export class UserService {
     return { invitation: safeInvitation, invitationToken: token };
   }
 
-  acceptInvitation(user: User, token: string) {
-    const now = new Date();
-    const invitation = this.store.state.workspaceInvitations.find(
-      (item) => item.status === 'PENDING' && !item.isDeleted && item.expiresAt > now,
+  async acceptInvitation(user: User, token: string) {
+    const candidates = this.store.state.workspaceInvitations.filter(
+      (item) => item.email === normalizeEmail(user.email) && item.status === 'PENDING' && !item.isDeleted && item.expiresAt > new Date(),
     );
-    if (!invitation || user.email !== invitation.email) throw badRequest('INVITATION_INVALID', 'Invitation is invalid.');
+    let invitation: (typeof candidates)[number] | undefined;
+    for (const candidate of candidates) {
+      if (await verifyHash(candidate.tokenHash, token)) { invitation = candidate; break; }
+    }
+    const now = new Date();
+    if (!invitation || invitation.status !== 'PENDING' || invitation.isDeleted || invitation.expiresAt <= now) throw badRequest('INVITATION_INVALID', 'Invitation is invalid.');
     if (this.store.state.workspaceMemberships.some((item) => item.workspaceId === invitation.workspaceId && item.userId === user.id && !item.isDeleted)) {
       throw conflict('MEMBERSHIP_EXISTS', 'User is already a workspace member.');
     }

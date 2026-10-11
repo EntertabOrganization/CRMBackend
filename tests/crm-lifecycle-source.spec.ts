@@ -128,7 +128,7 @@ describe('CRM lifecycle, sources and explicit relationships', () => {
     const signup = await app.auth.signup({ firstName: 'CRM', lastName: 'Replacement', email: 'crm-replacement@example.com', password: 'Password1' });
     await app.auth.verifyEmail(signup.verificationToken);
     const replacement = app.store.state.users.find((candidate) => candidate.email === 'crm-replacement@example.com')!;
-    app.users.acceptInvitation(replacement, invitation.invitationToken);
+    await app.users.acceptInvitation(replacement, invitation.invitationToken);
     const lead = app.crm.createLead(user, workspace.id, { title: 'Owned lead' });
     const contact = app.crmCore.createContact(user, workspace.id, { firstName: 'Owned', lastName: 'Contact' });
 

@@ -59,7 +59,7 @@ export async function member(owner: Session, label: string, permissions: Array<[
     }));
     const invitation = await appContext.users.invite(ownerUser, { workspaceId: owner.workspaceId, email: session.email, roleId: role.id });
     const user = appContext.store.state.users.find((row) => row.id === session.userId)!;
-    appContext.users.acceptInvitation(user, invitation.invitationToken);
+    await appContext.users.acceptInvitation(user, invitation.invitationToken);
   });
   return { ...session, workspaceId: owner.workspaceId };
 }

@@ -17,7 +17,10 @@ function testDatabaseUrl() {
   if (!source) throw new Error('DATABASE_URL or TEST_DATABASE_URL is required.');
   const url = new URL(source);
   if (url.hostname === 'localhost') url.hostname = '127.0.0.1';
-  url.pathname = '/entertabcrm_test';
+  if (!process.env.TEST_DATABASE_URL) url.pathname = '/entertabcrm_test';
+  if (!/^[a-zA-Z0-9_]+_test$/.test(url.pathname.slice(1))) {
+    throw new Error('Live endpoint checks require a database name ending in _test.');
+  }
   return url.toString();
 }
 

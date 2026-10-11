@@ -177,6 +177,11 @@ export class MessageService {
     const reason = body.str('reason', { max: 500 }) ?? null, now = this.support.now();
     // Tombstone: content is removed, position and reply structure remain; earlier versions stay as moderator evidence.
     const before = { body: row.body, fileIds: row.fileIds };
+    const held = this.state.retentionRecords.some(hold => hold.workspaceId === row.workspaceId && hold.legalHold && !hold.purgedAt &&
+      [row.id, chat.id, row.workspaceId, chat.linkedCollabId, chat.linkedDepartmentId, chat.linkedProjectId].includes(hold.resourceId));
+    if (held && !this.state.chatMessageVersions.some(version => version.messageId === row.id && version.versionNumber === row.version))
+      this.state.chatMessageVersions.push({ id: this.support.id(), workspaceId: row.workspaceId, messageId: row.id, versionNumber: row.version,
+        body: row.body, editedByUserId: actor.user.id, createdAt: now });
     row.status = 'DELETED'; row.body = null; row.fileIds = []; row.deletedAt = now; row.deletedByUserId = actor.user.id; this.support.touch(row);
     this.state.chatMessageReactions = this.state.chatMessageReactions.filter(item => item.messageId !== row.id);
     this.state.chatMessagePins = this.state.chatMessagePins.filter(item => item.messageId !== row.id);

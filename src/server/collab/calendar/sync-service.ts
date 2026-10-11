@@ -152,6 +152,8 @@ export class CalendarSyncService {
       if (mapping && (mapping.localVersionAtLastSync === event.version || conflicted.has(mapping.id))) continue;
       if (!mapping && event.status === 'CANCELLED') continue;
       outbound.push({ mappingId: mapping?.id ?? null, externalEventId: mapping?.externalEventId ?? null, event: this.outbound(event, connection) });
+      // Keep the provider batch inside the lease even at the broker's maximum request timeout.
+      if (outbound.length === 10) break;
     }
     return { connectionId: connection.id, workspaceId: connection.workspaceId, token, provider: connection.provider, credentialRef: credential.credentialRef,
       externalCalendarId: connection.externalCalendarId, cursor: connection.syncCursor, known: Object.fromEntries(mappings.map(row => [row.externalEventId, row.externalVersion])), outbound };
@@ -205,7 +207,11 @@ export class CalendarSyncService {
     connection.claimId = null; connection.leaseExpiresAt = null; this.support.touch(connection);
     this.support.event({ workspaceId: connection.workspaceId, type: 'CALENDAR_SYNC_COMPLETED', entityType: 'CALENDAR_SYNC_CONNECTION', entityId: connection.id, actorUserId: owner.user.id, changes: counts,
       audienceUserIds: [connection.userId] });
-    return { ...this.view(connection), result: counts };
+    const pendingPushCount = this.localEvents(connection).filter(event => this.events.canRead(owner, event) &&
+      !this.state.calendarSyncConflicts.some(conflict => conflict.connectionId === connection.id && conflict.localEventId === event.id && conflict.status === 'OPEN') &&
+      this.state.calendarSyncMappings.find(mapping => mapping.connectionId === connection.id && mapping.localEventId === event.id)?.localVersionAtLastSync !== event.version &&
+      (event.status !== 'CANCELLED' || this.state.calendarSyncMappings.some(mapping => mapping.connectionId === connection.id && mapping.localEventId === event.id))).length;
+    return { ...this.view(connection), result: counts, pendingPushCount };
   }
   /** Commits a provider failure; revoked authorization moves the connection to AUTH_REQUIRED. */
   failSync(ticket: SyncTicket, code: string) {
@@ -372,7 +378,6 @@ export class CalendarSyncService {
     const counts = { created: 0, updated: 0, pushed: 0, skipped: 0, conflicts: 0, errors: 0 }, warnings = [...parsed.warnings];
     for (const item of parsed.events) {
       const external = this.fromIcs(item);
-      try {
         const createdId = this.applyInbound(actor, connection, externalCalendarId, external, counts);
         if (createdId && item.rrule) {
           // Recurrence is preserved when the rule fits the Calendar recurrence model; otherwise the first instance stays.
@@ -385,10 +390,6 @@ export class CalendarSyncService {
           }
           catch { warnings.push({ uid: item.uid, code: 'RRULE_UNSUPPORTED', message: 'The recurrence rule could not be imported; the first instance was kept.' }); }
         }
-      } catch (error) {
-        if (!isAppError(error)) throw error;
-        counts.errors++; warnings.push({ uid: item.uid, code: error.code, message: error.message });
-      }
     }
     connection.lastSyncedAt = now; this.support.touch(connection);
     this.support.event({ workspaceId: actor.workspaceId, type: 'CALENDAR_SYNC_COMPLETED', entityType: 'CALENDAR_SYNC_CONNECTION', entityId: connection.id, actorUserId: actor.user.id, changes: counts });

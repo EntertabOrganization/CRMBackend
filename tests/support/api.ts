@@ -43,6 +43,9 @@ export async function prepareTestDatabase() {
   const testUrl = new URL(process.env.TEST_DATABASE_URL ?? DEFAULT_TEST_URL);
   // The project-local server binds IPv4. Avoid localhost resolving to an unbound IPv6 address.
   if (testUrl.hostname === 'localhost') testUrl.hostname = '127.0.0.1';
+  // Windows process startup under concurrent build load can exceed Prisma's five-second default.
+  if (!testUrl.searchParams.has('connect_timeout')) testUrl.searchParams.set('connect_timeout', '30');
+  if (!testUrl.searchParams.has('pool_timeout')) testUrl.searchParams.set('pool_timeout', '30');
   const url = testUrl.toString();
   const dbName = new URL(url).pathname.replace(/^\//, '');
   if (!dbName.endsWith('_test')) {

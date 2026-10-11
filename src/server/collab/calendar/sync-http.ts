@@ -25,6 +25,7 @@ export function calendarSyncRoutes(router: CollabRouter, sync: () => CalendarSyn
   // Authorization-code exchange runs between state units; nothing is committed unless the broker returns a credential reference.
   for (const provider of ['GOOGLE', 'MICROSOFT'] as const)
     router.staged('POST', `calendar-sync/connections/${provider.toLowerCase()}`, request => protect(async () => {
+      await runStateUnit(() => actorOf(request));
       const raw = await readJson<Record<string, unknown>>(request, 64 * 1024);
       const ticket = await runStateUnit(async () => sync().reserveConnect(await actorOf(request), provider, new Body(raw)));
       let result;
@@ -37,6 +38,7 @@ export function calendarSyncRoutes(router: CollabRouter, sync: () => CalendarSyn
     }));
   // Sync: lease + snapshot commit first; provider pull/push outside state units; failures are committed visibly.
   router.staged('POST', 'calendar-sync/connections/:id/sync', (request, params) => protect(async () => {
+    await runStateUnit(() => actorOf(request));
     const raw = await readJson<Record<string, unknown>>(request, 64 * 1024);
     const ticket = await runStateUnit(async () => sync().prepareSync(await actorOf(request), params.id, new Body(raw)));
     let outcome: SyncOutcome;

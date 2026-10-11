@@ -18,6 +18,8 @@ Senders edit (`chat.message_edit_own`) and delete (`chat.message_delete_own`) wi
 
 ## Channels
 
+Message retention defaults to indefinite. Shared Legal Hold records scoped to a Message, Chat, Workspace or the Chat's Project/Department/Collab preserve the latest body in immutable version evidence before sender/moderator deletion creates a visible tombstone. A deferred SQL constraint verifies that evidence, and Message/hold writes share the Workspace revision fence. Deleting a Message never deletes its shared Files; File retention and Legal Hold remain independent. Configurable automatic Message retention purge is an extension point; this implementation has no automatic Message purge job.
+
 `/channels`, `/channel-posts` and `/channel-comments` implement subscription publishing spaces (distinct from Group Chats). PUBLIC Channels are discoverable and readable by active internal members with `channel.read`; PRIVATE Channels exist only for members. Membership is the live union of direct grants and Department/Project links (`POST /channels/:id/members` with `sourceType`/`sourceId`, `active: false` unlinks), so removing one source never revokes access another still grants. One owner holds a direct grant and transfers ownership via `PATCH /channels/:id/members/:userId { role: "OWNER" }`. Publishing requires `channel.publish` and the OWNER/ADMIN/PUBLISHER role; comments follow the Channel `commentPolicy`; moderators (`channel.moderate` + ADMIN) delete with audit evidence. Archived Channels are read-only; deletion is soft.
 
 ## Collabs

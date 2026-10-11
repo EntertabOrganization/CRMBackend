@@ -550,7 +550,7 @@ export async function persistState(client: PrismaClient, before: DbState, after:
   await client.$transaction(
     async (tx: Prisma.TransactionClient) => {
       const fileScopes = new Set<string>();
-      for (const key of ['fileStorages', 'fileFolders', 'driveFiles', 'driveFileVersions', 'uploadSessions', 'fileObjectGarbage', 'fileDeliveryGrants', 'fileAttachments', 'fileLocks', 'documentEditSessions', 'documentTemplates', 'documentTemplateRevisions', 'generatedDocuments', 'crmActivities', 'crmTimelineComments', 'catalogProductMedia', 'crmCustomFieldValues', 'filePermissionAssignments', 'filePublicLinks', 'storageAccessSources', 'retentionRecords', 'entitlementGrants', 'calendarEventFiles', 'taskResults', 'taskTemplates'] as const) {
+      for (const key of ['chatMessages', 'chatMessageVersions', 'fileStorages', 'fileFolders', 'driveFiles', 'driveFileVersions', 'uploadSessions', 'fileObjectGarbage', 'fileDeliveryGrants', 'fileAttachments', 'fileLocks', 'documentEditSessions', 'documentTemplates', 'documentTemplateRevisions', 'generatedDocuments', 'crmActivities', 'crmTimelineComments', 'catalogProductMedia', 'crmCustomFieldValues', 'filePermissionAssignments', 'filePublicLinks', 'storageAccessSources', 'retentionRecords', 'entitlementGrants', 'calendarEventFiles', 'taskResults', 'taskTemplates'] as const) {
         const previous = new Map(before[key].map(row => [row.id, row]));
         const remaining = new Set(after[key].map(row => row.id));
         for (const row of after[key]) if (JSON.stringify(previous.get(row.id)) !== JSON.stringify(row)) fileScopes.add(row.workspaceId);

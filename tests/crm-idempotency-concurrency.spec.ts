@@ -154,7 +154,7 @@ describe('CRM idempotency and concurrency scenarios', () => {
     const signup = await app.auth.signup({ firstName: 'Assign', lastName: 'Replay', email: 'assign-replay@example.com', password: 'Password1' });
     await app.auth.verifyEmail(signup.verificationToken);
     const assignee = app.store.state.users.find((candidate) => candidate.email === 'assign-replay@example.com')!;
-    app.users.acceptInvitation(assignee, invitation.invitationToken);
+    await app.users.acceptInvitation(assignee, invitation.invitationToken);
     const lead = app.crm.createLead(owner, workspace.id, { title: 'Assignment replay' });
     const payload = { responsibleUserId: assignee.id, expectedVersion: lead.version };
 

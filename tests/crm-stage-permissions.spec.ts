@@ -8,7 +8,7 @@ async function inviteMember(app: App, owner: User, workspaceId: string, roleId: 
   const signup = await app.auth.signup({ firstName: 'Stage', lastName: 'Agent', email, password: 'Password1' });
   await app.auth.verifyEmail(signup.verificationToken);
   const user = app.store.state.users.find((candidate) => candidate.email === email)!;
-  app.users.acceptInvitation(user, invitation.invitationToken);
+  await app.users.acceptInvitation(user, invitation.invitationToken);
   return user;
 }
 

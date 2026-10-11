@@ -172,6 +172,7 @@ export function collabRouteHandlers(prefix: string, router: () => CollabRouter,
           : new AppError('ROUTE_NOT_FOUND', 'The requested endpoint does not exist.', 404);
       }
       const bodyLimit = prefix === 'upload-sessions' ? (rest[1] === 'parts' ? 6 * 1024 * 1024 : 64 * 1024)
+        : prefix === 'calendar-sync' ? (rest.join('/') === 'connections/ics/import' ? 2 * 1024 * 1024 + 64 * 1024 : 64 * 1024)
         : prefix === 'edit-sessions' || prefix === 'files' && (rest[1] === 'locks' || rest[1] === 'edit-sessions' || method === 'POST' && rest.length === 2 && rest[1] === 'versions') ? 64 * 1024 : undefined;
       const body = await bodyOf(request, method, bodyLimit);
       return (found.entry.handler as Handler)({

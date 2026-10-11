@@ -69,6 +69,8 @@ it('exposes and enforces representative Google/Microsoft, ICS and mapping routes
 
 it('requires authenticated/authorized workspace context for protected endpoints', async () => {
  const x = await fixture('sync-auth');
+ expectError(await call(null, 'POST', 'calendar-sync/connections/google', { body: {}, headers: { 'content-length': '65537' } }), 401, 'UNAUTHENTICATED');
+ expectError(await call(x.owner, 'POST', 'calendar-sync/connections/google', { body: x.connectBody, headers: { 'content-length': '65537' } }), 413, 'REQUEST_BODY_TOO_LARGE');
  for (const [method, path] of [['GET', 'calendar-sync/connections'], ['POST', 'calendar-sync/connections/google'], ['POST', 'calendar-sync/connections/microsoft'], ['POST', 'calendar-sync/connections/ics/import'],
   ['GET', 'calendar-sync/ics/export'], ['GET', `calendar-sync/connections/${MISSING_ID}`], ['DELETE', `calendar-sync/connections/${MISSING_ID}`], ['POST', `calendar-sync/connections/${MISSING_ID}/sync`],
   ['GET', `calendar-sync/connections/${MISSING_ID}/mappings`], ['GET', 'calendar-sync/conflicts'], ['GET', `calendar-sync/conflicts/${MISSING_ID}`], ['POST', `calendar-sync/conflicts/${MISSING_ID}/resolve`]] as const)
@@ -105,14 +107,14 @@ it('returns stable machine-readable errors and durable provider failure state', 
 it('persists conflicts, resolutions, critical state and outbox/audit consistently', async () => {
  const x = await fixture('sync-conflict'); await x.sync();
  const mapping = await x.prisma.calendarSyncMapping.findFirstOrThrow({ where: { connectionId: x.connection.id } });
- const event = expectOk(await call(x.owner, 'GET', `events/${mapping.localEventId}`));
- expectOk(await call(x.owner, 'PATCH', `events/${event.id}`, { body: { title: 'Local edit', version: event.version } })); etag = 'v2'; title = 'Remote edit';
+ const event = expectOk(await call(x.owner, 'GET', `calendar-events/${mapping.localEventId}`));
+ expectOk(await call(x.owner, 'PATCH', `calendar-events/${event.id}`, { body: { title: 'Local edit', version: event.version } })); etag = 'v2'; title = 'Remote edit';
  expect(expectOk(await x.sync()).result.conflicts).toBe(1);
  const conflicts = expectOk(await call(x.owner, 'GET', 'calendar-sync/conflicts')); expect(conflicts).toHaveLength(1);
  const conflict = expectOk(await call(x.owner, 'GET', `calendar-sync/conflicts/${conflicts[0].id}`));
  const foreign = await register('sync-conflict-foreign'); expectError(await call(foreign, 'GET', `calendar-sync/conflicts/${conflict.id}`), 404, 'CALENDAR_SYNC_CONFLICT_NOT_FOUND');
  expectOk(await call(x.owner, 'POST', `calendar-sync/conflicts/${conflict.id}/resolve`, { body: { resolution: 'EXTERNAL', version: conflict.version } }));
- expect(expectOk(await call(x.owner, 'GET', `events/${event.id}`)).title).toBe('Remote edit');
+ expect(expectOk(await call(x.owner, 'GET', `calendar-events/${event.id}`)).title).toBe('Remote edit');
  await expect(x.prisma.calendarSyncConflict.update({ where: { id: conflict.id }, data: { status: 'OPEN', resolution: null, resolvedAt: null, resolvedByUserId: null } })).rejects.toThrow(/CALENDAR_SYNC_HISTORY_IMMUTABLE/);
  expect(await x.prisma.outboxEvent.count({ where: { workspaceId: x.owner.workspaceId, eventType: 'CALENDAR_SYNC_CONFLICT_RESOLVED' } })).toBe(1);
  expect(await x.prisma.auditLog.count({ where: { workspaceId: x.owner.workspaceId, action: 'CALENDAR_SYNC.CONFLICT_RESOLVED' } })).toBe(1);

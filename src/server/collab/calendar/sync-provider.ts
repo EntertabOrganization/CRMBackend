@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { AppError } from '../../errors';
 import { isCalendarDate, isIanaTimezone } from '../support';
 import type { ExternalCalendarEvent, OutboundCalendarEvent } from './sync-types';
@@ -24,7 +25,7 @@ const ID_RE = /^[A-Za-z0-9._:@=+/-]{1,500}$/;
 export function validateExternalEvent(value: unknown): ExternalCalendarEvent {
   const event = value as ExternalCalendarEvent;
   const text = (input: unknown, max: number, nullable = true) => input === null && nullable || typeof input === 'string' && input.length <= max;
-  const instant = (input: unknown) => input === null || typeof input === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?(Z|[+-]\d{2}:\d{2})$/.test(input) && !Number.isNaN(Date.parse(input));
+  const instant = (input: unknown) => input === null || typeof input === 'string' && isCalendarDate(input.slice(0, 10)) && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?(Z|[+-]\d{2}:\d{2})$/.test(input) && !Number.isNaN(Date.parse(input));
   const date = (input: unknown) => input === null || typeof input === 'string' && isCalendarDate(input);
   if (!event || typeof event !== 'object' || typeof event.externalEventId !== 'string' || !ID_RE.test(event.externalEventId) || typeof event.etag !== 'string' || !event.etag || event.etag.length > 500 ||
     !['CONFIRMED', 'TENTATIVE', 'CANCELLED'].includes(event.status) || !text(event.title, 500, false) || !text(event.description ?? null, 50_000) || !text(event.location ?? null, 2000) ||
@@ -35,7 +36,8 @@ export function validateExternalEvent(value: unknown): ExternalCalendarEvent {
     : !event.startAt || !event.endAt || Date.parse(event.endAt) <= Date.parse(event.startAt) || event.startDate != null || event.endDate != null)) throw providerError();
   return { externalEventId: event.externalEventId, etag: event.etag, status: event.status, title: event.title, description: event.description ?? null, location: event.location ?? null,
     isAllDay: event.isAllDay, startAt: event.startAt ?? null, endAt: event.endAt ?? null, startDate: event.startDate ?? null, endDate: event.endDate ?? null,
-    sourceTimezone: event.sourceTimezone ?? null, origin: event.origin && typeof event.origin.connectionId === 'string' && Number.isInteger(event.origin.localVersion) ? event.origin : null };
+    sourceTimezone: event.sourceTimezone ?? null, origin: event.origin && typeof event.origin.connectionId === 'string' && Number.isInteger(event.origin.localVersion) && event.origin.localVersion > 0
+      ? { connectionId: event.origin.connectionId, localVersion: event.origin.localVersion } : null };
 }
 
 export class HttpCalendarSyncProvider implements CalendarSyncProvider {
@@ -77,7 +79,8 @@ export class HttpCalendarSyncProvider implements CalendarSyncProvider {
     return { credentialRef: result.credentialRef, externalCalendarId: result.externalCalendarId, accountEmail: typeof result.accountEmail === 'string' ? result.accountEmail.slice(0, 320) : null };
   }
   async pull(identity: Parameters<CalendarSyncProvider['pull']>[0], signal?: AbortSignal) {
-    const result = await this.call<{ events?: unknown; nextCursor?: unknown }>('pull', identity, `calendar-sync-pull:${identity.connectionId}:${identity.cursor ?? 'initial'}`, signal);
+    const cursorKey = createHash('sha256').update(identity.cursor ?? 'initial').digest('hex');
+    const result = await this.call<{ events?: unknown; nextCursor?: unknown }>('pull', identity, `calendar-sync-pull:${identity.connectionId}:${cursorKey}`, signal);
     if (!Array.isArray(result.events) || result.events.length > 5000 || typeof result.nextCursor !== 'string' || result.nextCursor.length > 2000) throw providerError();
     return { events: result.events.map(validateExternalEvent), nextCursor: result.nextCursor };
   }

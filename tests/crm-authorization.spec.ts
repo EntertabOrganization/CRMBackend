@@ -14,7 +14,7 @@ async function inviteMember(
   const signup = await app.auth.signup({ firstName: 'Member', lastName: 'User', email, password: 'Password1' });
   await app.auth.verifyEmail(signup.verificationToken);
   const user = app.store.state.users.find((candidate) => candidate.email === email)!;
-  app.users.acceptInvitation(user, invitation.invitationToken);
+  await app.users.acceptInvitation(user, invitation.invitationToken);
   return user;
 }
 
