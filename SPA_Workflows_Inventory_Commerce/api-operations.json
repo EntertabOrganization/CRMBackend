@@ -1,0 +1,2616 @@
+{
+  "version": "1.0.0",
+  "apiPrefix": "/api/v1",
+  "operations": [
+    {
+      "method": "POST",
+      "path": "/api/v1/spa/types",
+      "controller": "SpaTypesController",
+      "permission": "SPA.TYPE.MANAGE",
+      "request": "name,pluralName,code,placement,capabilities?",
+      "contract": "Create DRAFT type with immutable code and configured capability defaults.",
+      "spec": "Smart-Process-Automation/spa-types-capabilities.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/spa/types",
+      "controller": "SpaTypesController",
+      "permission": "SPA.TYPE.READ",
+      "request": "page,limit,search,placement,status",
+      "contract": "Permission-filtered collection.",
+      "spec": "Smart-Process-Automation/spa-types-capabilities.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/spa/types/:typeId",
+      "controller": "SpaTypesController",
+      "permission": "SPA.TYPE.READ",
+      "request": "typeId",
+      "contract": "Return metadata, effective permissions and capabilities.",
+      "spec": "Smart-Process-Automation/spa-types-capabilities.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/spa/types/:typeId",
+      "controller": "SpaTypesController",
+      "permission": "SPA.TYPE.MANAGE",
+      "request": "expectedVersion,name?,pluralName?,placement?,description?",
+      "contract": "Update non-destructive metadata only.",
+      "spec": "Smart-Process-Automation/spa-types-capabilities.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/spa/types/:typeId/activate",
+      "controller": "SpaTypesController",
+      "permission": "SPA.TYPE.MANAGE",
+      "request": "expectedVersion",
+      "contract": "Activate only after valid published schema.",
+      "spec": "Smart-Process-Automation/spa-types-capabilities.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/spa/types/:typeId/archive",
+      "controller": "SpaTypesController",
+      "permission": "SPA.TYPE.MANAGE",
+      "request": "expectedVersion",
+      "contract": "Block new items/triggers, retain items/history.",
+      "spec": "Smart-Process-Automation/spa-types-capabilities.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/spa/types/:typeId/restore",
+      "controller": "SpaTypesController",
+      "permission": "SPA.TYPE.MANAGE",
+      "request": "expectedVersion",
+      "contract": "Reactivate after checking schema and entitlements.",
+      "spec": "Smart-Process-Automation/spa-types-capabilities.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/spa/types/:typeId/capabilities",
+      "controller": "SpaCapabilitiesController",
+      "permission": "SPA.TYPE.READ",
+      "request": "typeId",
+      "contract": "Return flags/configuration.",
+      "spec": "Smart-Process-Automation/spa-types-capabilities.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/spa/types/:typeId/capabilities/:key",
+      "controller": "SpaCapabilitiesController",
+      "permission": "SPA.TYPE.MANAGE",
+      "request": "expectedVersion,enabled,configuration",
+      "contract": "Impact preview required before disabling with live bindings; publish schema change.",
+      "spec": "Smart-Process-Automation/spa-types-capabilities.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/spa/types/:typeId/fields",
+      "controller": "SpaFieldsController",
+      "permission": "SPA.SCHEMA.READ",
+      "request": "typeId",
+      "contract": "List active/inactive field definitions with access filtering.",
+      "spec": "Smart-Process-Automation/spa-fields-schema-versions.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/spa/types/:typeId/fields",
+      "controller": "SpaFieldsController",
+      "permission": "SPA.SCHEMA.MANAGE",
+      "request": "code,name,fieldType,isRequired?,options?",
+      "contract": "Add field to draft schema only.",
+      "spec": "Smart-Process-Automation/spa-fields-schema-versions.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/spa/types/:typeId/fields/:fieldId",
+      "controller": "SpaFieldsController",
+      "permission": "SPA.SCHEMA.MANAGE",
+      "request": "name?,validation?,options?,isRequired?,isSearchable?",
+      "contract": "Draft edit; type changes require migration plan.",
+      "spec": "Smart-Process-Automation/spa-fields-schema-versions.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/spa/types/:typeId/fields/:fieldId/deactivate",
+      "controller": "SpaFieldsController",
+      "permission": "SPA.SCHEMA.MANAGE",
+      "request": "expectedVersion",
+      "contract": "Keep historical values, block new entry.",
+      "spec": "Smart-Process-Automation/spa-fields-schema-versions.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/spa/types/:typeId/schema/draft",
+      "controller": "SpaSchemasController",
+      "permission": "SPA.SCHEMA.READ",
+      "request": "typeId",
+      "contract": "Return mutable draft and its version.",
+      "spec": "Smart-Process-Automation/spa-fields-schema-versions.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/spa/types/:typeId/schema/draft",
+      "controller": "SpaSchemasController",
+      "permission": "SPA.SCHEMA.MANAGE",
+      "request": "expectedVersion,changes[]",
+      "contract": "Stage structural field/layout/requirement/constraint changes.",
+      "spec": "Smart-Process-Automation/spa-fields-schema-versions.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/spa/types/:typeId/schema/validate",
+      "controller": "SpaSchemasController",
+      "permission": "SPA.SCHEMA.MANAGE",
+      "request": "draftVersion",
+      "contract": "Return impact report (invalid values, affected items, dependencies).",
+      "spec": "Smart-Process-Automation/spa-fields-schema-versions.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/spa/types/:typeId/schema/publish",
+      "controller": "SpaSchemasController",
+      "permission": "SPA.SCHEMA.PUBLISH",
+      "request": "expectedDraftVersion,migrationPlanId?",
+      "contract": "Atomic publish; migration must be complete for destructive edits.",
+      "spec": "Smart-Process-Automation/spa-fields-schema-versions.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/spa/types/:typeId/schema/versions",
+      "controller": "SpaSchemasController",
+      "permission": "SPA.SCHEMA.READ",
+      "request": "page,limit",
+      "contract": "Immutable publication history.",
+      "spec": "Smart-Process-Automation/spa-fields-schema-versions.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/spa/types/:typeId/schema/migrations",
+      "controller": "SpaSchemasController",
+      "permission": "SPA.SCHEMA.MANAGE",
+      "request": "fieldId,targetType,mappingStrategy",
+      "contract": "Queue preview/convert job, never silently modify production data.",
+      "spec": "Smart-Process-Automation/spa-fields-schema-versions.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/spa/types/:typeId/unique-constraints",
+      "controller": "SpaSchemasController",
+      "permission": "SPA.SCHEMA.MANAGE",
+      "request": "name,fieldCodes[]",
+      "contract": "Preview duplicates and publish safe uniqueness constraint.",
+      "spec": "Smart-Process-Automation/spa-fields-schema-versions.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/spa/types/:typeId/items",
+      "controller": "SpaItemsController",
+      "permission": "SPA.ITEM.CREATE",
+      "request": "title,assignedUserId,fieldValues?,pipelineId?,stageId?,companyId?,contacts?,expectedSchemaVersion?",
+      "contract": "Validate then transactionally allocate number/create values, outbox/history.",
+      "spec": "Smart-Process-Automation/spa-items.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/spa/types/:typeId/items",
+      "controller": "SpaItemsController",
+      "permission": "SPA.ITEM.READ",
+      "request": "page,limit,search,sortBy,sortOrder,filters",
+      "contract": "Scoped list using permitted fields only.",
+      "spec": "Smart-Process-Automation/spa-items.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/spa/types/:typeId/items/:itemId",
+      "controller": "SpaItemsController",
+      "permission": "SPA.ITEM.READ",
+      "request": "itemId",
+      "contract": "Redact unauthorized fields before response.",
+      "spec": "Smart-Process-Automation/spa-items.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/spa/types/:typeId/items/:itemId",
+      "controller": "SpaItemsController",
+      "permission": "SPA.ITEM.UPDATE",
+      "request": "expectedVersion,allEditableFields",
+      "contract": "Complete replacement; preserve server-owned/system fields.",
+      "spec": "Smart-Process-Automation/spa-items.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/spa/types/:typeId/items/:itemId",
+      "controller": "SpaItemsController",
+      "permission": "SPA.ITEM.UPDATE",
+      "request": "expectedVersion,changedFields",
+      "contract": "Partial update and typed metadata validation.",
+      "spec": "Smart-Process-Automation/spa-items.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/spa/types/:typeId/items/:itemId/assign",
+      "controller": "SpaItemsController",
+      "permission": "SPA.ITEM.ASSIGN",
+      "request": "expectedVersion,responsibleUserId",
+      "contract": "Reassign and notify.",
+      "spec": "Smart-Process-Automation/spa-items.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/spa/types/:typeId/items/:itemId/observers",
+      "controller": "SpaItemsController",
+      "permission": "SPA.ITEM.MANAGE_OBSERVERS",
+      "request": "userId",
+      "contract": "Idempotently add observer.",
+      "spec": "Smart-Process-Automation/spa-items.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/spa/types/:typeId/items/:itemId/observers/:userId",
+      "controller": "SpaItemsController",
+      "permission": "SPA.ITEM.MANAGE_OBSERVERS",
+      "request": "userId",
+      "contract": "Remove observer-derived access only.",
+      "spec": "Smart-Process-Automation/spa-items.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/spa/types/:typeId/items/:itemId/history",
+      "controller": "SpaItemsController",
+      "permission": "SPA.ITEM.READ",
+      "request": "page,limit",
+      "contract": "Authorized immutable item history.",
+      "spec": "Smart-Process-Automation/spa-items.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/spa/types/:typeId/items/:itemId",
+      "controller": "SpaItemsController",
+      "permission": "SPA.ITEM.DELETE",
+      "request": "expectedVersion",
+      "contract": "Trash when recycle enabled; otherwise controlled soft-delete lifecycle.",
+      "spec": "Smart-Process-Automation/spa-items.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/spa/types/:typeId/items/:itemId/restore",
+      "controller": "SpaItemsController",
+      "permission": "SPA.ITEM.RESTORE",
+      "request": "expectedVersion",
+      "contract": "Restore only if type/schema/pipeline valid.",
+      "spec": "Smart-Process-Automation/spa-items.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/spa/types/:typeId/pipelines",
+      "controller": "SpaPipelinesController",
+      "permission": "SPA.PIPELINE.READ",
+      "request": "page,limit",
+      "contract": "List permitted pipelines.",
+      "spec": "Smart-Process-Automation/spa-pipelines-stages.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/spa/types/:typeId/pipelines",
+      "controller": "SpaPipelinesController",
+      "permission": "SPA.PIPELINE.MANAGE",
+      "request": "name,code,isDefault?",
+      "contract": "Create pipeline with default stage plan.",
+      "spec": "Smart-Process-Automation/spa-pipelines-stages.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/spa/types/:typeId/pipelines/:pipelineId",
+      "controller": "SpaPipelinesController",
+      "permission": "SPA.PIPELINE.MANAGE",
+      "request": "expectedVersion,name?,sortOrder?,isDefault?",
+      "contract": "Update without breaking item bindings.",
+      "spec": "Smart-Process-Automation/spa-pipelines-stages.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/spa/types/:typeId/pipelines/:pipelineId/archive",
+      "controller": "SpaPipelinesController",
+      "permission": "SPA.PIPELINE.MANAGE",
+      "request": "expectedVersion,migrationTarget?",
+      "contract": "Block if live items not migrated.",
+      "spec": "Smart-Process-Automation/spa-pipelines-stages.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/spa/types/:typeId/pipelines/:pipelineId/stages",
+      "controller": "SpaStagesController",
+      "permission": "SPA.PIPELINE.READ",
+      "request": "pipelineId",
+      "contract": "Ordered stage list.",
+      "spec": "Smart-Process-Automation/spa-pipelines-stages.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/spa/types/:typeId/pipelines/:pipelineId/stages",
+      "controller": "SpaStagesController",
+      "permission": "SPA.STAGE.MANAGE",
+      "request": "name,code,semantic,sortOrder,isDefault?",
+      "contract": "Create stage.",
+      "spec": "Smart-Process-Automation/spa-pipelines-stages.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/spa/types/:typeId/pipelines/:pipelineId/stages/:stageId",
+      "controller": "SpaStagesController",
+      "permission": "SPA.STAGE.MANAGE",
+      "request": "expectedVersion,name?,sortOrder?,semantic?",
+      "contract": "Validate terminal semantics/live impacts.",
+      "spec": "Smart-Process-Automation/spa-pipelines-stages.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/spa/types/:typeId/pipelines/:pipelineId/stages/:stageId/archive",
+      "controller": "SpaStagesController",
+      "permission": "SPA.STAGE.MANAGE",
+      "request": "migrationTarget?",
+      "contract": "Reject when live items exist without valid migration.",
+      "spec": "Smart-Process-Automation/spa-pipelines-stages.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/spa/types/:typeId/items/:itemId/transition",
+      "controller": "SpaPipelinesController",
+      "permission": "SPA.ITEM.STAGE_CHANGE",
+      "request": "expectedVersion,targetPipelineId,targetStageId,reason?",
+      "contract": "Check source/target rules and required fields, append history/outbox.",
+      "spec": "Smart-Process-Automation/spa-pipelines-stages.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/spa/types/:typeId/kanban",
+      "controller": "SpaPipelinesController",
+      "permission": "SPA.ITEM.READ",
+      "request": "pipelineId,filters",
+      "contract": "Authorized grouped stage projection; does not duplicate Item data.",
+      "spec": "Smart-Process-Automation/spa-pipelines-stages.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/spa/types/:typeId/relation-definitions",
+      "controller": "SpaRelationsController",
+      "permission": "SPA.SCHEMA.READ",
+      "request": "typeId",
+      "contract": "Return relation contracts.",
+      "spec": "Smart-Process-Automation/spa-relations.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/spa/types/:typeId/relation-definitions",
+      "controller": "SpaRelationsController",
+      "permission": "SPA.SCHEMA.MANAGE",
+      "request": "code,targetType,cardinality,isRequired?",
+      "contract": "Publish through draft schema safety.",
+      "spec": "Smart-Process-Automation/spa-relations.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/spa/types/:typeId/items/:itemId/relations",
+      "controller": "SpaRelationsController",
+      "permission": "SPA.ITEM.READ",
+      "request": "page,limit,targetType?",
+      "contract": "Return only accessible targets.",
+      "spec": "Smart-Process-Automation/spa-relations.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/spa/types/:typeId/items/:itemId/relations",
+      "controller": "SpaRelationsController",
+      "permission": "SPA.ITEM.UPDATE",
+      "request": "definitionId,targetType,targetId,isPrimary?",
+      "contract": "Check both ends, cardinality and scope.",
+      "spec": "Smart-Process-Automation/spa-relations.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/spa/types/:typeId/items/:itemId/relations/:relationId",
+      "controller": "SpaRelationsController",
+      "permission": "SPA.ITEM.UPDATE",
+      "request": "relationId",
+      "contract": "Unlink only, never delete target.",
+      "spec": "Smart-Process-Automation/spa-relations.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/spa/types/:typeId/layouts",
+      "controller": "SpaLayoutsController",
+      "permission": "SPA.SCHEMA.READ",
+      "request": "context?",
+      "contract": "Return versioned metadata-based forms.",
+      "spec": "Smart-Process-Automation/spa-relations.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/spa/types/:typeId/layouts/:layoutId",
+      "controller": "SpaLayoutsController",
+      "permission": "SPA.SCHEMA.MANAGE",
+      "request": "expectedVersion,sections[]",
+      "contract": "Validate references to active fields.",
+      "spec": "Smart-Process-Automation/spa-relations.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/spa/types/:typeId/views",
+      "controller": "SpaLayoutsController",
+      "permission": "SPA.ITEM.READ",
+      "request": "typeId",
+      "contract": "List viewer's saved preferences.",
+      "spec": "Smart-Process-Automation/spa-relations.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/spa/types/:typeId/views/me",
+      "controller": "SpaLayoutsController",
+      "permission": "SPA.ITEM.READ",
+      "request": "viewType,columns,filters,sort",
+      "contract": "Store user preferences only, no business mutation.",
+      "spec": "Smart-Process-Automation/spa-relations.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/spa/types/:typeId/permissions",
+      "controller": "SpaPermissionsController",
+      "permission": "SPA.PERMISSION.MANAGE",
+      "request": "typeId",
+      "contract": "View effective policy matrix.",
+      "spec": "Smart-Process-Automation/spa-permissions.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/spa/types/:typeId/permissions",
+      "controller": "SpaPermissionsController",
+      "permission": "SPA.PERMISSION.MANAGE",
+      "request": "expectedVersion,rolePolicies[],stagePolicies[],fieldPolicies[]",
+      "contract": "Validate known permissions, subjects and scoped role grants.",
+      "spec": "Smart-Process-Automation/spa-permissions.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/spa/types/:typeId/items/:itemId/permissions/me",
+      "controller": "SpaPermissionsController",
+      "permission": "SPA.ITEM.READ",
+      "request": "itemId",
+      "contract": "Return effective actions and visible/editable field codes for actor.",
+      "spec": "Smart-Process-Automation/spa-permissions.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/spa/types/:typeId/permissions/history",
+      "controller": "SpaPermissionsController",
+      "permission": "SPA.PERMISSION.MANAGE",
+      "request": "page,limit",
+      "contract": "Security-sensitive changes, actor and diff.",
+      "spec": "Smart-Process-Automation/spa-permissions.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/spa/types/:typeId/numbering",
+      "controller": "SpaNumberingController",
+      "permission": "SPA.TYPE.READ",
+      "request": "typeId",
+      "contract": "View effective numbering scheme.",
+      "spec": "Smart-Process-Automation/spa-numbering-recurrence.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/spa/types/:typeId/numbering",
+      "controller": "SpaNumberingController",
+      "permission": "SPA.TYPE.MANAGE",
+      "request": "expectedVersion,prefixTemplate,padding,resetPolicy",
+      "contract": "Validate template and preserve allocated historical numbers.",
+      "spec": "Smart-Process-Automation/spa-numbering-recurrence.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/spa/types/:typeId/recurrence",
+      "controller": "SpaRecurrenceController",
+      "permission": "SPA.RECURRENCE.READ",
+      "request": "page,limit",
+      "contract": "List recurrence templates.",
+      "spec": "Smart-Process-Automation/spa-numbering-recurrence.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/spa/types/:typeId/recurrence",
+      "controller": "SpaRecurrenceController",
+      "permission": "SPA.RECURRENCE.MANAGE",
+      "request": "timezone,frequency,interval,templatePayload,startsAt,endsAt?",
+      "contract": "Create generation plan.",
+      "spec": "Smart-Process-Automation/spa-numbering-recurrence.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/spa/types/:typeId/recurrence/:ruleId",
+      "controller": "SpaRecurrenceController",
+      "permission": "SPA.RECURRENCE.MANAGE",
+      "request": "expectedVersion,templatePayload?,rule?",
+      "contract": "Future instances only.",
+      "spec": "Smart-Process-Automation/spa-numbering-recurrence.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/spa/types/:typeId/recurrence/:ruleId/pause",
+      "controller": "SpaRecurrenceController",
+      "permission": "SPA.RECURRENCE.MANAGE",
+      "request": "ruleId",
+      "contract": "Stop future scheduled generation.",
+      "spec": "Smart-Process-Automation/spa-numbering-recurrence.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/spa/types/:typeId/recurrence/:ruleId/resume",
+      "controller": "SpaRecurrenceController",
+      "permission": "SPA.RECURRENCE.MANAGE",
+      "request": "ruleId",
+      "contract": "Resume without duplicates.",
+      "spec": "Smart-Process-Automation/spa-numbering-recurrence.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/spa/types/:typeId/recurrence/:ruleId/instances",
+      "controller": "SpaRecurrenceController",
+      "permission": "SPA.RECURRENCE.READ",
+      "request": "page,limit",
+      "contract": "Historical generated items.",
+      "spec": "Smart-Process-Automation/spa-numbering-recurrence.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/spa/types/:typeId/imports",
+      "controller": "SpaTransfersController",
+      "permission": "SPA.ITEM.IMPORT",
+      "request": "fileId,fieldMapping,mode,sourceSystem?,externalKeyColumn?",
+      "contract": "Queue import; return 202 and jobId.",
+      "spec": "Smart-Process-Automation/spa-import-export-lifecycle.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/spa/types/:typeId/imports/:jobId",
+      "controller": "SpaTransfersController",
+      "permission": "SPA.ITEM.IMPORT",
+      "request": "jobId",
+      "contract": "Status, per-row error counts and report file.",
+      "spec": "Smart-Process-Automation/spa-import-export-lifecycle.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/spa/types/:typeId/imports/:jobId/cancel",
+      "controller": "SpaTransfersController",
+      "permission": "SPA.ITEM.IMPORT",
+      "request": "jobId",
+      "contract": "Cancel safely between rows, preserve committed rows/results.",
+      "spec": "Smart-Process-Automation/spa-import-export-lifecycle.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/spa/types/:typeId/exports",
+      "controller": "SpaTransfersController",
+      "permission": "SPA.ITEM.EXPORT",
+      "request": "filters,fieldCodes[]",
+      "contract": "Snapshot viewer-authorized scope; return 202 jobId.",
+      "spec": "Smart-Process-Automation/spa-import-export-lifecycle.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/spa/types/:typeId/exports/:jobId",
+      "controller": "SpaTransfersController",
+      "permission": "SPA.ITEM.EXPORT",
+      "request": "jobId",
+      "contract": "Status and temporary authorized file link.",
+      "spec": "Smart-Process-Automation/spa-import-export-lifecycle.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/spa/types/:typeId/trash",
+      "controller": "SpaRecycleController",
+      "permission": "SPA.ITEM.RESTORE",
+      "request": "page,limit",
+      "contract": "List authorized trashed items.",
+      "spec": "Smart-Process-Automation/spa-import-export-lifecycle.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/spa/types/:typeId/items/:itemId/purge",
+      "controller": "SpaRecycleController",
+      "permission": "SPA.ITEM.HARD_DELETE",
+      "request": "itemId",
+      "contract": "Queue checked purge, block holds/retention.",
+      "spec": "Smart-Process-Automation/spa-import-export-lifecycle.md",
+      "group": "Smart-Process-Automation"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/workflows",
+      "controller": "WorkflowDefinitionsController",
+      "permission": "WORKFLOW.DESIGN",
+      "request": "name,code,type,boundEntityType,boundEntityTypeId?,concurrencyMode?,runAs?",
+      "contract": "Create draft definition.",
+      "spec": "Workflows-Business-Processes/workflow-definitions-versions.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/workflows",
+      "controller": "WorkflowDefinitionsController",
+      "permission": "WORKFLOW.VIEW",
+      "request": "page,limit,search,status,boundEntityType",
+      "contract": "Authorized collection.",
+      "spec": "Workflows-Business-Processes/workflow-definitions-versions.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/workflows/:workflowId",
+      "controller": "WorkflowDefinitionsController",
+      "permission": "WORKFLOW.VIEW",
+      "request": "workflowId",
+      "contract": "Definition summary, current published version.",
+      "spec": "Workflows-Business-Processes/workflow-definitions-versions.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/workflows/:workflowId",
+      "controller": "WorkflowDefinitionsController",
+      "permission": "WORKFLOW.DESIGN",
+      "request": "expectedVersion,name?,concurrencyMode?,startConditions?",
+      "contract": "Edit configuration; never mutate published versions.",
+      "spec": "Workflows-Business-Processes/workflow-definitions-versions.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/workflows/:workflowId/versions",
+      "controller": "WorkflowVersionsController",
+      "permission": "WORKFLOW.DESIGN",
+      "request": "baseVersionId?",
+      "contract": "New draft cloned from selected version.",
+      "spec": "Workflows-Business-Processes/workflow-definitions-versions.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/workflows/:workflowId/versions",
+      "controller": "WorkflowVersionsController",
+      "permission": "WORKFLOW.VIEW",
+      "request": "page,limit",
+      "contract": "Version history.",
+      "spec": "Workflows-Business-Processes/workflow-definitions-versions.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/workflows/:workflowId/versions/:versionId",
+      "controller": "WorkflowVersionsController",
+      "permission": "WORKFLOW.VIEW",
+      "request": "versionId",
+      "contract": "Immutable graph/definitions snapshot.",
+      "spec": "Workflows-Business-Processes/workflow-definitions-versions.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/workflows/:workflowId/versions/:versionId/validate",
+      "controller": "WorkflowVersionsController",
+      "permission": "WORKFLOW.DESIGN",
+      "request": "versionId",
+      "contract": "Structural/security/recursion/permissions validation.",
+      "spec": "Workflows-Business-Processes/workflow-definitions-versions.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/workflows/:workflowId/versions/:versionId/publish",
+      "controller": "WorkflowVersionsController",
+      "permission": "WORKFLOW.PUBLISH",
+      "request": "expectedVersion",
+      "contract": "Atomically publish immutable version and set currentVersionId.",
+      "spec": "Workflows-Business-Processes/workflow-definitions-versions.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/workflows/:workflowId/pause",
+      "controller": "WorkflowDefinitionsController",
+      "permission": "WORKFLOW.PUBLISH",
+      "request": "expectedVersion",
+      "contract": "Stop future starts; no retroactive cancellation.",
+      "spec": "Workflows-Business-Processes/workflow-definitions-versions.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/workflows/:workflowId/archive",
+      "controller": "WorkflowDefinitionsController",
+      "permission": "WORKFLOW.PUBLISH",
+      "request": "expectedVersion",
+      "contract": "Stop starts, preserve executions/versions/history.",
+      "spec": "Workflows-Business-Processes/workflow-definitions-versions.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/workflows/:workflowId/versions/:versionId/graph",
+      "controller": "WorkflowGraphController",
+      "permission": "WORKFLOW.VIEW",
+      "request": "versionId",
+      "contract": "Nodes, edges, parameter schema.",
+      "spec": "Workflows-Business-Processes/workflow-designer-nodes.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/workflows/:workflowId/versions/:versionId/graph",
+      "controller": "WorkflowGraphController",
+      "permission": "WORKFLOW.DESIGN",
+      "request": "expectedVersion,nodes[],edges[],variables[],constants[]",
+      "contract": "Replace complete DRAFT graph.",
+      "spec": "Workflows-Business-Processes/workflow-designer-nodes.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/workflows/:workflowId/versions/:versionId/graph/nodes",
+      "controller": "WorkflowGraphController",
+      "permission": "WORKFLOW.DESIGN",
+      "request": "nodeKey,nodeType,config,position",
+      "contract": "Add allowed typed node.",
+      "spec": "Workflows-Business-Processes/workflow-designer-nodes.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/workflows/:workflowId/versions/:versionId/graph/nodes/:nodeId",
+      "controller": "WorkflowGraphController",
+      "permission": "WORKFLOW.DESIGN",
+      "request": "expectedVersion,config?,position?",
+      "contract": "Change draft node.",
+      "spec": "Workflows-Business-Processes/workflow-designer-nodes.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/workflows/:workflowId/versions/:versionId/graph/nodes/:nodeId",
+      "controller": "WorkflowGraphController",
+      "permission": "WORKFLOW.DESIGN",
+      "request": "nodeId",
+      "contract": "Delete draft node and affected edges safely.",
+      "spec": "Workflows-Business-Processes/workflow-designer-nodes.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/workflows/:workflowId/versions/:versionId/graph/edges",
+      "controller": "WorkflowGraphController",
+      "permission": "WORKFLOW.DESIGN",
+      "request": "fromNodeId,toNodeId,edgeType,condition?",
+      "contract": "Add valid edge within version.",
+      "spec": "Workflows-Business-Processes/workflow-designer-nodes.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/workflows/:workflowId/versions/:versionId/graph/preview",
+      "controller": "WorkflowGraphController",
+      "permission": "WORKFLOW.DESIGN",
+      "request": "testParameters,testContext",
+      "contract": "Dry-run deterministic expressions only; no side effects.",
+      "spec": "Workflows-Business-Processes/workflow-designer-nodes.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/workflows/:workflowId/start",
+      "controller": "WorkflowExecutionsController",
+      "permission": "WORKFLOW.START",
+      "request": "entityType,entityId,parameters,Idempotency-Key",
+      "contract": "Start pinned published version after concurrency & binding checks; return 202 execution ID.",
+      "spec": "Workflows-Business-Processes/workflow-executions.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/workflow-executions",
+      "controller": "WorkflowExecutionsController",
+      "permission": "WORKFLOW.EXECUTION_VIEW",
+      "request": "page,limit,workflowId?,entityId?,status?",
+      "contract": "Scoped executions.",
+      "spec": "Workflows-Business-Processes/workflow-executions.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/workflow-executions/:executionId",
+      "controller": "WorkflowExecutionsController",
+      "permission": "WORKFLOW.EXECUTION_VIEW",
+      "request": "executionId",
+      "contract": "State, progress, authorized redacted variables.",
+      "spec": "Workflows-Business-Processes/workflow-executions.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/workflow-executions/:executionId/nodes",
+      "controller": "WorkflowExecutionsController",
+      "permission": "WORKFLOW.EXECUTION_VIEW",
+      "request": "page,limit",
+      "contract": "Node execution timeline/attempts.",
+      "spec": "Workflows-Business-Processes/workflow-executions.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/workflow-executions/:executionId/logs",
+      "controller": "WorkflowExecutionsController",
+      "permission": "WORKFLOW.LOG_VIEW",
+      "request": "cursor?,limit?,level?",
+      "contract": "Redacted structured logs.",
+      "spec": "Workflows-Business-Processes/workflow-executions.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/workflow-executions/:executionId/cancel",
+      "controller": "WorkflowExecutionsController",
+      "permission": "WORKFLOW.CANCEL_OWN|WORKFLOW.CANCEL_ALL",
+      "request": "reason,expectedVersion",
+      "contract": "Request cancellation, stop future dispatch and run configured compensation.",
+      "spec": "Workflows-Business-Processes/workflow-executions.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/workflow-executions/:executionId/suspend",
+      "controller": "WorkflowExecutionsController",
+      "permission": "WORKFLOW.EXECUTION_ADMIN",
+      "request": "reason,expectedVersion",
+      "contract": "Pause execution and internal timers durably.",
+      "spec": "Workflows-Business-Processes/workflow-executions.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/workflow-executions/:executionId/resume",
+      "controller": "WorkflowExecutionsController",
+      "permission": "WORKFLOW.EXECUTION_ADMIN",
+      "request": "expectedVersion",
+      "contract": "Resume paused tokens and remaining-duration timers.",
+      "spec": "Workflows-Business-Processes/workflow-executions.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/workflow-executions/:executionId/retry",
+      "controller": "WorkflowExecutionsController",
+      "permission": "WORKFLOW.EXECUTION_ADMIN",
+      "request": "failedNodeRunId,expectedVersion",
+      "contract": "Retry safe persisted pre-node state only.",
+      "spec": "Workflows-Business-Processes/workflow-executions.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/workflow-executions/:executionId/terminate",
+      "controller": "WorkflowExecutionsController",
+      "permission": "WORKFLOW.EXECUTION_ADMIN",
+      "request": "reason,expectedVersion",
+      "contract": "Irrevocable stop of future actions; preserve audit/history.",
+      "spec": "Workflows-Business-Processes/workflow-executions.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/workflow-assignments/my",
+      "controller": "WorkflowAssignmentsController",
+      "permission": "WORKFLOW.ASSIGNMENT_VIEW",
+      "request": "page,limit,status,dueBefore?",
+      "contract": "Assignment inbox scoped to effective participants.",
+      "spec": "Workflows-Business-Processes/human-approvals.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/workflow-assignments/:assignmentId",
+      "controller": "WorkflowAssignmentsController",
+      "permission": "WORKFLOW.ASSIGNMENT_VIEW",
+      "request": "assignmentId",
+      "contract": "Details redacted by bound-entity permissions.",
+      "spec": "Workflows-Business-Processes/human-approvals.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/workflow-assignments/:assignmentId/decide",
+      "controller": "WorkflowAssignmentsController",
+      "permission": "WORKFLOW.ASSIGNMENT_DECIDE",
+      "request": "decision,comment?,fields?,Idempotency-Key",
+      "contract": "Persist decision once; advance node when policy satisfied.",
+      "spec": "Workflows-Business-Processes/human-approvals.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/workflow-assignments/:assignmentId/delegate",
+      "controller": "WorkflowAssignmentsController",
+      "permission": "WORKFLOW.ASSIGNMENT_DELEGATE",
+      "request": "toUserId,reason",
+      "contract": "Audit delegation; old assignee cannot decide unless also explicitly authorized.",
+      "spec": "Workflows-Business-Processes/human-approvals.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/workflow-assignments/:assignmentId/submit-information",
+      "controller": "WorkflowAssignmentsController",
+      "permission": "WORKFLOW.ASSIGNMENT_DECIDE",
+      "request": "values,Idempotency-Key",
+      "contract": "Validate requested typed input and unblock node.",
+      "spec": "Workflows-Business-Processes/human-approvals.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/workflow-assignments/:assignmentId/history",
+      "controller": "WorkflowAssignmentsController",
+      "permission": "WORKFLOW.ASSIGNMENT_VIEW",
+      "request": "page,limit",
+      "contract": "Decisions, delegation and escalation audit.",
+      "spec": "Workflows-Business-Processes/human-approvals.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/workflows/:workflowId/triggers",
+      "controller": "WorkflowTriggersController",
+      "permission": "WORKFLOW.VIEW",
+      "request": "workflowId",
+      "contract": "Configured manual/event/schedule triggers.",
+      "spec": "Workflows-Business-Processes/timers-events-loops.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/workflows/:workflowId/triggers",
+      "controller": "WorkflowTriggersController",
+      "permission": "WORKFLOW.DESIGN",
+      "request": "expectedVersion,triggers[]",
+      "contract": "Draft/activate with validation; live changes versioned.",
+      "spec": "Workflows-Business-Processes/timers-events-loops.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/workflow-executions/:executionId/waits",
+      "controller": "WorkflowTriggersController",
+      "permission": "WORKFLOW.EXECUTION_VIEW",
+      "request": "executionId",
+      "contract": "Pending timers/events and due dates.",
+      "spec": "Workflows-Business-Processes/timers-events-loops.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/workflows/runtime-limits",
+      "controller": "WorkflowRuntimePolicyController",
+      "permission": "WORKFLOW.RUNTIME_MANAGE",
+      "request": "workspace",
+      "contract": "Effective limits and feature entitlement.",
+      "spec": "Workflows-Business-Processes/timers-events-loops.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/workflows/runtime-limits",
+      "controller": "WorkflowRuntimePolicyController",
+      "permission": "WORKFLOW.RUNTIME_MANAGE",
+      "request": "maxLoopIterations,maxNodeRuns,maxDepth,maxLifetimeDays",
+      "contract": "Can lower but never exceed platform-safe ceiling.",
+      "spec": "Workflows-Business-Processes/timers-events-loops.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/workflow-executions/:executionId/children",
+      "controller": "WorkflowCompensationController",
+      "permission": "WORKFLOW.EXECUTION_VIEW",
+      "request": "executionId",
+      "contract": "Child Workflow instances, result status.",
+      "spec": "Workflows-Business-Processes/subworkflows-compensation.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/workflow-executions/:executionId/compensations",
+      "controller": "WorkflowCompensationController",
+      "permission": "WORKFLOW.EXECUTION_VIEW",
+      "request": "executionId",
+      "contract": "Planned/completed compensation history.",
+      "spec": "Workflows-Business-Processes/subworkflows-compensation.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/workflow-executions/:executionId/compensate",
+      "controller": "WorkflowCompensationController",
+      "permission": "WORKFLOW.EXECUTION_ADMIN",
+      "request": "reason,Idempotency-Key",
+      "contract": "Execute only declared compensation stack with safety checks.",
+      "spec": "Workflows-Business-Processes/subworkflows-compensation.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/workflow-executions/:executionId/compensations/:actionId/retry",
+      "controller": "WorkflowCompensationController",
+      "permission": "WORKFLOW.EXECUTION_ADMIN",
+      "request": "Idempotency-Key",
+      "contract": "Retry safe failed compensation idempotently.",
+      "spec": "Workflows-Business-Processes/subworkflows-compensation.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/workflows/actions",
+      "controller": "WorkflowActionsController",
+      "permission": "WORKFLOW.DESIGN",
+      "request": "search,domain",
+      "contract": "Safe supported action descriptors and input schemas.",
+      "spec": "Workflows-Business-Processes/workflow-integrations.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/workflows/:workflowId/actions/:actionCode/validate",
+      "controller": "WorkflowActionsController",
+      "permission": "WORKFLOW.DESIGN",
+      "request": "versionId,nodeKey,config",
+      "contract": "Validate configured action against registry/permissions, no execution.",
+      "spec": "Workflows-Business-Processes/workflow-integrations.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/workflows/callbacks/:token",
+      "controller": "WorkflowActionsController",
+      "permission": "PUBLIC_SCOPED",
+      "request": "signed callback payload",
+      "contract": "Verify signature/nonce/expiry/correlation and resume matching wait once.",
+      "spec": "Workflows-Business-Processes/workflow-integrations.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/workflow-executions/:executionId/actions",
+      "controller": "WorkflowActionsController",
+      "permission": "WORKFLOW.EXECUTION_VIEW",
+      "request": "page,limit",
+      "contract": "Redacted integration action records.",
+      "spec": "Workflows-Business-Processes/workflow-integrations.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/workflow-templates",
+      "controller": "WorkflowTemplatesController",
+      "permission": "WORKFLOW.TEMPLATE_MANAGE",
+      "request": "page,limit,category?",
+      "contract": "Authorized templates.",
+      "spec": "Workflows-Business-Processes/workflow-security-runtime.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/workflow-templates",
+      "controller": "WorkflowTemplatesController",
+      "permission": "WORKFLOW.TEMPLATE_MANAGE",
+      "request": "name,category,sourceVersionId",
+      "contract": "Snapshot safe template, strip secrets and sensitive IDs.",
+      "spec": "Workflows-Business-Processes/workflow-security-runtime.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/workflow-templates/:templateId/instantiate",
+      "controller": "WorkflowTemplatesController",
+      "permission": "WORKFLOW.DESIGN",
+      "request": "name,code,bindings",
+      "contract": "Create new draft definition.",
+      "spec": "Workflows-Business-Processes/workflow-security-runtime.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/workflow-executions/:executionId/discussion",
+      "controller": "WorkflowAdminController",
+      "permission": "WORKFLOW.EXECUTION_VIEW",
+      "request": "executionId",
+      "contract": "Resolve scoped Communication/Timeline discussion reference.",
+      "spec": "Workflows-Business-Processes/workflow-security-runtime.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/workflows/admin/health",
+      "controller": "WorkflowAdminController",
+      "permission": "WORKFLOW.EXECUTION_ADMIN",
+      "request": "status?",
+      "contract": "Stuck leases/waits/failures and queue lag (no secrets).",
+      "spec": "Workflows-Business-Processes/workflow-security-runtime.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/workflows/admin/reconcile",
+      "controller": "WorkflowAdminController",
+      "permission": "WORKFLOW.EXECUTION_ADMIN",
+      "request": "executionIds?,Idempotency-Key",
+      "contract": "Queue safe reconciliation, return jobId.",
+      "spec": "Workflows-Business-Processes/workflow-security-runtime.md",
+      "group": "Workflows-Business-Processes"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/inventory/warehouses",
+      "controller": "WarehousesController",
+      "permission": "INVENTORY.WAREHOUSE_MANAGE",
+      "request": "name,code,type,timezone,location?",
+      "contract": "Create active warehouse.",
+      "spec": "Inventory-Warehouses/warehouses-locations.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/inventory/warehouses",
+      "controller": "WarehousesController",
+      "permission": "INVENTORY.WAREHOUSE_READ",
+      "request": "page,limit,search,status,type",
+      "contract": "Scope to accessible warehouses.",
+      "spec": "Inventory-Warehouses/warehouses-locations.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/inventory/warehouses/:warehouseId",
+      "controller": "WarehousesController",
+      "permission": "INVENTORY.WAREHOUSE_READ",
+      "request": "warehouseId",
+      "contract": "Include permissions-derived actions.",
+      "spec": "Inventory-Warehouses/warehouses-locations.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/inventory/warehouses/:warehouseId",
+      "controller": "WarehousesController",
+      "permission": "INVENTORY.WAREHOUSE_MANAGE",
+      "request": "expectedVersion,name?,timezone?,priority?,status?",
+      "contract": "Reject unsafe disable with dependent stock.",
+      "spec": "Inventory-Warehouses/warehouses-locations.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/inventory/warehouses/:warehouseId/archive",
+      "controller": "WarehousesController",
+      "permission": "INVENTORY.WAREHOUSE_MANAGE",
+      "request": "expectedVersion",
+      "contract": "Reject if nonzero on-hand, active reservations, live docs.",
+      "spec": "Inventory-Warehouses/warehouses-locations.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/inventory/warehouses/:warehouseId/locations",
+      "controller": "WarehouseLocationsController",
+      "permission": "INVENTORY.WAREHOUSE_READ",
+      "request": "page,limit",
+      "contract": "Hierarchical locations.",
+      "spec": "Inventory-Warehouses/warehouses-locations.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/inventory/warehouses/:warehouseId/locations",
+      "controller": "WarehouseLocationsController",
+      "permission": "INVENTORY.LOCATION_MANAGE",
+      "request": "parentLocationId?,code,name,type",
+      "contract": "Create same-warehouse location.",
+      "spec": "Inventory-Warehouses/warehouses-locations.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/inventory/warehouses/:warehouseId/locations/:locationId",
+      "controller": "WarehouseLocationsController",
+      "permission": "INVENTORY.LOCATION_MANAGE",
+      "request": "expectedVersion,name?,parentLocationId?",
+      "contract": "Reject cycles and orphaned stock.",
+      "spec": "Inventory-Warehouses/warehouses-locations.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/inventory/warehouses/:warehouseId/permissions",
+      "controller": "WarehousesController",
+      "permission": "INVENTORY.PERMISSION_MANAGE",
+      "request": "warehouseId",
+      "contract": "Access matrix.",
+      "spec": "Inventory-Warehouses/warehouses-locations.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/inventory/warehouses/:warehouseId/permissions",
+      "controller": "WarehousesController",
+      "permission": "INVENTORY.PERMISSION_MANAGE",
+      "request": "expectedVersion,grants[]",
+      "contract": "Audit and invalidate security caches.",
+      "spec": "Inventory-Warehouses/warehouses-locations.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/inventory/stock",
+      "controller": "InventoryStockController",
+      "permission": "INVENTORY.STOCK_READ",
+      "request": "warehouseId?,productId?,variantId?,page,limit",
+      "contract": "Authorized current balance projection.",
+      "spec": "Inventory-Warehouses/stock-balances-movements.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/inventory/availability",
+      "controller": "InventoryStockController",
+      "permission": "INVENTORY.STOCK_READ",
+      "request": "productId,variantId?,quantity?,warehouseId?",
+      "contract": "Current onHand,reserved,available,backorderAllowed; protect private stock from public users.",
+      "spec": "Inventory-Warehouses/stock-balances-movements.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/inventory/movements",
+      "controller": "InventoryMovementsController",
+      "permission": "INVENTORY.MOVEMENT_READ",
+      "request": "warehouseId?,productId?,from?,to?,cursor?,limit?",
+      "contract": "Immutable movement chronological history.",
+      "spec": "Inventory-Warehouses/stock-balances-movements.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/inventory/movements/:movementId",
+      "controller": "InventoryMovementsController",
+      "permission": "INVENTORY.MOVEMENT_READ",
+      "request": "movementId",
+      "contract": "Movement and originating document/line.",
+      "spec": "Inventory-Warehouses/stock-balances-movements.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/inventory/stock/reconciliation-jobs",
+      "controller": "InventoryStockController",
+      "permission": "INVENTORY.STOCK_RECONCILE",
+      "request": "warehouseId?,dryRun=true,Idempotency-Key",
+      "contract": "Queue rebuild/verification (202 jobId); never silently overwrite ledger.",
+      "spec": "Inventory-Warehouses/stock-balances-movements.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/inventory/stock/reconciliation-jobs/:jobId",
+      "controller": "InventoryStockController",
+      "permission": "INVENTORY.STOCK_RECONCILE",
+      "request": "jobId",
+      "contract": "Drift, resolved and blocked counts.",
+      "spec": "Inventory-Warehouses/stock-balances-movements.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/inventory/documents",
+      "controller": "InventoryDocumentsController",
+      "permission": "INVENTORY.DOCUMENT_CREATE",
+      "request": "documentType,warehouseIds,currency,sourceRef?",
+      "contract": "DRAFT, no stock effect.",
+      "spec": "Inventory-Warehouses/inventory-documents.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/inventory/documents",
+      "controller": "InventoryDocumentsController",
+      "permission": "INVENTORY.DOCUMENT_READ",
+      "request": "page,limit,documentType,status,warehouseId",
+      "contract": "Permission-filtered list.",
+      "spec": "Inventory-Warehouses/inventory-documents.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/inventory/documents/:documentId",
+      "controller": "InventoryDocumentsController",
+      "permission": "INVENTORY.DOCUMENT_READ",
+      "request": "documentId",
+      "contract": "Document with ordered lines and history.",
+      "spec": "Inventory-Warehouses/inventory-documents.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/inventory/documents/:documentId",
+      "controller": "InventoryDocumentsController",
+      "permission": "INVENTORY.DOCUMENT_EDIT",
+      "request": "expectedVersion,editableFields",
+      "contract": "Draft-only changes; approved revision invalidates approval.",
+      "spec": "Inventory-Warehouses/inventory-documents.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/inventory/documents/:documentId/lines",
+      "controller": "InventoryDocumentLinesController",
+      "permission": "INVENTORY.DOCUMENT_EDIT",
+      "request": "productId,variantId?,quantity,unitCost,locationId?",
+      "contract": "Add stockable line on draft.",
+      "spec": "Inventory-Warehouses/inventory-documents.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/inventory/documents/:documentId/lines/:lineId",
+      "controller": "InventoryDocumentLinesController",
+      "permission": "INVENTORY.DOCUMENT_EDIT",
+      "request": "quantity?,unitCost?,expectedVersion",
+      "contract": "Draft-only.",
+      "spec": "Inventory-Warehouses/inventory-documents.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/inventory/documents/:documentId/lines/:lineId",
+      "controller": "InventoryDocumentLinesController",
+      "permission": "INVENTORY.DOCUMENT_EDIT",
+      "request": "lineId",
+      "contract": "Draft-only removal.",
+      "spec": "Inventory-Warehouses/inventory-documents.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/inventory/documents/:documentId/request-approval",
+      "controller": "InventoryDocumentsController",
+      "permission": "INVENTORY.DOCUMENT_SUBMIT",
+      "request": "expectedVersion",
+      "contract": "PENDING_APPROVAL where policy requires; else allow process.",
+      "spec": "Inventory-Warehouses/inventory-documents.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/inventory/documents/:documentId/approve",
+      "controller": "InventoryDocumentsController",
+      "permission": "INVENTORY.DOCUMENT_APPROVE",
+      "request": "expectedVersion,decision,comment?",
+      "contract": "Approval record, state APPROVED/return to draft.",
+      "spec": "Inventory-Warehouses/inventory-documents.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/inventory/documents/:documentId/process",
+      "controller": "InventoryDocumentsController",
+      "permission": "INVENTORY.DOCUMENT_PROCESS",
+      "request": "expectedVersion,Idempotency-Key",
+      "contract": "Atomic locks, valuation, ledger movements, state PROCESSED, outbox.",
+      "spec": "Inventory-Warehouses/inventory-documents.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/inventory/documents/:documentId/reverse",
+      "controller": "InventoryDocumentsController",
+      "permission": "INVENTORY.DOCUMENT_REVERSE",
+      "request": "expectedVersion,reason,Idempotency-Key",
+      "contract": "Compensation movements, not deleting originals.",
+      "spec": "Inventory-Warehouses/inventory-documents.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/inventory/documents/:documentId/history",
+      "controller": "InventoryDocumentsController",
+      "permission": "INVENTORY.DOCUMENT_READ",
+      "request": "page,limit",
+      "contract": "State/approval/posting/reversal evidence.",
+      "spec": "Inventory-Warehouses/inventory-documents.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/inventory/reservations",
+      "controller": "InventoryReservationsController",
+      "permission": "INVENTORY.RESERVATION_CREATE",
+      "request": "sourceType,sourceId,productId,variantId?,quantity,warehouseId?,expiresAt?,Idempotency-Key",
+      "contract": "Lock stock, choose warehouse policy, reserve once.",
+      "spec": "Inventory-Warehouses/reservations.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/inventory/reservations",
+      "controller": "InventoryReservationsController",
+      "permission": "INVENTORY.RESERVATION_READ",
+      "request": "page,limit,sourceType,status,warehouseId",
+      "contract": "Scoped list.",
+      "spec": "Inventory-Warehouses/reservations.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/inventory/reservations/:reservationId",
+      "controller": "InventoryReservationsController",
+      "permission": "INVENTORY.RESERVATION_READ",
+      "request": "reservationId",
+      "contract": "Quantity state and audit.",
+      "spec": "Inventory-Warehouses/reservations.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/inventory/reservations/:reservationId",
+      "controller": "InventoryReservationsController",
+      "permission": "INVENTORY.RESERVATION_MANAGE",
+      "request": "expectedVersion,quantity?,expiresAt?",
+      "contract": "Revalidate planned quantity and availability.",
+      "spec": "Inventory-Warehouses/reservations.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/inventory/reservations/:reservationId/release",
+      "controller": "InventoryReservationsController",
+      "permission": "INVENTORY.RESERVATION_MANAGE",
+      "request": "quantity?,reason,Idempotency-Key",
+      "contract": "Reduce reserved quantity idempotently.",
+      "spec": "Inventory-Warehouses/reservations.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/inventory/reservations/:reservationId/fulfill",
+      "controller": "InventoryReservationsController",
+      "permission": "INVENTORY.RESERVATION_FULFILL",
+      "request": "quantity,inventoryDocumentLineId,Idempotency-Key",
+      "contract": "Consume reserved alongside processed sale movement.",
+      "spec": "Inventory-Warehouses/reservations.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/inventory/reservations/:reservationId/extend",
+      "controller": "InventoryReservationsController",
+      "permission": "INVENTORY.RESERVATION_MANAGE",
+      "request": "expiresAt,expectedVersion",
+      "contract": "Extend before expiry by policy.",
+      "spec": "Inventory-Warehouses/reservations.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/inventory/stocktakes",
+      "controller": "InventoryStocktakesController",
+      "permission": "INVENTORY.STOCKTAKE_CREATE",
+      "request": "warehouseId,locationId?,scope",
+      "contract": "Draft session, snapshot current quantities/version.",
+      "spec": "Inventory-Warehouses/stocktakes.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/inventory/stocktakes",
+      "controller": "InventoryStocktakesController",
+      "permission": "INVENTORY.STOCKTAKE_READ",
+      "request": "page,limit,status,warehouseId",
+      "contract": "List visible sessions.",
+      "spec": "Inventory-Warehouses/stocktakes.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/inventory/stocktakes/:sessionId",
+      "controller": "InventoryStocktakesController",
+      "permission": "INVENTORY.STOCKTAKE_READ",
+      "request": "sessionId",
+      "contract": "Count lines, history and state.",
+      "spec": "Inventory-Warehouses/stocktakes.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/inventory/stocktakes/:sessionId/start",
+      "controller": "InventoryStocktakesController",
+      "permission": "INVENTORY.STOCKTAKE_COUNT",
+      "request": "expectedVersion",
+      "contract": "COUNTING; freeze expected snapshot only, not warehouse operations.",
+      "spec": "Inventory-Warehouses/stocktakes.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/inventory/stocktakes/:sessionId/lines/:lineId/count",
+      "controller": "InventoryStocktakesController",
+      "permission": "INVENTORY.STOCKTAKE_COUNT",
+      "request": "quantity,expectedVersion",
+      "contract": "Record count with actor/time.",
+      "spec": "Inventory-Warehouses/stocktakes.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/inventory/stocktakes/:sessionId/reconcile",
+      "controller": "InventoryStocktakesController",
+      "permission": "INVENTORY.STOCKTAKE_RECONCILE",
+      "request": "expectedVersion",
+      "contract": "Detect movements since baseline, propose adjusted variance.",
+      "spec": "Inventory-Warehouses/stocktakes.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/inventory/stocktakes/:sessionId/post",
+      "controller": "InventoryStocktakesController",
+      "permission": "INVENTORY.STOCKTAKE_POST",
+      "request": "expectedVersion,Idempotency-Key",
+      "contract": "Create/process adjustment document after conflict review/approval.",
+      "spec": "Inventory-Warehouses/stocktakes.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/inventory/stocktakes/:sessionId/cancel",
+      "controller": "InventoryStocktakesController",
+      "permission": "INVENTORY.STOCKTAKE_MANAGE",
+      "request": "reason",
+      "contract": "Close with no stock mutation.",
+      "spec": "Inventory-Warehouses/stocktakes.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/inventory/costing/policy",
+      "controller": "InventoryCostingController",
+      "permission": "INVENTORY.COSTING_VIEW",
+      "request": "workspace",
+      "contract": "Effective FIFO|AVERAGE setting and lock state.",
+      "spec": "Inventory-Warehouses/costing.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/inventory/costing/initialize",
+      "controller": "InventoryCostingController",
+      "permission": "INVENTORY.COSTING_MANAGE",
+      "request": "method FIFO|AVERAGE",
+      "contract": "Choose policy before first processed document (FIFO preselected).",
+      "spec": "Inventory-Warehouses/costing.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/inventory/valuation",
+      "controller": "InventoryCostingController",
+      "permission": "INVENTORY.VALUATION_VIEW",
+      "request": "warehouseId?,productId?,asOf?",
+      "contract": "Authorized ledger-derived valuation and COGS.",
+      "spec": "Inventory-Warehouses/costing.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/inventory/costing/migration-preview",
+      "controller": "InventoryCostingController",
+      "permission": "INVENTORY.COSTING_MANAGE",
+      "request": "targetMethod",
+      "contract": "202 report; no changes.",
+      "spec": "Inventory-Warehouses/costing.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/inventory/costing/migrate",
+      "controller": "InventoryCostingController",
+      "permission": "INVENTORY.COSTING_MIGRATE",
+      "request": "previewJobId,approvalReference,Idempotency-Key",
+      "contract": "Controlled revaluation migration job, retain history.",
+      "spec": "Inventory-Warehouses/costing.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/inventory/costing/migrations/:jobId",
+      "controller": "InventoryCostingController",
+      "permission": "INVENTORY.COSTING_VIEW",
+      "request": "jobId",
+      "contract": "Audited migration status and reconciliation.",
+      "spec": "Inventory-Warehouses/costing.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/inventory/barcodes/resolve",
+      "controller": "InventoryTrackingController",
+      "permission": "INVENTORY.STOCK_READ",
+      "request": "code",
+      "contract": "Resolve valid Product/Variant within Workspace.",
+      "spec": "Inventory-Warehouses/serial-batch-barcode.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/inventory/barcodes",
+      "controller": "InventoryTrackingController",
+      "permission": "INVENTORY.TRACKING_MANAGE",
+      "request": "productId,variantId?,barcodeType,value",
+      "contract": "Assign unique barcode to catalog SKU.",
+      "spec": "Inventory-Warehouses/serial-batch-barcode.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/inventory/barcodes/:barcodeId",
+      "controller": "InventoryTrackingController",
+      "permission": "INVENTORY.TRACKING_MANAGE",
+      "request": "barcodeId",
+      "contract": "Revoke lookup identifier; never alter movements.",
+      "spec": "Inventory-Warehouses/serial-batch-barcode.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/inventory/serials",
+      "controller": "InventoryTrackingController",
+      "permission": "INVENTORY.TRACKING_READ",
+      "request": "productId?,warehouseId?,status?,page,limit",
+      "contract": "Scope serial inventory.",
+      "spec": "Inventory-Warehouses/serial-batch-barcode.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/inventory/serials",
+      "controller": "InventoryTrackingController",
+      "permission": "INVENTORY.TRACKING_MANAGE",
+      "request": "variantId,serialNumber,warehouseId",
+      "contract": "Register via validated receipt/opening document context, not free stock increment.",
+      "spec": "Inventory-Warehouses/serial-batch-barcode.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/inventory/batches",
+      "controller": "InventoryTrackingController",
+      "permission": "INVENTORY.TRACKING_READ",
+      "request": "productId?,expiresBefore?,page,limit",
+      "contract": "Batch/expiry query.",
+      "spec": "Inventory-Warehouses/serial-batch-barcode.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/inventory/batches",
+      "controller": "InventoryTrackingController",
+      "permission": "INVENTORY.TRACKING_MANAGE",
+      "request": "variantId,batchNumber,expiresAt?",
+      "contract": "Register lot metadata, stock via documents only.",
+      "spec": "Inventory-Warehouses/serial-batch-barcode.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/inventory/settings",
+      "controller": "InventoryPoliciesController",
+      "permission": "INVENTORY.SETTINGS_VIEW",
+      "request": "workspace",
+      "contract": "Effective policy.",
+      "spec": "Inventory-Warehouses/inventory-policies-automation.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/inventory/settings",
+      "controller": "InventoryPoliciesController",
+      "permission": "INVENTORY.SETTINGS_MANAGE",
+      "request": "expectedVersion,allowNegativeStock?,allowBackorderReservations?,defaultReservationDays?,allocationStrategy?",
+      "contract": "Validate effects and audit.",
+      "spec": "Inventory-Warehouses/inventory-policies-automation.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/inventory/reorder-rules",
+      "controller": "InventoryReorderController",
+      "permission": "INVENTORY.REORDER_READ",
+      "request": "warehouseId?,page,limit",
+      "contract": "Scoped rules.",
+      "spec": "Inventory-Warehouses/inventory-policies-automation.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/inventory/reorder-rules/:ruleId",
+      "controller": "InventoryReorderController",
+      "permission": "INVENTORY.REORDER_MANAGE",
+      "request": "warehouseId,productId,variantId?,reorderPoint,reorderQuantity,safetyStock",
+      "contract": "Upsert matching scoped rule.",
+      "spec": "Inventory-Warehouses/inventory-policies-automation.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/inventory/low-stock-alerts",
+      "controller": "InventoryReorderController",
+      "permission": "INVENTORY.REORDER_READ",
+      "request": "page,limit,status?",
+      "contract": "Deduplicated open alerts.",
+      "spec": "Inventory-Warehouses/inventory-policies-automation.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/inventory/numbering/:documentType",
+      "controller": "InventoryReorderController",
+      "permission": "INVENTORY.SETTINGS_MANAGE",
+      "request": "prefixTemplate,padding,resetPolicy,expectedVersion",
+      "contract": "Concurrency-safe scheme.",
+      "spec": "Inventory-Warehouses/inventory-policies-automation.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/inventory/reset/preview",
+      "controller": "InventoryPoliciesController",
+      "permission": "INVENTORY.RESET",
+      "request": "warehouseId?,reason",
+      "contract": "202 audit-safe impact preview.",
+      "spec": "Inventory-Warehouses/inventory-policies-automation.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/inventory/reset/apply",
+      "controller": "InventoryPoliciesController",
+      "permission": "INVENTORY.RESET",
+      "request": "previewId,approvalId,Idempotency-Key",
+      "contract": "Privileged explicit adjustment job; never direct balance rewrite.",
+      "spec": "Inventory-Warehouses/inventory-policies-automation.md",
+      "group": "Inventory-Warehouses"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/commerce/stores",
+      "controller": "CommerceStoresController",
+      "permission": "COMMERCE.STORE_MANAGE",
+      "request": "name,code,defaultCurrency,timezone,catalogId",
+      "contract": "New DRAFT Store.",
+      "spec": "Online-Store-Commerce/stores-storefronts.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/commerce/stores",
+      "controller": "CommerceStoresController",
+      "permission": "COMMERCE.STORE_VIEW",
+      "request": "page,limit,status,search",
+      "contract": "Workspace-scoped Store list.",
+      "spec": "Online-Store-Commerce/stores-storefronts.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/commerce/stores/:storeId",
+      "controller": "CommerceStoresController",
+      "permission": "COMMERCE.STORE_VIEW",
+      "request": "storeId",
+      "contract": "Settings, status, effective permissions.",
+      "spec": "Online-Store-Commerce/stores-storefronts.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/commerce/stores/:storeId",
+      "controller": "CommerceStoresController",
+      "permission": "COMMERCE.STORE_MANAGE",
+      "request": "expectedVersion,settings changes",
+      "contract": "Validate currency, warehouse, inventory/payment impacts.",
+      "spec": "Online-Store-Commerce/stores-storefronts.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/commerce/stores/:storeId/activate",
+      "controller": "CommerceStoresController",
+      "permission": "COMMERCE.STORE_MANAGE",
+      "request": "expectedVersion",
+      "contract": "Activation requires valid catalog/currency/publication/payment policy.",
+      "spec": "Online-Store-Commerce/stores-storefronts.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/commerce/stores/:storeId/suspend",
+      "controller": "CommerceStoresController",
+      "permission": "COMMERCE.STORE_MANAGE",
+      "request": "expectedVersion",
+      "contract": "Stop public checkout, retain existing Order servicing.",
+      "spec": "Online-Store-Commerce/stores-storefronts.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/commerce/stores/:storeId/storefronts",
+      "controller": "CommerceStorefrontsController",
+      "permission": "COMMERCE.STORE_VIEW",
+      "request": "storeId",
+      "contract": "List WEB/HEADLESS etc.",
+      "spec": "Online-Store-Commerce/stores-storefronts.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/commerce/stores/:storeId/storefronts",
+      "controller": "CommerceStorefrontsController",
+      "permission": "COMMERCE.STORE_MANAGE",
+      "request": "type,slug,domain?",
+      "contract": "Create draft Storefront.",
+      "spec": "Online-Store-Commerce/stores-storefronts.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/commerce/storefronts/:storefrontId/publish",
+      "controller": "CommerceStorefrontsController",
+      "permission": "COMMERCE.STORE_MANAGE",
+      "request": "expectedVersion",
+      "contract": "Publicly activate allowed V1 WEB/HEADLESS context.",
+      "spec": "Online-Store-Commerce/stores-storefronts.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/commerce/stores/:storeId/publications",
+      "controller": "CommerceStoresController",
+      "permission": "COMMERCE.CATALOG_PUBLISH",
+      "request": "page,limit",
+      "contract": "Publication rules.",
+      "spec": "Online-Store-Commerce/stores-storefronts.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/commerce/stores/:storeId/publications/:productId",
+      "controller": "CommerceStoresController",
+      "permission": "COMMERCE.CATALOG_PUBLISH",
+      "request": "variantId?,published,seoSlug,availabilityWindow",
+      "contract": "Publish only active Catalog product with valid price.",
+      "spec": "Online-Store-Commerce/stores-storefronts.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/storefront/:storeSlug/products",
+      "controller": "CommerceStorefrontsController",
+      "permission": "PUBLIC_SCOPED",
+      "request": "page,limit,search,categoryId?",
+      "contract": "Published products only; no private warehouse detail.",
+      "spec": "Online-Store-Commerce/stores-storefronts.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/storefront/:storeSlug/products/:productSlug",
+      "controller": "CommerceStorefrontsController",
+      "permission": "PUBLIC_SCOPED",
+      "request": "productSlug",
+      "contract": "Public sellable price/currency/media from published configuration.",
+      "spec": "Online-Store-Commerce/stores-storefronts.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/storefront/:storeSlug/carts",
+      "controller": "CommerceCartsController",
+      "permission": "PUBLIC_SCOPED",
+      "request": "session context",
+      "contract": "Create Cart token, rate-limited.",
+      "spec": "Online-Store-Commerce/carts-checkout.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/storefront/:storeSlug/carts/:cartToken",
+      "controller": "CommerceCartsController",
+      "permission": "PUBLIC_TOKEN",
+      "request": "cartToken",
+      "contract": "Authorized cart view, recomputed prices.",
+      "spec": "Online-Store-Commerce/carts-checkout.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/storefront/:storeSlug/carts/:cartToken/items",
+      "controller": "CommerceCartsController",
+      "permission": "PUBLIC_TOKEN",
+      "request": "productId,variantId?,quantity,options?",
+      "contract": "Validate published/sellable product; add.",
+      "spec": "Online-Store-Commerce/carts-checkout.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/storefront/:storeSlug/carts/:cartToken/items/:itemId",
+      "controller": "CommerceCartsController",
+      "permission": "PUBLIC_TOKEN",
+      "request": "quantity,expectedVersion",
+      "contract": "Recalculate no client unit price.",
+      "spec": "Online-Store-Commerce/carts-checkout.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/storefront/:storeSlug/carts/:cartToken/items/:itemId",
+      "controller": "CommerceCartsController",
+      "permission": "PUBLIC_TOKEN",
+      "request": "itemId",
+      "contract": "Remove only own item.",
+      "spec": "Online-Store-Commerce/carts-checkout.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/storefront/:storeSlug/checkout-sessions",
+      "controller": "CommerceCheckoutController",
+      "permission": "PUBLIC_TOKEN",
+      "request": "cartToken,customerInfo,shippingInfo,payerType",
+      "contract": "Create priced checkout draft.",
+      "spec": "Online-Store-Commerce/carts-checkout.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/storefront/:storeSlug/checkout-sessions/:sessionId/quote",
+      "controller": "CommerceCheckoutController",
+      "permission": "PUBLIC_TOKEN",
+      "request": "deliveryMethodId?,couponCodes[],paymentMethodId",
+      "contract": "Recalculate discounts/taxes/delivery and issue short-lived quoteHash.",
+      "spec": "Online-Store-Commerce/carts-checkout.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/storefront/:storeSlug/checkout-sessions/:sessionId/place-order",
+      "controller": "CommerceCheckoutController",
+      "permission": "PUBLIC_TOKEN",
+      "request": "quoteHash,consents[],Idempotency-Key",
+      "contract": "Revalidate stock/price/tax/coupon, one Order, inventory reservation/compensation.",
+      "spec": "Online-Store-Commerce/carts-checkout.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/storefront/:storeSlug/checkout-sessions/:sessionId/status",
+      "controller": "CommerceCheckoutController",
+      "permission": "PUBLIC_TOKEN",
+      "request": "sessionToken",
+      "contract": "Safe public status only, never CRM private data.",
+      "spec": "Online-Store-Commerce/carts-checkout.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/commerce/orders",
+      "controller": "CommerceOrdersController",
+      "permission": "COMMERCE.ORDER_VIEW",
+      "request": "page,limit,status,paymentStatus,storeId,search",
+      "contract": "Scope to Store/permissions.",
+      "spec": "Online-Store-Commerce/customers-orders.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/commerce/orders/:orderId",
+      "controller": "CommerceOrdersController",
+      "permission": "COMMERCE.ORDER_VIEW",
+      "request": "orderId",
+      "contract": "Immutable snapshot, payment/fulfillment projections, status history.",
+      "spec": "Online-Store-Commerce/customers-orders.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/commerce/orders/:orderId",
+      "controller": "CommerceOrdersController",
+      "permission": "COMMERCE.ORDER_UPDATE",
+      "request": "expectedVersion,allowedFulfillmentNote?,customerBinding?",
+      "contract": "Controlled editable business metadata, no line-price rewrite.",
+      "spec": "Online-Store-Commerce/customers-orders.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/commerce/orders/:orderId/cancel",
+      "controller": "CommerceOrdersController",
+      "permission": "COMMERCE.ORDER_CANCEL",
+      "request": "expectedVersion,reason,Idempotency-Key",
+      "contract": "Check shipment/payment/reservation policy, start cancellation saga.",
+      "spec": "Online-Store-Commerce/customers-orders.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/commerce/orders/:orderId/archive",
+      "controller": "CommerceOrdersController",
+      "permission": "COMMERCE.ORDER_MANAGE",
+      "request": "expectedVersion",
+      "contract": "Historical archive not physical delete.",
+      "spec": "Online-Store-Commerce/customers-orders.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/commerce/orders/:orderId/history",
+      "controller": "CommerceOrdersController",
+      "permission": "COMMERCE.ORDER_VIEW",
+      "request": "page,limit",
+      "contract": "Chronological history and audit refs.",
+      "spec": "Online-Store-Commerce/customers-orders.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/commerce/customers",
+      "controller": "CommerceCustomersController",
+      "permission": "COMMERCE.CUSTOMER_VIEW",
+      "request": "page,limit,search",
+      "contract": "Customer Account list scoped, PII controls.",
+      "spec": "Online-Store-Commerce/customers-orders.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/commerce/customers/:customerId/orders",
+      "controller": "CommerceOrdersController",
+      "permission": "COMMERCE.CUSTOMER_VIEW",
+      "request": "page,limit",
+      "contract": "Authorized customer purchase history.",
+      "spec": "Online-Store-Commerce/customers-orders.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/commerce/customers/:customerId/crm-link",
+      "controller": "CommerceCustomersController",
+      "permission": "COMMERCE.CUSTOMER_MANAGE",
+      "request": "contactId?,companyId?,resolutionReason",
+      "contract": "Shared dedupe resolver and audit.",
+      "spec": "Online-Store-Commerce/customers-orders.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/storefront/:storeSlug/account/orders",
+      "controller": "CommerceCustomersController",
+      "permission": "CUSTOMER_SESSION",
+      "request": "page,limit",
+      "contract": "Customer own Orders only, no Workspace access.",
+      "spec": "Online-Store-Commerce/customers-orders.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/storefront/:storeSlug/orders/:orderId/reorder",
+      "controller": "CommerceOrdersController",
+      "permission": "CUSTOMER_SESSION",
+      "request": "orderId",
+      "contract": "New cart with current sellable products/prices, not cloned amounts.",
+      "spec": "Online-Store-Commerce/customers-orders.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/commerce/stores/:storeId/promotions",
+      "controller": "CommercePromotionsController",
+      "permission": "COMMERCE.PROMOTION_VIEW",
+      "request": "page,limit",
+      "contract": "Store promotions list.",
+      "spec": "Online-Store-Commerce/pricing-discounts-taxes.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/commerce/stores/:storeId/promotions",
+      "controller": "CommercePromotionsController",
+      "permission": "COMMERCE.PROMOTION_MANAGE",
+      "request": "code,kind,value,eligibility,combinable,priority,limits",
+      "contract": "Create rule.",
+      "spec": "Online-Store-Commerce/pricing-discounts-taxes.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/commerce/promotions/:promotionId",
+      "controller": "CommercePromotionsController",
+      "permission": "COMMERCE.PROMOTION_MANAGE",
+      "request": "expectedVersion,config changes",
+      "contract": "Versioned adjustment, no historical Order rewrite.",
+      "spec": "Online-Store-Commerce/pricing-discounts-taxes.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/commerce/promotions/:promotionId/coupons",
+      "controller": "CommercePromotionsController",
+      "permission": "COMMERCE.PROMOTION_MANAGE",
+      "request": "code,usageLimit,expiresAt",
+      "contract": "Create coupon.",
+      "spec": "Online-Store-Commerce/pricing-discounts-taxes.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/storefront/:storeSlug/coupons/validate",
+      "controller": "CommercePromotionsController",
+      "permission": "PUBLIC_SCOPED",
+      "request": "checkoutSessionToken,code",
+      "contract": "Rate-limited eligibility response, no private rules.",
+      "spec": "Online-Store-Commerce/pricing-discounts-taxes.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/commerce/stores/:storeId/tax-rules",
+      "controller": "CommerceTaxRulesController",
+      "permission": "COMMERCE.TAX_VIEW",
+      "request": "page,limit",
+      "contract": "Admin tax config.",
+      "spec": "Online-Store-Commerce/pricing-discounts-taxes.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/commerce/stores/:storeId/tax-rules",
+      "controller": "CommerceTaxRulesController",
+      "permission": "COMMERCE.TAX_MANAGE",
+      "request": "region,rate,priceBasis,effectiveFrom",
+      "contract": "Add effective-dated rule.",
+      "spec": "Online-Store-Commerce/pricing-discounts-taxes.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/commerce/tax-rules/:taxRuleId",
+      "controller": "CommerceTaxRulesController",
+      "permission": "COMMERCE.TAX_MANAGE",
+      "request": "expectedVersion,effectiveTo?",
+      "contract": "Future-dated edits, preserve history.",
+      "spec": "Online-Store-Commerce/pricing-discounts-taxes.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/commerce/orders/:orderId/payments",
+      "controller": "CommercePaymentsController",
+      "permission": "COMMERCE.PAYMENT_VIEW",
+      "request": "orderId",
+      "contract": "Allocated Payment ledger.",
+      "spec": "Online-Store-Commerce/payments.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/commerce/orders/:orderId/payments",
+      "controller": "CommercePaymentsController",
+      "permission": "COMMERCE.PAYMENT_MANAGE",
+      "request": "methodId,amount,mode SALE|AUTHORIZE,Idempotency-Key",
+      "contract": "Payment attempt via shared provider adapter.",
+      "spec": "Online-Store-Commerce/payments.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/commerce/payments/:paymentId/capture",
+      "controller": "CommercePaymentsController",
+      "permission": "COMMERCE.PAYMENT_CAPTURE",
+      "request": "amount,Idempotency-Key",
+      "contract": "Capture up to remaining authorized amount.",
+      "spec": "Online-Store-Commerce/payments.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/commerce/payments/:paymentId/void",
+      "controller": "CommercePaymentsController",
+      "permission": "COMMERCE.PAYMENT_MANAGE",
+      "request": "reason,Idempotency-Key",
+      "contract": "Void uncaptured authorization.",
+      "spec": "Online-Store-Commerce/payments.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/commerce/payments/:paymentId",
+      "controller": "CommercePaymentsController",
+      "permission": "COMMERCE.PAYMENT_VIEW",
+      "request": "paymentId",
+      "contract": "State/attempts sanitized.",
+      "spec": "Online-Store-Commerce/payments.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/commerce/payment-providers/:providerCode/webhook",
+      "controller": "CommercePaymentsController",
+      "permission": "PROVIDER_SIGNED",
+      "request": "provider headers,raw verified body",
+      "contract": "Verify signature & dedupe, process asynchronously.",
+      "spec": "Online-Store-Commerce/payments.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/commerce/payment-disputes",
+      "controller": "CommerceDisputesController",
+      "permission": "COMMERCE.DISPUTE_VIEW",
+      "request": "page,limit,status",
+      "contract": "Authorized disputes.",
+      "spec": "Online-Store-Commerce/payments.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/commerce/payment-disputes/:disputeId",
+      "controller": "CommerceDisputesController",
+      "permission": "COMMERCE.DISPUTE_VIEW",
+      "request": "disputeId",
+      "contract": "State and evidence status, no card secrets.",
+      "spec": "Online-Store-Commerce/payments.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/commerce/stores/:storeId/delivery-services",
+      "controller": "CommerceDeliveryController",
+      "permission": "COMMERCE.DELIVERY_MANAGE",
+      "request": "storeId",
+      "contract": "Config and rates.",
+      "spec": "Online-Store-Commerce/delivery-shipments.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/commerce/stores/:storeId/delivery-services",
+      "controller": "CommerceDeliveryController",
+      "permission": "COMMERCE.DELIVERY_MANAGE",
+      "request": "type,conditions,rates,providerConnectionId?",
+      "contract": "Add adapter config.",
+      "spec": "Online-Store-Commerce/delivery-shipments.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/commerce/orders/:orderId/shipments",
+      "controller": "CommerceShipmentsController",
+      "permission": "COMMERCE.SHIPMENT_VIEW",
+      "request": "orderId",
+      "contract": "Linked fulfillment legs.",
+      "spec": "Online-Store-Commerce/delivery-shipments.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/commerce/orders/:orderId/shipments",
+      "controller": "CommerceShipmentsController",
+      "permission": "COMMERCE.SHIPMENT_MANAGE",
+      "request": "warehouseId,deliveryServiceId,items[{orderLineId,quantity}],Idempotency-Key",
+      "contract": "Create partial shipment allocation.",
+      "spec": "Online-Store-Commerce/delivery-shipments.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/commerce/shipments/:shipmentId",
+      "controller": "CommerceShipmentsController",
+      "permission": "COMMERCE.SHIPMENT_VIEW",
+      "request": "shipmentId",
+      "contract": "Tracking/historical events.",
+      "spec": "Online-Store-Commerce/delivery-shipments.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/commerce/shipments/:shipmentId",
+      "controller": "CommerceShipmentsController",
+      "permission": "COMMERCE.SHIPMENT_MANAGE",
+      "request": "expectedVersion,trackingInfo?,deliveryChoice?",
+      "contract": "Before irreversible dispatch only.",
+      "spec": "Online-Store-Commerce/delivery-shipments.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/commerce/shipments/:shipmentId/ship",
+      "controller": "CommerceShipmentsController",
+      "permission": "COMMERCE.SHIPMENT_SHIP",
+      "request": "expectedVersion,Idempotency-Key",
+      "contract": "Process linked Inventory sale then mark SHIPPED atomically/or saga.",
+      "spec": "Online-Store-Commerce/delivery-shipments.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/commerce/shipments/:shipmentId/deliver",
+      "controller": "CommerceShipmentsController",
+      "permission": "COMMERCE.SHIPMENT_MANAGE",
+      "request": "trackingEvidence,Idempotency-Key",
+      "contract": "Authorized delivery state transition.",
+      "spec": "Online-Store-Commerce/delivery-shipments.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/commerce/shipments/:shipmentId/cancel",
+      "controller": "CommerceShipmentsController",
+      "permission": "COMMERCE.SHIPMENT_MANAGE",
+      "request": "reason,Idempotency-Key",
+      "contract": "Only pre-dispatch; release allocation appropriately.",
+      "spec": "Online-Store-Commerce/delivery-shipments.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/commerce/delivery-providers/:providerCode/webhook",
+      "controller": "CommerceDeliveryController",
+      "permission": "PROVIDER_SIGNED",
+      "request": "provider headers,raw verified body",
+      "contract": "Normalize statuses idempotently.",
+      "spec": "Online-Store-Commerce/delivery-shipments.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/commerce/orders/:orderId/returns",
+      "controller": "CommerceReturnsController",
+      "permission": "COMMERCE.RETURN_CREATE",
+      "request": "items[{orderLineId,quantity}],reason,Idempotency-Key",
+      "contract": "Validate delivered quantities and policy.",
+      "spec": "Online-Store-Commerce/returns-refunds.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/commerce/returns",
+      "controller": "CommerceReturnsController",
+      "permission": "COMMERCE.RETURN_VIEW",
+      "request": "page,limit,status,storeId",
+      "contract": "Authorized return queue.",
+      "spec": "Online-Store-Commerce/returns-refunds.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/commerce/returns/:returnId",
+      "controller": "CommerceReturnsController",
+      "permission": "COMMERCE.RETURN_VIEW",
+      "request": "returnId",
+      "contract": "Return lines/disposition/history.",
+      "spec": "Online-Store-Commerce/returns-refunds.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/commerce/returns/:returnId/approve",
+      "controller": "CommerceReturnsController",
+      "permission": "COMMERCE.RETURN_APPROVE",
+      "request": "expectedVersion,decision,reason?",
+      "contract": "Approve/reject per policy.",
+      "spec": "Online-Store-Commerce/returns-refunds.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/commerce/returns/:returnId/receive",
+      "controller": "CommerceReturnsController",
+      "permission": "COMMERCE.RETURN_RECEIVE",
+      "request": "receivedLines,Idempotency-Key",
+      "contract": "Record physical receipt pending inspection.",
+      "spec": "Online-Store-Commerce/returns-refunds.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/commerce/returns/:returnId/inspect",
+      "controller": "CommerceReturnsController",
+      "permission": "COMMERCE.RETURN_INSPECT",
+      "request": "dispositions[],Idempotency-Key",
+      "contract": "Process correct Inventory return/segregation document.",
+      "spec": "Online-Store-Commerce/returns-refunds.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/commerce/orders/:orderId/refunds",
+      "controller": "CommerceRefundsController",
+      "permission": "COMMERCE.REFUND_CREATE",
+      "request": "paymentId,amount,reason,returnId?,Idempotency-Key",
+      "contract": "Create financial refund request, independent of Return.",
+      "spec": "Online-Store-Commerce/returns-refunds.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/commerce/refunds/:refundId/approve",
+      "controller": "CommerceRefundsController",
+      "permission": "COMMERCE.REFUND_APPROVE",
+      "request": "expectedVersion,decision,reason",
+      "contract": "Financial approval based on threshold.",
+      "spec": "Online-Store-Commerce/returns-refunds.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/commerce/refunds/:refundId/process",
+      "controller": "CommerceRefundsController",
+      "permission": "COMMERCE.REFUND_PROCESS",
+      "request": "expectedVersion,Idempotency-Key",
+      "contract": "Provider refund with idempotency and reconciled state.",
+      "spec": "Online-Store-Commerce/returns-refunds.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/commerce/refunds/:refundId",
+      "controller": "CommerceRefundsController",
+      "permission": "COMMERCE.REFUND_VIEW",
+      "request": "refundId",
+      "contract": "Approved amount/provider transaction, sanitized.",
+      "spec": "Online-Store-Commerce/returns-refunds.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/commerce/orders/:orderId/integrations",
+      "controller": "CommerceIntegrationsController",
+      "permission": "COMMERCE.ORDER_VIEW",
+      "request": "orderId",
+      "contract": "CRM bindings/Reservation/automation status.",
+      "spec": "Online-Store-Commerce/crm-inventory-automation.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/commerce/orders/:orderId/crm-sync",
+      "controller": "CommerceIntegrationsController",
+      "permission": "COMMERCE.ORDER_MANAGE",
+      "request": "Idempotency-Key",
+      "contract": "Reconcile Contact/Company/Deal binding using safe resolver.",
+      "spec": "Online-Store-Commerce/crm-inventory-automation.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/commerce/stores/:storeId/automation-settings",
+      "controller": "CommerceIntegrationsController",
+      "permission": "COMMERCE.STORE_MANAGE",
+      "request": "storeId",
+      "contract": "Abandoned period/default Deal policy.",
+      "spec": "Online-Store-Commerce/crm-inventory-automation.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/commerce/stores/:storeId/automation-settings",
+      "controller": "CommerceIntegrationsController",
+      "permission": "COMMERCE.STORE_MANAGE",
+      "request": "expectedVersion,abandonedAfterMinutes?,dealCreationPolicy?",
+      "contract": "Update future events without rewriting prior orders.",
+      "spec": "Online-Store-Commerce/crm-inventory-automation.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/commerce/orders/:orderId/reconcile",
+      "controller": "CommerceIntegrationsController",
+      "permission": "COMMERCE.ORDER_MANAGE",
+      "request": "Idempotency-Key",
+      "contract": "Queue cross-domain consistency check; return 202 jobId.",
+      "spec": "Online-Store-Commerce/crm-inventory-automation.md",
+      "group": "Online-Store-Commerce"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/commerce/reconciliation-jobs/:jobId",
+      "controller": "CommerceIntegrationsController",
+      "permission": "COMMERCE.ORDER_MANAGE",
+      "request": "jobId",
+      "contract": "Observable stock/payment/deal mismatches.",
+      "spec": "Online-Store-Commerce/crm-inventory-automation.md",
+      "group": "Online-Store-Commerce"
+    }
+  ]
+}

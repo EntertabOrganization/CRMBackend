@@ -27,6 +27,24 @@ export class FileService {
       other.name.trim().normalize('NFC').toLowerCase() === name.trim().normalize('NFC').toLowerCase())) throw new AppError('FILE_NAME_CONFLICT', 'A File with this name already exists in the destination.', 409);
   }
   private extension(name: string) { const index = name.lastIndexOf('.'); return index > 0 ? name.slice(index + 1).toLowerCase() : ''; }
+  /** Publishes an already processed immutable artifact through the same folder/quota/name authority as other Files. */
+  publishArtifact(actor: ActorContext, input: { folderId: string; name: string; mimeType: string; objectKey: string; checksum: string; size: number }) {
+    const folder = this.storages.folderAuthority(actor, input.folderId, 'file.create', 2);
+    if (!input.name || input.name.length > 500 || /[\\/\u0000-\u001f\u007f]/.test(input.name)) throw new AppError('VALIDATION_ERROR', 'Artifact filename is invalid.', 400);
+    this.quota(actor.workspaceId, input.size, input.size);
+    const now = this.support.now();
+    const file: DriveFile = { id: this.support.id(), workspaceId: actor.workspaceId, storageId: folder.storageId, folderId: folder.id,
+      name: input.name, extension: this.extension(input.name), mimeType: input.mimeType, currentVersionId: null, status: 'ACTIVE',
+      sizeBytesCurrent: input.size, version: 1, trashedAt: null, purgeAfter: null, originalFolderId: null, statusBeforeTrash: null,
+      publicShareVersion: 1, createdAt: now, updatedAt: now };
+    this.name(file, folder.id, file.name);
+    const version: DriveFileVersion = { id: this.support.id(), workspaceId: actor.workspaceId, fileId: file.id, versionNumber: 1,
+      objectKey: input.objectKey, sizeBytes: input.size, checksum: input.checksum, mimeType: input.mimeType,
+      createdByUserId: actor.user.id, createdAt: now, processedAt: now, scanStatus: 'CLEAN' };
+    file.currentVersionId = version.id;
+    this.state.driveFiles.push(file); this.state.driveFileVersions.push(version); this.record(actor, file, 'CREATED');
+    return { file, version };
+  }
   quota(workspaceId: string, growth: number, size?: number, excludeSessionId?: string) {
     const workspace = this.state.workspaces.find(row => row.id === workspaceId)!;
     const limit = (setting: string, capability: string, platform: number) => {

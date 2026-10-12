@@ -33,6 +33,16 @@ export class FileDeliveryService {
     new Body(Object.fromEntries(query)).only([]);
     return this.grant(actor, fileId);
   }
+  /** Owning-domain read for bounded background processing; the same content and binding authority applies. */
+  async readForProcessing(actor: ActorContext, fileId: string, maxBytes: number) {
+    if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > 50_000_000)
+      throw new AppError('FILE_TOO_LARGE', 'Invalid processing content limit.', 413);
+    const { file, version } = this.content(actor, fileId);
+    if (version.sizeBytes > maxBytes) throw new AppError('FILE_TOO_LARGE', 'Source File exceeds the processing limit.', 413);
+    const content = await this.objects().read(version.objectKey);
+    if (content.byteLength > maxBytes) throw new AppError('FILE_TOO_LARGE', 'Source File exceeds the processing limit.', 413);
+    return { fileId: file.id, versionId: version.id, content, mimeType: version.mimeType, checksum: version.checksum };
+  }
   async issuePublic(token: string, type: 'FILE' | 'FOLDER', query: URLSearchParams, password: string | null, clientKey = 'unknown') {
     new Body(Object.fromEntries(query)).only(type === 'FILE' ? [] : ['fileId']);
     const { row, actor, fileId } = await this.publicLinks.authorizeDownload(token, type, password, query.get('fileId') ?? undefined);

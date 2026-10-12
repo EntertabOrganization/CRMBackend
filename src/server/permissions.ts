@@ -1,6 +1,8 @@
 import type { Permission } from './domain';
+import processPackPermissions from './process-platform/permission-catalog.json';
 
 export const PERMISSION_CATALOG = [
+  ...processPackPermissions,
   'workspace.read',
   'workspace.create',
   'workspace.update',
@@ -134,7 +136,8 @@ export type PermissionKey = (typeof PERMISSION_CATALOG)[number];
 
 export function catalogPermissions(): Permission[] {
   return PERMISSION_CATALOG.map((key) => {
-    const [resource, action] = key.split('.');
+    const [resource, ...actionParts] = key.split('.');
+    const action = actionParts.join('.');
     return {
       id: key,
       key,

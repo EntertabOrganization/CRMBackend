@@ -13,6 +13,14 @@ type RateLimitBucket = {
 };
 
 const buckets = new Map<string, RateLimitBucket>();
+let lastBucketCleanup = 0;
+const MAX_BUCKETS = 50000;
+export const processRateLimitPolicies = {
+  read: { scope: 'process.read',limit: 600,windowMs: 60000 },
+  write: { scope: 'process.write',limit: 120,windowMs: 60000 },
+  callbackGlobal: { scope: 'workflow.callback-global',limit: 1200,windowMs: 60000 },
+  callback: { scope: 'workflow.callback',limit: 60,windowMs: 60000 },
+} satisfies Record<string,RateLimitPolicy>;
 
 export const authRateLimitPolicies = {
   signup: { scope: 'auth.signup', limit: 10, windowMs: 60 * 60 * 1000 },
@@ -42,10 +50,15 @@ export function rateLimitUser(userId: string, policy: keyof typeof crmRateLimitP
 }
 
 export function checkRateLimit(identifier: string, policy: RateLimitPolicy, now = Date.now()) {
+  if (now-lastBucketCleanup>60000 && buckets.size>10000) {
+    for (const [key,bucket] of buckets) if (bucket.resetAt<=now) buckets.delete(key);
+    lastBucketCleanup=now;
+  }
   const key = `${policy.scope}:${identifier}`;
   const bucket = buckets.get(key);
 
   if (!bucket || bucket.resetAt <= now) {
+    if (!bucket && buckets.size>=MAX_BUCKETS) throw tooManyRequests();
     buckets.set(key, { count: 1, resetAt: now + policy.windowMs });
     return;
   }

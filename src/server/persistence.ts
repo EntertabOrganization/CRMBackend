@@ -325,7 +325,7 @@ const DELETE_BEFORE_UPSERT = new Set<keyof DbState>([
   'idempotencyRecords',
 ]);
 
-export async function hydrateState(client: PrismaClient): Promise<DbState> {
+export async function hydrateState(client: PrismaClient | Prisma.TransactionClient): Promise<DbState> {
   const [
     users,
     authIdentities,

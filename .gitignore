@@ -10,3 +10,5 @@ coverage/
 .env*.local
 .local-postgres/
 .local-file-objects/
+.process-pack-test-db/
+.process-pack-test-env.env

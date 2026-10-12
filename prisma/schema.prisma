@@ -7,6 +7,1535 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model SpaEntityType {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  code String
+  name String
+  pluralName String @map("plural_name")
+  description String?
+  placement String
+  status String @default("DRAFT")
+  schemaVersion Int @default(0) @map("schema_version")
+  createdByUserId String @map("created_by_user_id") @db.Uuid
+  version Int @default(1)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, code])
+  @@index([workspaceId, status, placement])
+  @@map("spa_entity_types")
+}
+
+model SpaCapability {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  typeId String @map("type_id") @db.Uuid
+  key String @map("capability_key")
+  enabled Boolean
+  configuration Json @default("{}")
+  @@unique([workspaceId, typeId, key])
+  @@map("spa_capabilities")
+}
+
+model SpaSchemaDraft {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  typeId String @map("type_id") @db.Uuid
+  version Int @default(1)
+  snapshot Json @default("{}")
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  @@unique([workspaceId, typeId])
+  @@unique([workspaceId, id])
+  @@map("spa_schema_drafts")
+}
+
+model SpaSchemaVersion {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  typeId String @map("type_id") @db.Uuid
+  versionNumber Int @map("version_number")
+  snapshot Json
+  checksum String
+  publishedBy String @map("published_by") @db.Uuid
+  publishedAt DateTime @default(now()) @map("published_at") @db.Timestamptz(6)
+  @@unique([workspaceId, typeId, versionNumber])
+  @@unique([workspaceId, id])
+  @@map("spa_schema_versions")
+}
+
+model SpaFieldDefinition {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  typeId String @map("type_id") @db.Uuid
+  code String
+  name String
+  fieldType String @map("field_type")
+  isRequired Boolean @default(false) @map("is_required")
+  isMultiple Boolean @default(false) @map("is_multiple")
+  isActive Boolean @default(true) @map("is_active")
+  isSearchable Boolean @default(false) @map("is_searchable")
+  defaultValue Json? @map("default_json")
+  validation Json @default("{}")
+  visibility Json @default("{}")
+  options Json @default("[]")
+  version Int @default(1)
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, typeId, code])
+  @@map("spa_field_definitions")
+}
+
+model SpaPipeline {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  typeId String @map("type_id") @db.Uuid
+  code String
+  name String
+  isDefault Boolean @default(false) @map("is_default")
+  sortOrder Int @default(0) @map("sort_order")
+  status String @default("ACTIVE")
+  version Int @default(1)
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, typeId, code])
+  @@map("spa_pipelines")
+}
+
+model SpaStage {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  pipelineId String @map("pipeline_id") @db.Uuid
+  code String
+  name String
+  semantic String @default("PROGRESS")
+  isDefault Boolean @default(false) @map("is_default")
+  sortOrder Int @default(0) @map("sort_order")
+  status String @default("ACTIVE")
+  requirements Json @default("[]")
+  transitionRules Json @default("[]") @map("transition_rules")
+  version Int @default(1)
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, pipelineId, code])
+  @@unique([workspaceId, pipelineId, id])
+  @@map("spa_stages")
+}
+
+model SpaItem {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  typeId String @map("type_id") @db.Uuid
+  itemNumber String @map("item_number")
+  title String
+  assignedUserId String @map("assigned_user_id") @db.Uuid
+  companyId String? @map("company_id") @db.Uuid
+  pipelineId String? @map("pipeline_id") @db.Uuid
+  stageId String? @map("stage_id") @db.Uuid
+  status String @default("ACTIVE")
+  version Int @default(1)
+  schemaVersion Int @map("schema_version")
+  createdByUserId String @map("created_by_user_id") @db.Uuid
+  updatedByUserId String @map("updated_by_user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  trashedAt DateTime? @map("trashed_at") @db.Timestamptz(6)
+  purgeAfter DateTime? @map("purge_after") @db.Timestamptz(6)
+  closedAt DateTime? @map("closed_at") @db.Timestamptz(6)
+  legalHold Boolean @default(false) @map("legal_hold")
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, typeId, itemNumber])
+  @@index([workspaceId, typeId, status, assignedUserId])
+  @@map("spa_items")
+}
+
+model SpaItemValue {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  itemId String @map("item_id") @db.Uuid
+  fieldId String @map("field_id") @db.Uuid
+  valueText String? @map("value_text")
+  valueNumber Decimal? @map("value_number") @db.Decimal(24,6)
+  valueDate DateTime? @map("value_date") @db.Timestamptz(6)
+  valueBoolean Boolean? @map("value_boolean")
+  valueJson Json? @map("value_json")
+  schemaVersion Int @map("schema_version")
+  @@unique([workspaceId, itemId, fieldId])
+  @@map("spa_item_field_values")
+}
+
+model SpaItemObserver {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  itemId String @map("item_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  @@unique([workspaceId, itemId, userId])
+  @@map("spa_item_observers")
+}
+
+model SpaItemContact {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  itemId String @map("item_id") @db.Uuid
+  contactId String @map("contact_id") @db.Uuid
+  @@unique([workspaceId, itemId, contactId])
+  @@map("spa_item_contacts")
+}
+
+model SpaHistory {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  typeId String @map("type_id") @db.Uuid
+  itemId String? @map("item_id") @db.Uuid
+  actorUserId String @map("actor_user_id") @db.Uuid
+  action String
+  changes Json
+  occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  @@index([workspaceId, typeId, itemId, occurredAt])
+  @@map("spa_history")
+}
+
+model SpaNumberingScheme {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  typeId String @map("type_id") @db.Uuid
+  prefixTemplate String @map("prefix_template")
+  padding Int @default(6)
+  resetPolicy String @default("NEVER") @map("reset_policy")
+  version Int @default(1)
+  @@unique([workspaceId, typeId])
+  @@map("spa_numbering_schemes")
+}
+
+model SpaNumberingSequence {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  typeId String @map("type_id") @db.Uuid
+  periodKey String @map("period_key")
+  nextValue BigInt @default(1) @map("next_value")
+  @@unique([workspaceId, typeId, periodKey])
+  @@map("spa_numbering_sequences")
+}
+
+model SpaSchemaMigrationJob {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  typeId String @map("type_id") @db.Uuid
+  fieldId String @map("field_id") @db.Uuid
+  oldVersion Int @map("old_version")
+  draftId String @map("new_draft_id") @db.Uuid
+  draftVersion Int @map("draft_version")
+  targetType String @map("target_type")
+  fieldMapping Json @map("field_mapping_json")
+  conversionFailures Json @default("[]") @map("conversion_failures")
+  processedCount Int @default(0) @map("processed_count")
+  status String @default("QUEUED")
+  createdByUserId String @map("created_by_user_id") @db.Uuid
+  claimToken String? @map("claim_token") @db.Uuid
+  leaseExpiresAt DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  correlationId String @default(uuid()) @map("correlation_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
+  appliedAt DateTime? @map("applied_at") @db.Timestamptz(6)
+  @@unique([workspaceId, id])
+  @@index([status, createdAt])
+  @@map("spa_schema_migration_jobs")
+}
+
+model SpaSchemaMigrationValue {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  jobId String @map("job_id") @db.Uuid
+  itemId String @map("item_id") @db.Uuid
+  sourceHash String @map("source_hash")
+  sourceItemVersion Int @map("source_item_version")
+  originalValue Json @map("original_value")
+  convertedValue Json @map("converted_value")
+  @@unique([workspaceId, jobId, itemId])
+  @@map("spa_schema_migration_values")
+}
+
+model SpaRecurrenceRule {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  typeId String @map("type_id") @db.Uuid
+  frequency String
+  timezone String
+  startsAt DateTime @map("starts_at") @db.Timestamptz(6)
+  endsAt DateTime? @map("ends_at") @db.Timestamptz(6)
+  interval Int @default(1)
+  byDay Json @default("[]") @map("by_day_json")
+  maxInstances Int? @map("max_instances")
+  customRule String? @map("custom_rule")
+  templatePayload Json @map("item_payload_json")
+  createdByUserId String @map("created_by_user_id") @db.Uuid
+  isActive Boolean @default(true) @map("is_active")
+  version Int @default(1)
+  nextScheduledFor DateTime? @map("next_scheduled_for") @db.Timestamptz(6)
+  nextRetryAt DateTime? @map("next_retry_at") @db.Timestamptz(6)
+  lastErrorCode String? @map("last_error_code")
+  failureCount Int @default(0) @map("failure_count")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([workspaceId, id])
+  @@index([isActive, nextScheduledFor])
+  @@map("spa_recurrence_rules")
+}
+
+model SpaRecurrenceInstance {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  ruleId String @map("rule_id") @db.Uuid
+  scheduledFor DateTime @map("scheduled_for") @db.Timestamptz(6)
+  itemId String @map("item_id") @db.Uuid
+  ruleVersion Int @map("rule_version")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([workspaceId, ruleId, scheduledFor])
+  @@map("spa_recurrence_instances")
+}
+
+model SpaItemRelation {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  typeId String @map("type_id") @db.Uuid
+  sourceItemId String @map("source_item_id") @db.Uuid
+  definitionId String @map("relation_definition_id") @db.Uuid
+  targetType String @map("target_type")
+  targetId String @map("target_id") @db.Uuid
+  isPrimary Boolean @default(false) @map("is_primary")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, sourceItemId, definitionId, targetType, targetId])
+  @@index([workspaceId, targetType, targetId])
+  @@map("spa_item_relations")
+}
+
+model SpaUserViewPreference {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  typeId String @map("type_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  viewType String @map("view_type")
+  preferences Json
+  version Int @default(1)
+  @@unique([workspaceId, typeId, userId, viewType])
+  @@map("spa_user_view_preferences")
+}
+
+model SpaImportJob {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  typeId String @map("type_id") @db.Uuid
+  mode String
+  mapping Json @map("mapping_json")
+  sourceFileId String @map("source_file_id") @db.Uuid
+  sourceSystem String? @map("source_system")
+  externalKeyColumn String? @map("external_key_column")
+  sourceVersionId String? @map("source_version_id") @db.Uuid
+  createdByUserId String @map("created_by_user_id") @db.Uuid
+  status String @default("QUEUED")
+  cancelRequested Boolean @default(false) @map("cancel_requested")
+  totals Json @default("{}") @map("totals_json")
+  errorCode String? @map("error_code")
+  reportFileId String? @map("report_file_id") @db.Uuid
+  claimToken String? @map("claim_token") @db.Uuid
+  leaseExpiresAt DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  attempts Int @default(0)
+  nextAttemptAt DateTime @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  correlationId String @default(uuid()) @map("correlation_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([workspaceId, id])
+  @@index([status, nextAttemptAt])
+  @@map("spa_import_jobs")
+}
+
+model SpaImportRow {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  jobId String @map("job_id") @db.Uuid
+  rowNumber Int @map("row_number")
+  externalSource String? @map("external_source")
+  externalId String? @map("external_id")
+  status String
+  errorCodes Json @default("[]") @map("error_codes_json")
+  itemId String? @map("item_id") @db.Uuid
+  @@unique([workspaceId, jobId, rowNumber])
+  @@map("spa_import_rows")
+}
+
+model SpaItemExternalKey {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  typeId String @map("type_id") @db.Uuid
+  sourceSystem String @map("source_system")
+  externalId String @map("external_id")
+  itemId String? @map("item_id") @db.Uuid
+  tombstonedAt DateTime? @map("tombstoned_at") @db.Timestamptz(6)
+  @@unique([workspaceId, typeId, sourceSystem, externalId])
+  @@map("spa_item_external_keys")
+}
+
+model SpaExportJob {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  typeId String @map("type_id") @db.Uuid
+  scopeSnapshot Json @map("scope_snapshot_json")
+  requestedByUserId String @map("requested_by") @db.Uuid
+  status String @default("QUEUED")
+  downloadFileId String? @map("download_file_id") @db.Uuid
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  errorCode String? @map("error_code")
+  claimToken String? @map("claim_token") @db.Uuid
+  leaseExpiresAt DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  attempts Int @default(0)
+  nextAttemptAt DateTime @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  correlationId String @default(uuid()) @map("correlation_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([workspaceId, id])
+  @@index([status, nextAttemptAt])
+  @@map("spa_export_jobs")
+}
+
+model SpaPurgeJob {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  typeId String @map("type_id") @db.Uuid
+  itemId String @map("item_id") @db.Uuid
+  requestedByUserId String @map("requested_by") @db.Uuid
+  status String @default("QUEUED")
+  legalHoldCheckedAt DateTime? @map("legal_hold_checked_at") @db.Timestamptz(6)
+  attemptCount Int @default(0) @map("attempt_count")
+  claimToken String? @map("claim_token") @db.Uuid
+  leaseExpiresAt DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  errorCode String? @map("error_code")
+  correlationId String @default(uuid()) @map("correlation_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@index([status, createdAt])
+  @@map("spa_purge_jobs")
+}
+
+model WorkflowDefinition {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  code String
+  name String
+  type String
+  status String @default("DRAFT")
+  boundEntityType String @map("bound_entity_type")
+  boundEntityTypeId String? @map("bound_entity_type_id") @db.Uuid
+  currentVersionId String? @map("current_version_id") @db.Uuid
+  concurrencyMode String @default("ONE_PER_DEFINITION_PER_ENTITY") @map("concurrency_mode")
+  runAs String @default("STARTER") @map("run_as")
+  serviceAccountUserId String? @map("service_account_user_id") @db.Uuid
+  version Int @default(1)
+  createdByUserId String @map("created_by_user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,code])
+  @@index([workspaceId,status,boundEntityType])
+  @@map("workflow_definitions")
+}
+
+model WorkflowVersion {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  definitionId String @map("definition_id") @db.Uuid
+  versionNumber Int @map("version_number")
+  status String @default("DRAFT")
+  definition Json @default("{}") @map("definition_json")
+  checksum String?
+  revision Int @default(1)
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(6)
+  publishedByUserId String? @map("published_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,definitionId,id])
+  @@unique([workspaceId,definitionId,versionNumber])
+  @@map("workflow_versions")
+}
+
+model WorkflowNode {
+  id String @id @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  versionId String @map("version_id") @db.Uuid
+  nodeKey String @map("node_key")
+  type String
+  configuration Json @map("configuration_json")
+  positionX Float @map("position_x")
+  positionY Float @map("position_y")
+  @@unique([workspaceId,versionId,id])
+  @@unique([workspaceId,versionId,nodeKey])
+  @@map("workflow_nodes")
+}
+
+model WorkflowEdge {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  versionId String @map("version_id") @db.Uuid
+  fromNodeId String @map("from_node_id") @db.Uuid
+  toNodeId String @map("to_node_id") @db.Uuid
+  edgeType String @map("edge_type")
+  condition Json? @map("condition_json")
+  sortOrder Int @default(0) @map("sort_order")
+  @@unique([workspaceId,versionId,id])
+  @@index([workspaceId,versionId,fromNodeId])
+  @@map("workflow_edges")
+}
+
+model WorkflowTrigger {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  definitionId String @map("definition_id") @db.Uuid
+  type String
+  configuration Json @map("configuration_json")
+  enabled Boolean @default(true)
+  priority Int @default(0)
+  revision Int @default(1)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  nextScheduledAt DateTime? @map("next_scheduled_at") @db.Timestamptz(6)
+  nextAttemptAt DateTime? @map("next_attempt_at") @db.Timestamptz(6)
+  failureCount Int @default(0) @map("failure_count")
+  lastErrorCode String? @map("last_error_code")
+  @@unique([workspaceId,id])
+  @@index([enabled,nextScheduledAt])
+  @@map("workflow_triggers")
+}
+
+model WorkflowRuntimePolicy {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @unique @map("workspace_id") @db.Uuid
+  maxLoopIterations Int @default(1000) @map("max_loop_iterations")
+  maxNodeRuns Int @default(10000) @map("max_node_runs")
+  maxDepth Int @default(10) @map("max_depth")
+  maxLifetimeDays Int @default(365) @map("max_lifetime_days")
+  maxConcurrentExecutions Int @default(100) @map("max_concurrent_executions")
+  retentionDays Int @default(365) @map("retention_days")
+  version Int @default(1)
+  @@map("workflow_runtime_policies")
+}
+
+model WorkflowExecution {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  definitionId String @map("definition_id") @db.Uuid
+  versionId String @map("version_id") @db.Uuid
+  snapshot Json
+  entityType String @map("entity_type")
+  entityId String @map("entity_id") @db.Uuid
+  runAs String @map("run_as")
+  concurrencyMode String @map("concurrency_mode")
+  concurrencyKey String? @map("concurrency_key")
+  executionUserId String @map("execution_user_id") @db.Uuid
+  startedByType String @default("USER") @map("started_by_type")
+  startedByUserId String @map("started_by_id") @db.Uuid
+  parameters Json
+  variables Json @default("{}")
+  status String @default("QUEUED")
+  resultCode String? @map("result_code")
+  result Json? @map("result_json")
+  parentExecutionId String? @map("parent_execution_id") @db.Uuid
+  depth Int @default(0)
+  ancestry Json @default("[]")
+  legalHold Boolean @default(false) @map("legal_hold")
+  version Int @default(1)
+  startedAt DateTime @default(now()) @map("started_at") @db.Timestamptz(6)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  @@unique([workspaceId,id])
+  @@index([workspaceId,entityType,entityId,status])
+  @@index([workspaceId,definitionId,status])
+  @@map("workflow_executions")
+}
+
+model WorkflowEntityLock {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  entityType String @map("entity_type")
+  entityId String @map("entity_id") @db.Uuid
+  lockScope String @map("lock_scope")
+  executionId String @map("execution_id") @db.Uuid
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  leasedBy String? @map("leased_by") @db.Uuid
+  @@unique([workspaceId,entityType,entityId,lockScope])
+  @@map("workflow_entity_locks")
+}
+
+model WorkflowExecutionToken {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  executionId String @map("execution_id") @db.Uuid
+  branchKey String @map("branch_key")
+  nodeKey String @map("node_key")
+  activationKey String @map("activation_key")
+  iterationNumber Int @default(0) @map("iteration_number")
+  loopState Json @default("{}") @map("loop_state")
+  status String @default("READY")
+  joinGroupId String? @map("join_group_id") @db.Uuid
+  version Int @default(1)
+  availableAt DateTime @default(now()) @map("available_at") @db.Timestamptz(6)
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,executionId,activationKey])
+  @@index([status,availableAt])
+  @@map("workflow_execution_tokens")
+}
+
+model WorkflowNodeExecution {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  executionId String @map("execution_id") @db.Uuid
+  tokenId String @map("token_id") @db.Uuid
+  nodeId String @map("node_id") @db.Uuid
+  iterationNumber Int @map("iteration_number")
+  activationKey String @map("activation_key")
+  attemptCount Int @default(0) @map("attempt_count")
+  retryBudget Int @default(0) @map("retry_budget")
+  status String @default("QUEUED")
+  input Json @default("{}") @map("input_json")
+  output Json? @map("output_json")
+  errorCode String? @map("error_code")
+  leaseOwner String? @map("lease_owner") @db.Uuid
+  leaseUntil DateTime? @map("lease_until") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,executionId,nodeId,iterationNumber,activationKey])
+  @@index([status,leaseUntil])
+  @@map("workflow_node_executions")
+}
+
+model WorkflowExecutionLog {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  executionId String @map("execution_id") @db.Uuid
+  nodeRunId String? @map("node_run_id") @db.Uuid
+  level String
+  code String
+  classification String @default("PUBLIC")
+  metadata Json @default("{}")
+  occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  @@index([workspaceId,executionId,occurredAt,id])
+  @@map("workflow_execution_logs")
+}
+
+model WorkflowHumanAssignment {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  executionId String @map("execution_id") @db.Uuid
+  nodeRunId String @map("node_run_id") @db.Uuid
+  assignmentType String @map("assignment_type")
+  status String @default("PENDING")
+  policy String @default("ALL")
+  quorumCount Int? @map("quorum_count")
+  rejectPolicy String @default("ANY_REJECT") @map("reject_policy")
+  informationSchema Json @default("[]") @map("information_schema")
+  dueAt DateTime? @map("due_at") @db.Timestamptz(6)
+  timeoutPolicy Json @default("{\"type\":\"TIMEOUT_BRANCH\"}") @map("timeout_policy")
+  result Json? @map("result_json")
+  version Int @default(1)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,nodeRunId])
+  @@index([status,dueAt])
+  @@map("workflow_human_assignments")
+}
+
+model WorkflowAssignmentParticipant {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  assignmentId String @map("assignment_id") @db.Uuid
+  originalUserId String @map("original_user_id") @db.Uuid
+  effectiveUserId String @map("effective_user_id") @db.Uuid
+  isActive Boolean @default(true) @map("is_active")
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,assignmentId,originalUserId])
+  @@index([workspaceId,effectiveUserId,isActive])
+  @@map("workflow_assignment_participants")
+}
+
+model WorkflowApprovalVote {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  assignmentId String @map("assignment_id") @db.Uuid
+  participantId String @map("participant_id") @db.Uuid
+  assigneeUserId String @map("assignee_user_id") @db.Uuid
+  actedByUserId String @map("acted_by_user_id") @db.Uuid
+  decision String
+  comment String?
+  fields Json? @map("fields_json")
+  decidedAt DateTime @default(now()) @map("decided_at") @db.Timestamptz(6)
+  @@unique([workspaceId,assignmentId,participantId])
+  @@unique([workspaceId,assignmentId,assigneeUserId])
+  @@map("workflow_approval_votes")
+}
+
+model WorkflowAssignmentHistory {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  assignmentId String @map("assignment_id") @db.Uuid
+  actorUserId String @map("actor_user_id") @db.Uuid
+  action String
+  metadata Json
+  occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  @@index([workspaceId,assignmentId,occurredAt,id])
+  @@map("workflow_assignment_history")
+}
+
+model WorkflowTimer {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  executionId String @map("execution_id") @db.Uuid
+  nodeRunId String @map("node_run_id") @db.Uuid
+  type String
+  scheduledFor DateTime @map("scheduled_for") @db.Timestamptz(6)
+  status String @default("PENDING")
+  remainingSeconds Int? @map("remaining_seconds")
+  resumeKey String @map("unique_resume_key")
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,resumeKey])
+  @@index([status,scheduledFor])
+  @@map("workflow_timers")
+}
+
+model WorkflowEventSubscription {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  executionId String @map("execution_id") @db.Uuid
+  nodeRunId String @map("node_run_id") @db.Uuid
+  eventType String @map("event_type")
+  correlationKey String @map("correlation_key")
+  status String @default("PENDING")
+  expiresAt DateTime? @map("expires_at") @db.Timestamptz(6)
+  fulfilledByEventId String? @map("fulfilled_by_event_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,executionId,nodeRunId,eventType,correlationKey])
+  @@index([workspaceId,eventType,correlationKey,status])
+  @@map("workflow_event_subscriptions")
+}
+
+model WorkflowParallelJoin {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  executionId String @map("execution_id") @db.Uuid
+  splitActivationKey String @map("split_activation_key")
+  joinNodeKey String @map("join_node_key")
+  joinMode String @map("join_mode")
+  requiredCount Int @map("required_count")
+  branches Json
+  completedBranchTokens Json @default("[]") @map("completed_branch_tokens")
+  status String @default("PENDING")
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,executionId,splitActivationKey,joinNodeKey])
+  @@map("workflow_parallel_joins")
+}
+
+model WorkflowChildExecution {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  parentExecutionId String @map("parent_execution_id") @db.Uuid
+  childExecutionId String @map("child_execution_id") @db.Uuid
+  parentNodeRunId String @map("parent_node_run_id") @db.Uuid
+  waitForCompletion Boolean @map("wait_for_completion")
+  resultMapping Json @map("result_mapping_json")
+  resumedAt DateTime? @map("resumed_at") @db.Timestamptz(6)
+  @@unique([workspaceId,parentNodeRunId])
+  @@unique([workspaceId,childExecutionId])
+  @@map("workflow_child_executions")
+}
+
+model WorkflowCompensationAction {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  executionId String @map("execution_id") @db.Uuid
+  nodeRunId String @map("node_run_id") @db.Uuid
+  actionType String @map("action_type")
+  configuration Json @map("configuration_json")
+  status String @default("PENDING")
+  requested Boolean @default(false)
+  sequence Int
+  attemptCount Int @default(0) @map("attempt_count")
+  idempotencyKey String @map("idempotency_key")
+  leaseOwner String? @map("lease_owner") @db.Uuid
+  leaseUntil DateTime? @map("lease_until") @db.Timestamptz(6)
+  errorCode String? @map("error_code")
+  executedAt DateTime? @map("executed_at") @db.Timestamptz(6)
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,executionId,nodeRunId,actionType])
+  @@unique([workspaceId,idempotencyKey])
+  @@index([requested,status,leaseUntil])
+  @@map("workflow_compensation_actions")
+}
+
+model WorkflowActionInvocation {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  executionId String @map("execution_id") @db.Uuid
+  nodeRunId String @map("node_run_id") @db.Uuid
+  actionCode String @map("action_code")
+  requestHash String @map("request_hash")
+  idempotencyKey String @map("idempotency_key")
+  status String @default("QUEUED")
+  resultReference Json? @map("domain_result_ref")
+  errorCode String? @map("error_code")
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,nodeRunId,actionCode,idempotencyKey])
+  @@map("workflow_action_invocations")
+}
+
+model WorkflowExternalCallback {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  executionId String @map("execution_id") @db.Uuid
+  nodeRunId String @map("node_run_id") @db.Uuid
+  tokenHash String @unique @map("correlation_token_hash")
+  nonceHash String @map("nonce_hash")
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  receivedAt DateTime? @map("received_at") @db.Timestamptz(6)
+  payloadHash String? @map("payload_hash")
+  receivedPayload Json? @map("received_payload")
+  status String @default("PENDING")
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,nodeRunId])
+  @@map("workflow_external_callbacks")
+}
+
+model WorkflowTemplate {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  name String
+  category String
+  snapshot Json @map("definition_snapshot_json")
+  status String @default("ACTIVE")
+  ownerUserId String @map("owner_user_id") @db.Uuid
+  version Int @default(1)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([workspaceId,id])
+  @@index([workspaceId,category,status])
+  @@map("workflow_templates")
+}
+
+model WorkflowReconciliationJob {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  requestedByUserId String @map("requested_by_user_id") @db.Uuid
+  executionIds Json @map("execution_ids")
+  status String @default("QUEUED")
+  correlationId String @default(uuid()) @map("correlation_id") @db.Uuid
+  result Json?
+  errorCode String? @map("error_code")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([workspaceId,id])
+  @@index([status,createdAt])
+  @@map("workflow_reconciliation_jobs")
+}
+
+/// Shared outbound connection metadata. Secrets remain in the platform SecretPort.
+model CommerceStore {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  code String
+  name String
+  status String @default("DRAFT")
+  defaultCurrency String @map("default_currency") @db.Char(3)
+  timezone String
+  catalogId String @map("catalog_id") @db.Uuid
+  priceTypeId String? @map("price_type_id") @db.Uuid
+  defaultWarehouseId String? @map("default_warehouse_id") @db.Uuid
+  reservationTiming String @default("ORDER_PLACED") @map("reservation_timing")
+  dealCreationPolicy String @default("ALWAYS") @map("deal_creation_policy")
+  abandonedAfterMinutes Int @default(120) @map("abandoned_after_minutes")
+  settings Json @default("{}")
+  createdByUserId String @map("created_by_user_id") @db.Uuid
+  version BigInt @default(1)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,code])
+  @@index([workspaceId,status,createdAt])
+  @@map("commerce_stores")
+}
+
+model CommerceStorefront {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  storeId String @map("store_id") @db.Uuid
+  type String
+  slug String @unique
+  domain String? @unique
+  status String @default("DRAFT")
+  configuration Json @default("{}")
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(6)
+  version BigInt @default(1)
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,storeId,id])
+  @@index([workspaceId,storeId,status])
+  @@map("commerce_storefronts")
+}
+
+model CommerceProductPublication {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  storeId String @map("store_id") @db.Uuid
+  productId String @map("product_id") @db.Uuid
+  variantId String? @map("variant_id") @db.Uuid
+  inventoryKey String @map("inventory_key") @db.Uuid
+  published Boolean @default(false)
+  availableFrom DateTime? @map("available_from") @db.Timestamptz(6)
+  availableUntil DateTime? @map("available_until") @db.Timestamptz(6)
+  seoSlug String @map("seo_slug")
+  createdByUserId String @map("created_by_user_id") @db.Uuid
+  version BigInt @default(1)
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,storeId,inventoryKey])
+  @@unique([storeId,seoSlug])
+  @@index([workspaceId,storeId,published])
+  @@map("commerce_product_publications")
+}
+
+model CommerceCategoryPublication {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  storeId String @map("store_id") @db.Uuid
+  categoryId String @map("category_id") @db.Uuid
+  published Boolean @default(false)
+  seoSlug String @map("seo_slug")
+  version BigInt @default(1)
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,storeId,categoryId])
+  @@unique([storeId,seoSlug])
+  @@map("commerce_category_publications")
+}
+
+model CommerceDiscountRule {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  storeId String @map("store_id") @db.Uuid
+  code String
+  name String
+  kind String
+  value Decimal @db.Decimal(24,6)
+  appliesTo String @default("ORDER") @map("applies_to")
+  priority Int @default(100)
+  stackGroup String @default("DEFAULT") @map("stack_group")
+  combinable Boolean @default(false)
+  eligibility Json @default("{}")
+  usageLimit Int? @map("usage_limit")
+  perCustomerLimit Int? @map("per_customer_limit")
+  startsAt DateTime? @map("starts_at") @db.Timestamptz(6)
+  endsAt DateTime? @map("ends_at") @db.Timestamptz(6)
+  active Boolean @default(true)
+  version BigInt @default(1)
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,storeId,id])
+  @@unique([workspaceId,storeId,code])
+  @@index([workspaceId,storeId,active,priority])
+  @@map("commerce_discount_rules")
+}
+
+model CommerceCoupon {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  storeId String @map("store_id") @db.Uuid
+  ruleId String @map("rule_id") @db.Uuid
+  codeHash String @map("code_hash")
+  usageLimit Int? @map("usage_limit")
+  perCustomerLimit Int? @map("per_customer_limit")
+  expiresAt DateTime? @map("expires_at") @db.Timestamptz(6)
+  active Boolean @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,storeId,codeHash])
+  @@map("commerce_coupons")
+}
+
+model CommerceTaxRule {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  storeId String @map("store_id") @db.Uuid
+  region String
+  categoryId String? @map("category_id") @db.Uuid
+  rate Decimal @db.Decimal(10,6)
+  priceBasis String @map("price_basis")
+  effectiveFrom DateTime @map("effective_from") @db.Timestamptz(6)
+  effectiveTo DateTime? @map("effective_to") @db.Timestamptz(6)
+  version BigInt @default(1)
+  @@unique([workspaceId,id])
+  @@index([workspaceId,storeId,region,effectiveFrom])
+  @@map("commerce_tax_rules")
+}
+
+model InventoryWarehouse {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  code String
+  name String
+  type String @map("warehouse_type")
+  status String @default("ACTIVE")
+  isDefault Boolean @default(false) @map("is_default")
+  timezone String
+  addressId String? @map("address_id") @db.Uuid
+  phone String?
+  priority Int @default(100)
+  regionCode String? @map("region_code")
+  createdByUserId String @map("created_by_user_id") @db.Uuid
+  version BigInt @default(1)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,code])
+  @@index([workspaceId,status,priority])
+  @@map("inventory_warehouses")
+}
+
+model InventoryLocation {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  warehouseId String @map("warehouse_id") @db.Uuid
+  parentLocationId String? @map("parent_location_id") @db.Uuid
+  code String
+  name String
+  type String
+  status String @default("ACTIVE")
+  version BigInt @default(1)
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,warehouseId,id])
+  @@unique([warehouseId,parentLocationId,code])
+  @@index([workspaceId,warehouseId,status])
+  @@map("inventory_locations")
+}
+
+model InventoryWarehousePermission {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  warehouseId String @map("warehouse_id") @db.Uuid
+  roleId String @map("role_id") @db.Uuid
+  action String
+  scope String
+  @@unique([workspaceId,warehouseId,roleId,action])
+  @@map("inventory_warehouse_permissions")
+}
+
+model InventorySettings {
+  workspaceId String @id @map("workspace_id") @db.Uuid
+  isEnabled Boolean @default(true) @map("is_enabled")
+  costingMethod String @default("FIFO") @map("costing_method")
+  costingLocked Boolean @default(false) @map("costing_locked")
+  valuationGeneration Int @default(1) @map("valuation_generation")
+  allowNegativeStock Boolean @default(false) @map("allow_negative_stock")
+  allowBackorderReservations Boolean @default(false) @map("allow_backorder_reservations")
+  defaultReservationDays Int @default(3) @map("default_reservation_days")
+  defaultWarehouseId String? @map("default_warehouse_id") @db.Uuid
+  defaultAllocationStrategy String @default("DEFAULT_WAREHOUSE") @map("default_allocation_strategy")
+  approvalPolicies Json @default("{}") @map("approval_policies")
+  version BigInt @default(1)
+  @@map("inventory_settings")
+}
+
+model InventoryBalance {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  warehouseId String @map("warehouse_id") @db.Uuid
+  inventoryKey String @map("inventory_key") @db.Uuid
+  productId String @map("product_id") @db.Uuid
+  variantId String? @map("variant_id") @db.Uuid
+  locationId String? @map("location_id") @db.Uuid
+  /// A stable empty-string location key avoids nullable unique-index duplication.
+  locationKey String @default("") @map("location_key")
+  onHand Decimal @default(0) @map("on_hand") @db.Decimal(24,6)
+  reserved Decimal @default(0) @db.Decimal(24,6)
+  version BigInt @default(1)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,warehouseId,inventoryKey,locationKey])
+  @@index([workspaceId,productId,warehouseId])
+  @@map("inventory_balances")
+}
+
+model InventoryDocument {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  number String
+  type String @map("document_type")
+  status String @default("DRAFT")
+  sourceWarehouseId String? @map("source_warehouse_id") @db.Uuid
+  destinationWarehouseId String? @map("destination_warehouse_id") @db.Uuid
+  currency String @db.Char(3)
+  sourceEntityType String? @map("source_entity_type")
+  sourceEntityId String? @map("source_entity_id") @db.Uuid
+  createdByUserId String @map("created_by_user_id") @db.Uuid
+  processedByUserId String? @map("processed_by_user_id") @db.Uuid
+  processedAt DateTime? @map("processed_at") @db.Timestamptz(6)
+  reversedAt DateTime? @map("reversed_at") @db.Timestamptz(6)
+  reversalReason String? @map("reversal_reason")
+  approvalRevision BigInt? @map("approval_revision")
+  version BigInt @default(1)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,number])
+  @@index([workspaceId,status,type])
+  @@map("inventory_documents")
+}
+
+model InventoryDocumentLine {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  documentId String @map("document_id") @db.Uuid
+  productId String @map("product_id") @db.Uuid
+  variantId String? @map("variant_id") @db.Uuid
+  inventoryKey String @map("inventory_key") @db.Uuid
+  quantity Decimal @db.Decimal(24,6)
+  unitCost Decimal @map("unit_cost") @db.Decimal(24,6)
+  adjustmentDirection String? @map("adjustment_direction")
+  sourceLocationId String? @map("source_location_id") @db.Uuid
+  targetLocationId String? @map("target_location_id") @db.Uuid
+  writeOffReason String? @map("write_off_reason")
+  reservationId String? @map("reservation_id") @db.Uuid
+  lineNumber Int @map("line_number")
+  version BigInt @default(1)
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,documentId,id])
+  @@unique([workspaceId,documentId,lineNumber])
+  @@map("inventory_document_lines")
+}
+
+model InventoryDocumentHistory {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  documentId String @map("document_id") @db.Uuid
+  actorUserId String @map("actor_user_id") @db.Uuid
+  action String
+  metadata Json @default("{}")
+  occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  @@unique([workspaceId,id])
+  @@index([workspaceId,documentId,occurredAt])
+  @@map("inventory_document_history")
+}
+
+model InventoryMovement {
+  id String @id @default(uuid()) @db.Uuid
+  ledgerSequence BigInt @unique @default(autoincrement()) @map("ledger_sequence")
+  workspaceId String @map("workspace_id") @db.Uuid
+  warehouseId String @map("warehouse_id") @db.Uuid
+  locationId String? @map("location_id") @db.Uuid
+  productId String @map("product_id") @db.Uuid
+  variantId String? @map("variant_id") @db.Uuid
+  inventoryKey String @map("inventory_key") @db.Uuid
+  documentId String @map("document_id") @db.Uuid
+  documentLineId String @map("document_line_id") @db.Uuid
+  sourceType String @map("source_type")
+  sourceId String @map("source_id") @db.Uuid
+  quantityDelta Decimal @map("quantity_delta") @db.Decimal(24,6)
+  unitCost Decimal @map("unit_cost") @db.Decimal(24,6)
+  totalCost Decimal @map("total_cost") @db.Decimal(24,6)
+  currency String @db.Char(3)
+  type String @map("movement_type")
+  postingKey String @map("posting_key")
+  costingMethod String @default("FIFO") @map("costing_method")
+  valuationGeneration Int @default(1) @map("valuation_generation")
+  reversesMovementId String? @map("reverses_movement_id") @db.Uuid
+  occurredAt DateTime @map("occurred_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,postingKey])
+  @@unique([workspaceId,reversesMovementId])
+  @@index([workspaceId,warehouseId,inventoryKey,occurredAt])
+  @@map("inventory_movements")
+}
+
+model InventoryReservation {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  sourceType String @map("source_type")
+  sourceId String @map("source_id") @db.Uuid
+  warehouseId String @map("warehouse_id") @db.Uuid
+  productId String @map("product_id") @db.Uuid
+  variantId String? @map("variant_id") @db.Uuid
+  inventoryKey String @map("inventory_key") @db.Uuid
+  quantity Decimal @db.Decimal(24,6)
+  fulfilledQuantity Decimal @default(0) @map("fulfilled_quantity") @db.Decimal(24,6)
+  releasedQuantity Decimal @default(0) @map("released_quantity") @db.Decimal(24,6)
+  status String @default("ACTIVE")
+  createdByUserId String @map("created_by_user_id") @db.Uuid
+  reservedAt DateTime @default(now()) @map("reserved_at") @db.Timestamptz(6)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  version BigInt @default(1)
+  @@unique([workspaceId,id])
+  @@index([status,expiresAt])
+  @@index([workspaceId,sourceType,sourceId])
+  @@map("inventory_reservations")
+}
+
+model InventoryReservationAllocation {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  reservationId String @map("reservation_id") @db.Uuid
+  warehouseId String @map("warehouse_id") @db.Uuid
+  locationId String? @map("location_id") @db.Uuid
+  locationKey String @default("") @map("location_key")
+  quantity Decimal @db.Decimal(24,6)
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,reservationId,warehouseId,locationKey])
+  @@map("inventory_reservation_allocations")
+}
+
+model InventoryReservationHistory {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  reservationId String @map("reservation_id") @db.Uuid
+  actorUserId String @map("actor_user_id") @db.Uuid
+  action String
+  quantity Decimal @db.Decimal(24,6)
+  documentLineId String? @map("document_line_id") @db.Uuid
+  occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  @@unique([workspaceId,id])
+  @@index([workspaceId,reservationId,occurredAt])
+  @@map("inventory_reservation_history")
+}
+
+model InventoryStocktake {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  warehouseId String @map("warehouse_id") @db.Uuid
+  locationId String? @map("location_id") @db.Uuid
+  scope Json @default("{\"mode\":\"ALL\"}")
+  baselineLedgerSequence BigInt @default(0) @map("baseline_ledger_sequence")
+  status String @default("DRAFT")
+  asOfAt DateTime @default(now()) @map("as_of_at") @db.Timestamptz(6)
+  startedByUserId String @map("started_by_user_id") @db.Uuid
+  completedByUserId String? @map("completed_by_user_id") @db.Uuid
+  version BigInt @default(1)
+  @@unique([workspaceId,id])
+  @@index([workspaceId,warehouseId,status])
+  @@map("stocktake_sessions")
+}
+
+model InventoryCostLayer {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  warehouseId String @map("warehouse_id") @db.Uuid
+  inventoryKey String @map("inventory_key") @db.Uuid
+  sourceDocumentLineId String? @map("source_document_line_id") @db.Uuid
+  sourceMovementId String? @map("source_movement_id") @db.Uuid
+  openingSnapshotId String? @unique @map("opening_snapshot_id") @db.Uuid
+  ordinal Int @default(0)
+  originalQuantity Decimal @map("original_qty") @db.Decimal(24,6)
+  remainingQuantity Decimal @map("remaining_qty") @db.Decimal(24,6)
+  unitCost Decimal @map("unit_cost") @db.Decimal(24,6)
+  originalValue Decimal @map("original_value") @db.Decimal(24,6)
+  remainingValue Decimal @map("remaining_value") @db.Decimal(24,6)
+  currency String @db.Char(3)
+  receivedAt DateTime @map("received_at") @db.Timestamptz(6)
+  generation Int @default(1)
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,sourceMovementId,generation,ordinal])
+  @@index([workspaceId,warehouseId,inventoryKey,currency,generation,receivedAt])
+  @@map("inventory_cost_layers")
+}
+
+model InventoryCostAllocation {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  movementId String @map("movement_id") @db.Uuid
+  layerId String @map("layer_id") @db.Uuid
+  quantity Decimal @db.Decimal(24,6)
+  unitCost Decimal @map("unit_cost") @db.Decimal(24,6)
+  totalCost Decimal @map("total_cost") @db.Decimal(24,6)
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,movementId,layerId])
+  @@map("inventory_cost_allocations")
+}
+
+model InventoryAverageCost {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  warehouseId String @map("warehouse_id") @db.Uuid
+  inventoryKey String @map("inventory_key") @db.Uuid
+  currency String @db.Char(3)
+  quantity Decimal @db.Decimal(24,6)
+  totalValue Decimal @map("total_value") @db.Decimal(24,6)
+  averageCost Decimal @map("average_cost") @db.Decimal(24,6)
+  generation Int @default(1)
+  version BigInt @default(1)
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,warehouseId,inventoryKey,currency,generation])
+  @@map("inventory_average_costs")
+}
+
+model InventoryValuationSnapshot {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  warehouseId String @map("warehouse_id") @db.Uuid
+  inventoryKey String @map("inventory_key") @db.Uuid
+  currency String @db.Char(3)
+  asOfAt DateTime @map("as_of_at") @db.Timestamptz(6)
+  quantity Decimal @db.Decimal(24,6)
+  totalValue Decimal @map("total_value") @db.Decimal(24,6)
+  method String
+  generation Int
+  jobId String? @map("job_id") @db.Uuid
+  @@unique([workspaceId,id])
+  @@index([workspaceId,warehouseId,inventoryKey,asOfAt])
+  @@map("inventory_valuation_snapshots")
+}
+
+model InventoryJob {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  type String
+  status String @default("QUEUED")
+  requestedByUserId String @map("requested_by_user_id") @db.Uuid
+  input Json
+  result Json?
+  sourceHash String? @map("source_hash")
+  reportFileId String? @map("report_file_id") @db.Uuid
+  approvalReference String? @map("approval_reference") @db.Uuid
+  correlationId String @default(uuid()) @map("correlation_id") @db.Uuid
+  attemptCount Int @default(0) @map("attempt_count")
+  leaseOwner String? @map("lease_owner") @db.Uuid
+  leaseUntil DateTime? @map("lease_until") @db.Timestamptz(6)
+  errorCode String? @map("error_code")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
+  @@unique([workspaceId,id])
+  @@index([status,leaseUntil,createdAt])
+  @@map("inventory_jobs")
+}
+
+model InventoryControlledApproval {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  previewJobId String @map("preview_job_id") @db.Uuid
+  approvedByUserId String @map("approved_by_user_id") @db.Uuid
+  operation String
+  sourceHash String @map("source_hash")
+  reason String
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,previewJobId,approvedByUserId])
+  @@map("inventory_controlled_approvals")
+}
+
+model InventoryDocumentApproval {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  documentId String @map("document_id") @db.Uuid
+  documentVersion BigInt @map("document_version")
+  actorUserId String @map("actor_user_id") @db.Uuid
+  decision String
+  comment String?
+  policySnapshot Json @map("policy_snapshot")
+  occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,documentId,documentVersion,actorUserId])
+  @@map("inventory_document_approvals")
+}
+
+model InventoryNumberingScheme {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  documentType String @map("document_type")
+  prefixTemplate String @map("prefix_template")
+  padding Int @default(6)
+  resetPolicy String @default("NEVER") @map("reset_policy")
+  periodKey String @default("") @map("period_key")
+  nextValue BigInt @default(1) @map("next_value")
+  version BigInt @default(1)
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,documentType])
+  @@map("inventory_numbering_schemes")
+}
+
+model InventoryStocktakeLine {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  sessionId String @map("session_id") @db.Uuid
+  productId String @map("product_id") @db.Uuid
+  variantId String? @map("variant_id") @db.Uuid
+  inventoryKey String @map("inventory_key") @db.Uuid
+  locationId String? @map("location_id") @db.Uuid
+  locationKey String @default("") @map("location_key")
+  expectedQuantity Decimal @map("expected_qty") @db.Decimal(24,6)
+  expectedBalanceVersion BigInt @map("expected_balance_version")
+  countedQuantity Decimal? @map("counted_qty") @db.Decimal(24,6)
+  countedByUserId String? @map("counted_by_user_id") @db.Uuid
+  countedAt DateTime? @map("counted_at") @db.Timestamptz(6)
+  countedLedgerSequence BigInt? @map("counted_ledger_sequence")
+  varianceQuantity Decimal? @map("variance_qty") @db.Decimal(24,6)
+  reconciledBalanceVersion BigInt? @map("reconciled_balance_version")
+  reconciliationQuantity Decimal? @map("reconciliation_qty") @db.Decimal(24,6)
+  adjustmentDocumentLineId String? @map("adjustment_document_line_id") @db.Uuid
+  version BigInt @default(1)
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,sessionId,inventoryKey,locationKey])
+  @@map("stocktake_lines")
+}
+
+model InventoryStocktakeCountHistory {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  sessionId String @map("session_id") @db.Uuid
+  lineId String @map("line_id") @db.Uuid
+  actorUserId String @map("actor_user_id") @db.Uuid
+  quantity Decimal @db.Decimal(24,6)
+  occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  @@unique([workspaceId,id])
+  @@index([workspaceId,sessionId,occurredAt])
+  @@map("stocktake_count_history")
+}
+
+model InventoryBarcode {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  productId String @map("product_id") @db.Uuid
+  variantId String? @map("variant_id") @db.Uuid
+  inventoryKey String @map("inventory_key") @db.Uuid
+  type String @map("barcode_type")
+  value String
+  isPrimary Boolean @default(false) @map("is_primary")
+  isActive Boolean @default(true) @map("is_active")
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,value])
+  @@map("product_barcodes")
+}
+
+model InventorySerialNumber {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  productId String @map("product_id") @db.Uuid
+  variantId String? @map("variant_id") @db.Uuid
+  inventoryKey String @map("inventory_key") @db.Uuid
+  serialNumber String @map("serial_number")
+  warehouseId String @map("warehouse_id") @db.Uuid
+  receiptDocumentLineId String @map("receipt_document_line_id") @db.Uuid
+  status String @default("IN_STOCK")
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,inventoryKey,serialNumber])
+  @@map("inventory_serial_numbers")
+}
+
+model InventoryBatch {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  productId String @map("product_id") @db.Uuid
+  variantId String? @map("variant_id") @db.Uuid
+  inventoryKey String @map("inventory_key") @db.Uuid
+  batchNumber String @map("batch_number")
+  manufacturedAt DateTime? @map("manufactured_at") @db.Timestamptz(6)
+  expiresAt DateTime? @map("expires_at") @db.Timestamptz(6)
+  status String @default("ACTIVE")
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,inventoryKey,batchNumber])
+  @@map("inventory_batches")
+}
+
+model InventoryReorderSetting {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  warehouseId String @map("warehouse_id") @db.Uuid
+  productId String @map("product_id") @db.Uuid
+  variantId String? @map("variant_id") @db.Uuid
+  inventoryKey String @map("inventory_key") @db.Uuid
+  reorderPoint Decimal @map("reorder_point") @db.Decimal(24,6)
+  reorderQuantity Decimal @map("reorder_quantity") @db.Decimal(24,6)
+  safetyStock Decimal @default(0) @map("safety_stock") @db.Decimal(24,6)
+  preferredVendorId String? @map("preferred_vendor_id") @db.Uuid
+  version BigInt @default(1)
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,warehouseId,inventoryKey])
+  @@map("inventory_reorder_settings")
+}
+
+model InventoryLowStockAlert {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  warehouseId String @map("warehouse_id") @db.Uuid
+  inventoryKey String @map("inventory_key") @db.Uuid
+  threshold Decimal @db.Decimal(24,6)
+  openSince DateTime @default(now()) @map("open_since") @db.Timestamptz(6)
+  resolvedAt DateTime? @map("resolved_at") @db.Timestamptz(6)
+  @@unique([workspaceId,id])
+  @@index([workspaceId,warehouseId,resolvedAt])
+  @@map("inventory_low_stock_alerts")
+}
+
+model IntegrationOutboundConnection {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  name String
+  baseUrl String @map("base_url")
+  allowedHosts Json @map("allowed_hosts")
+  secretReference String? @map("secret_reference")
+  isActive Boolean @default(true) @map("is_active")
+  supportsIdempotency Boolean @default(false) @map("supports_idempotency")
+  createdByUserId String @map("created_by_user_id") @db.Uuid
+  version Int @default(1)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([workspaceId,id])
+  @@map("integration_outbound_connections")
+}
+
+model WorkflowEventDelivery {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  eventId String @map("event_id") @db.Uuid
+  status String @default("QUEUED")
+  claimToken String? @map("claim_token") @db.Uuid
+  leaseExpiresAt DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  attempts Int @default(0)
+  nextAttemptAt DateTime @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  errorCode String? @map("error_code")
+  result Json?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([workspaceId,eventId])
+  @@index([status,nextAttemptAt])
+  @@map("workflow_event_deliveries")
+}
+
+model SpaTypePolicy {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  typeId String @map("type_id") @db.Uuid
+  roleId String @map("role_id") @db.Uuid
+  action String
+  scope String
+  @@unique([workspaceId, typeId, roleId, action])
+  @@map("spa_type_role_policies")
+}
+
+model SpaStagePolicy {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  typeId String @map("type_id") @db.Uuid
+  pipelineId String @map("pipeline_id") @db.Uuid
+  stageId String @map("stage_id") @db.Uuid
+  roleId String @map("role_id") @db.Uuid
+  action String
+  scope String
+  @@unique([workspaceId, typeId, stageId, roleId, action])
+  @@map("spa_stage_permissions")
+}
+
+model SpaFieldPolicy {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  typeId String @map("type_id") @db.Uuid
+  fieldId String @map("field_id") @db.Uuid
+  subjectType String @map("subject_type")
+  subjectId String @map("subject_id") @db.Uuid
+  canView Boolean @map("can_view")
+  canEdit Boolean @map("can_edit")
+  @@unique([workspaceId, typeId, fieldId, subjectType, subjectId])
+  @@map("spa_field_permissions")
+}
+
+model SpaPolicyVersion {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  typeId String @map("type_id") @db.Uuid
+  version Int @default(1)
+  @@unique([workspaceId, typeId])
+  @@map("spa_policy_versions")
+}
+
 model CalendarBookingNotificationEvent {
   eventId String @id @map("event_id") @db.Uuid
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
