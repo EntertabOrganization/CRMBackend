@@ -2,7 +2,7 @@
 
 ## Purpose and scope
 
-This is the root instruction file for every agent working in this repository. Read it at the beginning of every new task, resumed session, or module switch. The user supplies one module, several modules, or an explicit request to complete all modules. Carry that scope through implementation, tests, builds, and progress updates; do not stop after producing a plan.
+This is the root instruction file for every agent working in this repository. Read it at the beginning of every new task, resumed session, or module switch. The user supplies one module, several modules, or an explicit request to complete all modules. Carry that scope through implementation, tests, and builds; do not stop after producing a plan. Do not add work outside the user's requested scope.
 
 Reading the whole project provides context. It does not authorize implementing unrelated modules. If no implementation scope has been supplied, finish repository discovery and ask which module(s) to work on before changing application behavior. For a request to complete all modules, build a dependency-ordered plan covering every module below and continue through it.
 
@@ -28,7 +28,7 @@ At each task start or resume:
 5. Map the actual architecture: application entry points, route handlers, services, persistence, authentication, Workspace authorization, shared domain ownership, audit/outbox, jobs, provider adapters, and test infrastructure. Understand implemented behavior and unfinished scaffolds before editing.
 6. Before starting each selected module, reread its complete folder, including every nested Markdown file, its `Agent.md` and any `AGENTS.md`, `tests/modules/<module-pack>/` contracts, and related implementation/tests elsewhere in the repository. Read owning-module contracts for cross-module dependencies too.
 
-Do not rely only on a previous session's summary. Recheck current files and progress against the current working tree. After context loss within the same task, recover the scope, reading checklist, changed files, and verification state from the progress records and reread affected files.
+Do not rely only on a previous session's summary. Recheck current files against the current working tree. After context loss within the same task, recover scope and verification state from the conversation and existing records, and reread affected files.
 
 ## 2. Module contracts lead implementation
 
@@ -51,14 +51,16 @@ For multiple modules, identify dependencies and implement shared prerequisites f
 
 The executing agent leads the work: derive the implementation sequence, implement it, fix failures, and maintain evidence. Do not spawn additional agents unless the user or applicable instructions explicitly authorize delegation.
 
-## 3. Establish progress before coding
+## 3. Fixed scope and no new progress files
 
-Maintain root `IMPLEMENTATION_PROGRESS.md` as the project coordination record and `docs/Logic/<module-pack>/IMPLEMENTATION_PROGRESS.md` as each selected module's detailed record. Create a module record if missing. Preserve existing records, outstanding tasks, evidence, and user constraints; extend an existing root record with clearly scoped module sections rather than overwriting unrelated work or declaring old tasks complete.
+The user's latest instruction supersedes all earlier progress-file requirements, including nested module contracts. Do not create, recreate, or replace `IMPLEMENTATION_PROGRESS.md`, similarly named progress Markdown files, or alternative tracking documents. Do not add new obligations to the existing checklist. Finish its existing obligations, verify them, and remove an existing progress file only when every obligation it tracks is complete. Preserve unfinished obligations until then; deleting a checklist does not complete its work.
 
-Before changing code, record:
+Do not recreate the removed `Repository layout consolidation`, `Layout consolidation completion`, or `Complete all tracked implementation work` sections, or replace them with equivalent historical tracking sections. Keep the repository layout rules above as the continuing file-placement instructions.
+
+Before changing code, establish the following in the conversation or temporary working notes:
 
 - Requested scope, module folders, dependency order, and current reading checklist.
-- Every required feature, controller/operation, integration, migration, and deliverable from the selected specifications.
+- The already authorized features, operations, integrations, migrations, and deliverables from the selected specifications.
 - Existing implementation, actual gaps, next batch, and blockers.
 - Requirement-to-source-to-test mapping and planned verification commands.
 
@@ -69,19 +71,19 @@ Suggested requirement table:
 | Requirement / method + route | Specification | Source files | Implementation | Test files under `tests/` | Tests | Build | Remaining work |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 
-Maintain a verification log with timestamp and timezone, module/batch, exact command, selected test files, exit code, pass/fail/skip counts where available, failure summary, and next action. Record a running command as `IN_PROGRESS`; record its actual result immediately after it finishes. Never infer a pass from an earlier run.
+Report verification in the conversation: command, selected tests, actual exit code and counts, failures, and remaining work. Existing progress files may be updated for their existing obligations until removed; never recreate them afterward. Never infer a pass from an earlier run.
 
 ## 4. Implement and verify in batches
 
 For each module, repeat this loop until the requested scope is complete:
 
-1. Select a bounded batch from the progress record and mark its implementation `IN_PROGRESS`.
+1. Select a bounded batch from the user's scope or an existing checklist. Track its state in the conversation; do not create a record when none exists.
 2. Implement the complete specified behavior, including validation, permissions, tenant isolation, persistence, lifecycle rules, and required integration effects. Include migrations, API documentation, and frontend work when required by the selected scope.
-3. Update progress with actual changed files, completed behavior, and remaining gaps. Mark implemented behavior `IMPLEMENTED_UNVERIFIED` until its required checks pass.
-4. Create or adapt meaningful executable module tests in the root `tests/` folder. Run the selected tests and update progress immediately with the result.
-5. Fix failures, rerun affected tests, and log **every run**, including failed attempts. Do not postpone progress updates until all tests are green.
-6. Run the required type/schema checks and production build for the batch. Update progress after **each command**, including build failures and reruns. A successful test run does not imply a successful build.
-7. Mark only verified requirements `PASSED`, synchronize the root and module summaries, and proceed to the next batch/module.
+3. Report actual changed files, completed behavior, and remaining gaps. Treat implemented behavior as unverified until its required checks pass.
+4. Create or adapt meaningful executable module tests in the root `tests/` folder. Run the selected tests and report the result.
+5. Fix failures and rerun affected tests. Report failed attempts as well as successful checks.
+6. Run the required type/schema checks and production build for the batch. Report actual results, including failures and reruns. A successful test run does not imply a successful build.
+7. Mark only verified requirements `PASSED` in any existing checklist and proceed to the next batch/module. Do not create a missing record.
 
 If a check cannot run, record the reason and exact pending command as `BLOCKED` or unverified. Continue work that does not depend on it. Never claim the module is finished while required checks or deliverables remain outstanding.
 
@@ -125,8 +127,8 @@ Choose the necessary commands without redundantly repeating already covered chec
 
 ## 7. Completion and handoff
 
-A requested module is complete only when its requirement inventory is implemented, required executable tests pass, required migrations are verified in the permitted environment, applicable integration checks and build pass, and progress records contain current evidence with no hidden unfinished obligations.
+A requested module is complete only when its authorized requirements are implemented, required executable tests pass, required migrations are verified in the permitted environment, and applicable integration checks and build pass, with actual evidence and no hidden unfinished obligations.
 
 For an all-modules request, apply that gate to every discovered module and their shared integrations. Do not label the project complete based on a single module or passing scaffolds.
 
-Keep working autonomously through the authorized scope. Preserve unrelated changes; do not commit, push, deploy, or modify external systems without applicable authorization. The final response should state implemented modules, exact verification results, progress file locations, and any remaining blockers or unverified work.
+Keep working autonomously through the authorized scope. Preserve unrelated changes; do not commit, push, deploy, or modify external systems without applicable authorization. Remove completed implementation progress files after verification and do not write them again. The final response should state the implemented work, verification results, removed records, and any remaining blockers or unverified work.

@@ -97,6 +97,34 @@ describe('SPA Fields, Schema Drafts and Publication — unit/integration contrac
 });
 
 describe('Schema publication safeguards', () => {
+  it('normalizes typed defaults and empty arrays exactly like Item persistence', async () => {
+    const f = await spaFixture(db);
+    await f.schemas.addField(f.actor, f.type.id, { code: 'COUNT', name: 'Count', fieldType: 'INTEGER', defaultValue: '7' });
+    await f.schemas.addField(f.actor, f.type.id, { code: 'TAGS', name: 'Tags', fieldType: 'MULTI_LIST', options: [], defaultValue: [] });
+    await f.schemas.uniqueConstraint(f.actor, f.type.id, { name: 'Empty list key', fieldCodes: ['TAGS'], ignoreNull: false });
+    await f.publish(); await f.create('First');
+    await expect(f.create('Second')).rejects.toMatchObject({ code: 'SPA_SCHEMA_DUPLICATE_VALUES' });
+    const draft = await f.schemas.draft(f.actor, f.type.id);
+    expect(draft.snapshot.fields.find(field => field.code === 'COUNT')!.defaultValue).toBe('7');
+    const count = await db.spaItemValue.findFirstOrThrow({ where: { fieldId: draft.snapshot.fields.find(field => field.code === 'COUNT')!.id } });
+    expect(count.valueNumber!.toString()).toBe('7');
+  });
+  it('requires an explicit value migration when validation would normalize existing data', async () => {
+    const f = await spaFixture(db);
+    await f.schemas.editField(f.actor, f.type.id, f.field.id, { validation: { trim: false } });
+    await f.publish();
+    await f.create(' padded ');
+    await f.schemas.editField(f.actor, f.type.id, f.field.id, { validation: { trim: true } });
+    await expect(f.publish()).rejects.toMatchObject({ code: 'SPA_SCHEMA_MIGRATION_REQUIRED' });
+    expect(await db.spaItemValue.findFirst({ where: { fieldId: f.field.id } })).toMatchObject({ valueText: ' padded ' });
+    const migrations = new SpaMigrationService(db), queued = await migrations.queue(f.actor, f.type.id,
+      { fieldId: f.field.id, targetType: 'TEXT', mappingStrategy: 'STRICT' });
+    await migrations.runDue();
+    await f.publish(queued.jobId);
+    expect(await db.spaItemValue.findFirst({ where: { fieldId: f.field.id } })).toMatchObject({ valueText: 'padded' });
+    expect(await db.spaSchemaMigrationValue.findFirst({ where: { jobId: queued.jobId } }))
+      .toMatchObject({ originalValue: ' padded ', convertedValue: 'padded' });
+  });
   it('rechecks duplicate live values created after a uniqueness preview and rolls back publication', async () => {
     const f = await spaFixture(db); await f.create('Value');
     await f.schemas.uniqueConstraint(f.actor, f.type.id, { name: 'Unique', fieldCodes: ['VALUE'] });

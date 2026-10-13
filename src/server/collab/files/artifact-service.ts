@@ -21,7 +21,7 @@ export class FileArtifactService {
     const result = await this.processor.process(content, mimeType);
     assertProcessingResult(result);
     if (result.scanStatus !== 'CLEAN' || !result.processed) throw new AppError('FILE_QUARANTINED', 'Artifact processing has not completed.', 409);
-    const objectKey = workspaceId + '/artifacts/' + randomUUID();
+    const objectKey = workspaceId + '/objects/artifacts/' + randomUUID();
     await this.objects.putImmutable(objectKey, content);
     return { workspaceId, objectKey, checksum: createHash('sha256').update(content).digest('hex'), size: content.length, mimeType };
   }

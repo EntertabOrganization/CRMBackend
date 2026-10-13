@@ -53,7 +53,7 @@ export class SpaTypeService {
       await tx.spaNumberingScheme.create({ data: { workspaceId: actor.workspaceId, typeId: row.id, prefixTemplate: input.code + '-' } });
       await evidence(tx, actor, 'SPA_TYPE', row.id, 'SPA_TYPE_CREATED', { code: row.code, status: row.status });
       return row;
-    });
+    }, { timeout: 30000 });
   }
 
   async list(actor: Principal, raw: unknown) {

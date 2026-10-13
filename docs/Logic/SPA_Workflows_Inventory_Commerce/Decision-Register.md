@@ -74,3 +74,8 @@
 ## Normative relationship
 
 All applicable decisions bind the matching module specification. If a codebase implementation differs, surface the conflict and migrate carefully; do not silently invent an incompatible business rule. The previous TrueCRM Collaboration pack's compatible API/platform rules also remain in force, but module-specific semantics in this pack take priority for these four modules.
+
+
+## Confirmed TEAM membership source (2026-10-14, Africa/Cairo)
+
+The user selected members of a linked project/workgroup for SPA TEAM access. TEAM uses published PROJECT relation bindings to non-archived, non-deleted shared Projects or Workgroups, and their owning membership rule (owner or ACTIVE member). Public discovery/Workspace visibility does not create membership. TEAM narrows the current Workspace role grant and applies at both Type and Stage levels. An unlinked Item is inaccessible through TEAM; observer status does not bypass TEAM restrictions. Membership, project lifecycle and relation changes take effect on the next authorization check.

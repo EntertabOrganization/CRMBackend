@@ -51,7 +51,9 @@ export function workflowActions(db: PrismaClient) {
   registry.register({ code: 'SPA.CHANGE_STAGE', domain: 'SPA', permission: 'SPA.ITEM.STAGE_CHANGE', sideEffectClass: 'TRANSACTIONAL', timeoutMs: 30000, maxAttempts: 3,
     inputSchema: transition, execute: async ({ tx,actor,input }) => {
       const parsed = parse(transition,input);
-      const result = await spa.transitionInTransaction(tx,actor,parsed.typeId,parsed.itemId,parsed);
+      const result = await spa.transitionInTransaction(tx,actor,parsed.typeId,parsed.itemId,{
+        expectedVersion: parsed.expectedVersion, targetPipelineId: parsed.pipelineId, targetStageId: parsed.stageId,
+        ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}) });
       return { entityType: 'SPA_ITEM', entityId: result.id, version: result.version };
     } });
   return registry;

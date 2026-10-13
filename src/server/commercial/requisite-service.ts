@@ -398,6 +398,16 @@ export class RequisiteService {
         x.workspaceId === actor.workspaceId && x.requisiteId === requisiteId,
     );
   }
+  /** Other modules bind an Address through its owning Requisite authority. */
+  getAddress(actor: ActorContext, addressId: string) {
+    const address = this.store.state.requisiteAddresses.find(row => row.id === addressId &&
+      row.workspaceId === actor.workspaceId && row.active);
+    if (!address) throw new AppError('CROSS_WORKSPACE_REFERENCE', 'Address was not found.', 404);
+    const requisite = this.get(actor, address.requisiteId);
+    if (!requisite.active || !this.access.crmRecord(actor.workspaceId, requisite.ownerType, requisite.ownerId))
+      throw new AppError('CROSS_WORKSPACE_REFERENCE', 'Address was not found.', 404);
+    return address;
+  }
   updateAddress(
     actor: ActorContext,
     requisiteId: string,

@@ -4,6 +4,8 @@ import { AppError } from '../errors';
 import { assertVersion, evidence, lock, requirePermission, type Principal, type Tx } from '../process-platform/context';
 import { pageQuery, parse, uuid, version } from '../process-platform/dto';
 import permissions from '../process-platform/permission-catalog.json';
+import { projectRoleFor } from '../collab/tasks/policy';
+import { schemaSnapshot } from './field-metadata';
 
 const actions = permissions.filter(key => key.startsWith('SPA.ITEM.'));
 const action = z.string().refine(value => actions.includes(value), 'Unknown Item permission');
@@ -52,7 +54,7 @@ export class SpaPolicyService {
         const granted = roles.find(role => role.id === policy.roleId)?.rolePermissions.find(p => p.permission.key === policy.action && !p.permission.isDeleted);
         const maxScope = granted?.scope;
         const ranks: Record<string, number> = { NONE: 0, OWN: 1, DEPARTMENT: 2, DEPARTMENT_TREE: 3, ALL: 4, WORKSPACE: 4 };
-        if (policy.scope !== 'NONE' && (!maxScope || policy.scope === 'TEAM' || ranks[policy.scope] > ranks[maxScope]))
+        if (policy.scope !== 'NONE' && (!maxScope || policy.scope !== 'TEAM' && ranks[policy.scope] > ranks[maxScope]))
           throw new AppError('SPA_PERMISSION_INVALID_SCOPE', 'Type policy cannot broaden Workspace role grants.', 422);
       }
       const userIds = [...new Set(input.fieldPolicies.filter(p => p.subjectType === 'USER').map(p => p.subjectId))];
@@ -86,6 +88,22 @@ export class SpaPolicyService {
   private async scoped(tx: Tx, actor: Principal, item: SpaItem, rawScope: string): Promise<boolean> {
     if (rawScope === 'ALL' || rawScope === 'WORKSPACE') return true;
     if (rawScope === 'OWN') return item.assignedUserId === actor.userId || item.createdByUserId === actor.userId;
+    if (rawScope === 'TEAM') {
+      const type = await tx.spaEntityType.findFirst({ where: { workspaceId: actor.workspaceId, id: item.typeId, deletedAt: null } });
+      if (!type?.schemaVersion) return false;
+      const publication = await tx.spaSchemaVersion.findUnique({ where: { workspaceId_typeId_versionNumber: {
+        workspaceId: actor.workspaceId, typeId: item.typeId, versionNumber: type.schemaVersion } } });
+      if (!publication) return false;
+      const definitions = schemaSnapshot.parse(publication.snapshot).relations.filter(definition => definition.targetType === 'PROJECT');
+      if (!definitions.length) return false;
+      const bindings = await tx.spaItemRelation.findMany({ where: { workspaceId: actor.workspaceId, typeId: item.typeId,
+        sourceItemId: item.id, targetType: 'PROJECT', definitionId: { in: definitions.map(definition => definition.id) } }, select: { targetId: true } });
+      if (!bindings.length) return false;
+      const projects = await tx.project.findMany({ where: { workspaceId: actor.workspaceId,
+        id: { in: bindings.map(binding => binding.targetId) }, status: { not: 'ARCHIVED' }, isDeleted: false },
+        include: { members: { where: { workspaceId: actor.workspaceId, userId: actor.userId, status: 'ACTIVE' } } } });
+      return projects.some(project => projectRoleFor(project, project.members, actor.userId) !== null);
+    }
     if (rawScope !== 'DEPARTMENT' && rawScope !== 'DEPARTMENT_TREE') return false;
     const departments = await tx.department.findMany({ where: { workspaceId: actor.workspaceId, isDeleted: false },
       include: { members: { where: { isDeleted: false } } } });
@@ -98,13 +116,14 @@ export class SpaPolicyService {
     return departments.some(d => eligible.has(d.id) && d.members.some(m => m.userId === item.assignedUserId));
   }
   async allowed(tx: Tx, actor: Principal, item: SpaItem, permission: string): Promise<boolean> {
+    if (actor.entitlements?.spa === false) return false;
     const base = actor.grants.get(permission);
     if (!base) return false;
     const typePolicy = await tx.spaTypePolicy.findUnique({ where: { workspaceId_typeId_roleId_action: {
       workspaceId: actor.workspaceId, typeId: item.typeId, roleId: actor.roleId, action: permission } } });
     if (typePolicy?.scope === 'NONE') return false;
     const scopeAllowed = await this.scoped(tx, actor, item, base) && (!typePolicy || await this.scoped(tx, actor, item, typePolicy.scope));
-    const observer = permission === 'SPA.ITEM.READ' && !!await tx.spaItemObserver.findUnique({ where: {
+    const observer = permission === 'SPA.ITEM.READ' && base !== 'TEAM' && typePolicy?.scope !== 'TEAM' && !!await tx.spaItemObserver.findUnique({ where: {
       workspaceId_itemId_userId: { workspaceId: actor.workspaceId, itemId: item.id, userId: actor.userId } } });
     if (!scopeAllowed && !observer) return false;
     if (item.stageId) {

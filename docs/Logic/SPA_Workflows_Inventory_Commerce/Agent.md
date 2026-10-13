@@ -49,7 +49,7 @@ For each endpoint or atomic dependent pair:
 3. Build complete vertical slice and required schema/migration, guards, validation, state machine, transactions, audit/outbox, idempotency and jobs.
 4. Replace matching fail-closed unit/integration and E2E contract scaffolds with **real assertions**, create fixtures for separate workspaces/roles/permissions, and test POST/PATCH persistence and cross-domain effects.
 5. Run lint/typecheck/targeted unit, integration, E2E and security tests. Verify DB mutation, rollback, outbox uniqueness, concurrency, provider failure, tenant isolation. Fix before marking endpoint PASSED.
-6. Track method+path, spec, implementation/test statuses in `IMPLEMENTATION_PROGRESS.md`; statuses NOT_STARTED/IN_PROGRESS/BLOCKED/PASSED. Never mark Passed based on mocks only or tests you did not run.
+6. Report method+path, specification and actual implementation/test results in the conversation. Do not create or recreate implementation progress Markdown files or replacement tracking documents. Finish only existing authorized obligations; remove an existing progress file only after all its obligations pass. Never mark Passed based on mocks only or tests you did not run.
 7. After each controller run its entire tests; after each module run full regression; after pack run clean DB migrations and full suite. Do not ask approval per endpoint unless genuine blocker; continue independent work and report blockers.
 
 ## 9. Tests and completion gate

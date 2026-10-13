@@ -11,6 +11,7 @@ export type Principal = {
   userId: string;
   roleId: string;
   grants: Map<string, string>;
+  entitlements?: Record<string, unknown>;
 };
 export type Tx = Prisma.TransactionClient;
 
@@ -28,17 +29,23 @@ export async function resolvePrincipal(db: PrismaClient | Tx, workspaceId: strin
   const membership = await db.workspaceMembership.findFirst({
     where: { workspaceId, userId, status: 'ACTIVE', isDeleted: false,
       user: { isDeleted: false, status: 'ACTIVE' }, workspace: { isDeleted: false }, role: { isDeleted: false, workspaceId } },
-    include: { role: { include: { rolePermissions: { where: { isDeleted: false }, include: { permission: true } } } } },
+    include: { workspace: true, role: { include: { rolePermissions: { where: { isDeleted: false }, include: { permission: true } } } } },
   });
   if (!membership) throw new AppError('PERMISSION_DENIED', 'Active Workspace membership is required.', 403);
   const grants = new Map<string, string>();
   for (const grant of membership.role.rolePermissions) {
     if (!grant.permission.isDeleted) grants.set(grant.permission.key, grant.scope);
   }
-  return { workspaceId, userId, roleId: membership.roleId, grants };
+  const settings = membership.workspace.settings as Record<string, unknown>;
+  const configured = settings && typeof settings === 'object' && !Array.isArray(settings) ? settings.entitlements : undefined;
+  const entitlements = configured && typeof configured === 'object' && !Array.isArray(configured)
+    ? configured as Record<string, unknown> : undefined;
+  return { workspaceId, userId, roleId: membership.roleId, grants, entitlements };
 }
 
 export function requirePermission(actor: Principal, permission: string, workspaceWide = false): string {
+  if (permission.startsWith('SPA.') && actor.entitlements?.spa === false)
+    throw new AppError('SPA_PLAN_LIMIT', 'Smart Processes are unavailable for this Workspace.', 403);
   const scope = actor.grants.get(permission);
   if (!scope || workspaceWide && scope !== 'WORKSPACE')
     throw new AppError('PERMISSION_DENIED', `${permission} permission is required.`, 403);

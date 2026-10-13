@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { AppError } from '../errors';
 import { assertVersion, command, evidence, lock, requirePermission, type Principal, type Tx } from '../process-platform/context';
 import { canonical, name, pageQuery, parse, uuid, version } from '../process-platform/dto';
-import { parseFieldValue, schemaSnapshot, uniqueValueKey, type SchemaSnapshot, type FieldDefinition } from './field-metadata';
+import { normalizedFieldDefault, parseFieldValue, schemaSnapshot, uniqueValueKey, type SchemaSnapshot, type FieldDefinition } from './field-metadata';
 import { SpaPolicyService } from './policy-service';
 import { SpaNumberingService } from './numbering-service';
 import { spaReferenceContext } from './reference-adapter';
@@ -121,7 +121,7 @@ export class SpaItemService {
       const rows = await tx.spaItemValue.findMany({ where: { workspaceId: actor.workspaceId, fieldId: { in: ids },
         itemId: { in: liveItems.map(item => item.id) } } });
       const itemValues = new Map<string, Map<string, unknown>>();
-      for (const item of liveItems) itemValues.set(item.id, new Map(snapshot.fields.map(field => [field.code, field.defaultValue ?? null])));
+      for (const item of liveItems) itemValues.set(item.id, new Map(snapshot.fields.map(field => [field.code, normalizedFieldDefault(field, actor.workspaceId)])));
       for (const row of rows) {
         const values = itemValues.get(row.itemId) ?? new Map<string, unknown>();
         const field = snapshot.fields.find(f => f.id === row.fieldId)!;

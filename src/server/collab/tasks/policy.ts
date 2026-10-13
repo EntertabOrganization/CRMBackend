@@ -2,13 +2,21 @@ import type { ActorContext } from '../../access-service';
 import { AppError, forbidden } from '../../errors';
 import type { CollabSupport } from '../support';
 import { notFoundError } from '../support';
-import type { Project, ProjectRole, ProjectToolType, Task } from './types';
+import type { Project, ProjectMember, ProjectRole, ProjectToolType, Task } from './types';
 
 /**
  * Contextual authorization for Projects and Tasks. Global permission keys (project.* / task.*) say WHAT an actor may do;
  * the scope (OWN / DEPARTMENT / DEPARTMENT_TREE / WORKSPACE) plus Project role and Task membership say ON WHICH records.
  * Records that exist but are outside the caller's reach are reported exactly like missing ones (no existence leak).
  */
+/** Shared owning membership rule; visibility and unrelated Workspace roles never make someone a team member. */
+export function projectRoleFor(project: Pick<Project, 'id' | 'workspaceId' | 'ownerUserId'>,
+  members: ReadonlyArray<Pick<ProjectMember, 'projectId' | 'workspaceId' | 'userId' | 'status' | 'memberRole'>>, userId: string): ProjectRole | null {
+  if (project.ownerUserId === userId) return 'OWNER';
+  return members.find(row => row.projectId === project.id && row.workspaceId === project.workspaceId &&
+    row.userId === userId && row.status === 'ACTIVE')?.memberRole ?? null;
+}
+
 export class TasksPolicy {
   constructor(private readonly support: CollabSupport) {}
 
@@ -19,9 +27,7 @@ export class TasksPolicy {
   // ---- Projects -----------------------------------------------------------------------------------------------------
 
   projectRole(project: Project, userId: string): ProjectRole | null {
-    if (project.ownerUserId === userId) return 'OWNER';
-    const member = this.state.projectMembers.find((row) => row.projectId === project.id && row.userId === userId && row.status === 'ACTIVE');
-    return member?.memberRole ?? null;
+    return projectRoleFor(project, this.state.projectMembers, userId);
   }
 
   isProjectManager(project: Project, userId: string) {

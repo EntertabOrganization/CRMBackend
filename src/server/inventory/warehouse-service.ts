@@ -6,6 +6,7 @@ import { ownerVisible } from '../process-platform/owner-scope';
 import { parse,uuid,name,code,timezone,pageQuery } from '../process-platform/dto';
 import { inventoryVersion,assertInventoryVersion,warehouseType,warehouseStatus } from './dto';
 import catalog from '../process-platform/permission-catalog.json';
+import { RequisiteAddressAuthority } from '../commercial/address-authority';
 
 const actions = catalog.filter(value => value.startsWith('INVENTORY.'));
 const action = z.string().refine(value => actions.includes(value));
@@ -17,7 +18,7 @@ export interface InventoryAddressPort { assertReadable(tx: Tx,actor: Principal,a
 
 /** Warehouse ACL intersects the platform role privilege. Missing grants deny, including owner-role callers. */
 export class InventoryWarehouseService {
-  constructor(private readonly db: PrismaClient,private readonly addresses?: InventoryAddressPort) {}
+  constructor(private readonly db: PrismaClient,private readonly addresses: InventoryAddressPort = new RequisiteAddressAuthority()) {}
   async allowed(tx: Tx,actor: Principal,row: InventoryWarehouse,permission: string) {
     if (!actor.grants.has(permission)) return false;
     const grant = await tx.inventoryWarehousePermission.findUnique({ where: { workspaceId_warehouseId_roleId_action: {
@@ -50,7 +51,6 @@ export class InventoryWarehouseService {
       const workspace = await tx.workspace.findUniqueOrThrow({ where: { id: actor.workspaceId } });
       if ((workspace.settings as { entitlements?: { inventory?: boolean } }).entitlements?.inventory===false) throw new AppError('PERMISSION_DENIED','Inventory is unavailable for this Workspace.',403);
       if (input.location) {
-        if (!this.addresses) throw new AppError('INVENTORY_ADDRESS_UNAVAILABLE','Shared Address authority is not configured.',503);
         await this.addresses.assertReadable(tx,actor,input.location);
       }
       if (await tx.inventoryWarehouse.count({ where: { workspaceId: actor.workspaceId,code: input.code } })) throw new AppError('WAREHOUSE_CODE_EXISTS','Warehouse code already exists.',409);

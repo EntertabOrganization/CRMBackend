@@ -247,7 +247,12 @@ export class SpaTransferService {
         if (!recorded) break;
       }
     }
-    await this.db.$transaction(async tx => {
+    const outcomes = await this.db.spaImportRow.findMany({ where: { workspaceId: job.workspaceId, jobId: job.id }, orderBy: { rowNumber: 'asc' } });
+    const prepared = await this.artifacts.prepare(job.workspaceId, encodeCsv(['rowNumber', 'status', 'itemId', 'errorCodes'],
+      outcomes.map(row => [row.rowNumber, row.status, row.itemId ?? '',
+        Array.isArray(row.errorCodes) ? row.errorCodes.filter(code => typeof code === 'string').join(';') : ''])), 'text/csv');
+    let published = false;
+    try { return await this.db.$transaction(async tx => {
       await lock(tx, job.workspaceId, 'spa:import:' + job.id);
       const current = await tx.spaImportJob.findFirst({ where: { id: job.id, workspaceId: job.workspaceId, status: 'RUNNING', claimToken: token,
         leaseExpiresAt: { gt: new Date() } } });
@@ -256,11 +261,16 @@ export class SpaTransferService {
       const succeeded = outcomes.filter(r => r.status === 'SUCCEEDED').length, failed = outcomes.filter(r => r.status === 'FAILED').length;
       const status = current.cancelRequested ? 'CANCELLED' : 'SUCCEEDED';
       const actor = await resolvePrincipal(tx, job.workspaceId, job.createdByUserId);
+      requirePermission(actor, 'SPA.ITEM.IMPORT');
+      await this.schema(tx, actor, job.typeId);
+      const reportFileId = await this.artifacts.publish(tx, actor, prepared, 'SPA import report ' + job.id + '.csv');
       await tx.spaImportJob.update({ where: { id: job.id }, data: { status, totals: { total: rows.length, processed: outcomes.length, succeeded, failed },
-        claimToken: null, leaseExpiresAt: null } });
+        reportFileId, errorCode: null, claimToken: null, leaseExpiresAt: null } });
       await evidence(tx, actor, 'SPA_TYPE', job.typeId, status === 'CANCELLED' ? 'SPA_IMPORT_CANCELLED' : 'SPA_IMPORT_COMPLETED',
-        { jobId: job.id, processed: outcomes.length, succeeded, failed });
-    });
+        { jobId: job.id, reportFileId, processed: outcomes.length, succeeded, failed });
+      return true;
+    }, { timeout: 30000 }).then(committed => { published = committed === true; return published; });
+    } finally { if (!published) await this.artifacts.discard(prepared); }
   }
   private async runExport(job: SpaExportJob, token: string) {
     const scope = parse(exportInput.extend({ itemIds: z.array(uuid) }), job.scopeSnapshot);
@@ -331,8 +341,8 @@ export class SpaTransferService {
         : await this.db.spaExportJob.findFirst({ where: { id: claimed.id, workspaceId: claimed.workspace_id, claimToken: token } });
       if (!job) { skipped++; continue; }
       try {
-        if (kind === 'import') await this.runImport(job as SpaImportJob, token);
-        else if (!await this.runExport(job as SpaExportJob, token)) { skipped++; continue; }
+        const finished = kind === 'import' ? await this.runImport(job as SpaImportJob, token) : await this.runExport(job as SpaExportJob, token);
+        if (!finished) { skipped++; continue; }
         completed++;
       } catch (error) {
         const attempts = job.attempts + 1;

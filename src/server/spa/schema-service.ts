@@ -5,7 +5,7 @@ import { AppError } from '../errors';
 import { assertVersion, evidence, lock, requirePermission, type Principal, type Tx } from '../process-platform/context';
 import { canonical, parse, uuid, version } from '../process-platform/dto';
 import { createField, fieldDefinition, patchField, schemaSnapshot, uniqueDefinition,
-  emptyFieldValue, parseFieldValue, uniqueValueKey, validateDefinition, withOptionIds, type FieldDefinition, type SchemaSnapshot } from './field-metadata';
+  emptyFieldValue, normalizedFieldDefault, parseFieldValue, uniqueValueKey, validateDefinition, withOptionIds, type FieldDefinition, type SchemaSnapshot } from './field-metadata';
 import { SpaPolicyService } from './policy-service';
 import { valueHash } from './migration-service';
 import { storedValue, valueColumns } from './item-service';
@@ -36,7 +36,7 @@ export class SpaSchemaService {
     return { type, draft, snapshot: parse(schemaSnapshot, draft.snapshot) };
   }
   private async save(tx: Tx, actor: Principal, typeId: string, id: string, snapshot: SchemaSnapshot) {
-    for (const field of snapshot.fields) validateDefinition(field, actor.workspaceId);
+    for (const field of snapshot.fields) { validateDefinition(field, actor.workspaceId); normalizedFieldDefault(field, actor.workspaceId); }
     if (new Set(snapshot.fields.map(field => field.code)).size !== snapshot.fields.length)
       throw new AppError('SPA_FIELD_CODE_EXISTS', 'Field code already exists.', 409);
     const result = await tx.spaSchemaDraft.update({ where: { id }, data: {
@@ -111,7 +111,7 @@ export class SpaSchemaService {
     const items = await tx.spaItem.findMany({ where: { workspaceId: actor.workspaceId, typeId,
       status: { not: 'TRASHED' } }, select: { id: true } });
     const values = new Map(items.map(item => [item.id,
-      new Map<string, unknown>(snapshot.fields.map(field => [field.code, field.defaultValue ?? null]))]));
+      new Map<string, unknown>(snapshot.fields.map(field => [field.code, normalizedFieldDefault(field, actor.workspaceId)]))]));
     const fields = new Map(snapshot.fields.map(field => [field.id, field]));
     const rows = await tx.spaItemValue.findMany({ where: { workspaceId: actor.workspaceId,
       itemId: { in: items.map(item => item.id) }, fieldId: { in: [...fields.keys()] } } });
@@ -155,20 +155,22 @@ export class SpaSchemaService {
       }
       if (field.isActive && (!old || old.fieldType === field.fieldType || field.id === migratedFieldId) &&
           !['USER', 'CRM_REF', 'FILE', 'SPA_REF'].includes(field.fieldType)) {
-        let invalid = 0;
+        let invalid = 0, conversions = 0;
         for (const item of values.values()) {
           const value = item.get(field.code);
           if (emptyFieldValue(value)) continue;
           try {
-            parseFieldValue(field, value, actor.workspaceId, { registeredEntityTypes: [], checkUser: () => 'MISSING',
+            const normalized = parseFieldValue(field, value, actor.workspaceId, { registeredEntityTypes: [], checkUser: () => 'MISSING',
               isUserSelectable: () => false, checkCrmReference: () => 'MISSING', checkFile: () => 'MISSING' },
               Array.isArray(value) ? value : [value]);
+            if (canonical(normalized) !== canonical(value)) conversions++;
           } catch (error) {
             if (!(error instanceof AppError)) throw error;
             invalid++;
           }
         }
         if (invalid) issues.push({ code: 'SPA_ITEM_VALIDATION_FAILED', fieldCode: field.code, affectedItems: invalid });
+        if (conversions) issues.push({ code: 'SPA_SCHEMA_MIGRATION_REQUIRED', fieldCode: field.code, affectedItems: conversions });
       }
     }
     for (const old of published) if (!snapshot.fields.some(field => field.id === old.id))

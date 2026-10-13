@@ -39,10 +39,16 @@ export const emptyFieldValue = (value: unknown) => value === undefined || value 
 
 /** Publication previews and Item writes must compare exactly the same normalized keys. */
 export function uniqueValueKey(constraint: z.infer<typeof uniqueDefinition>, values: Map<string, unknown>): string | null {
-  const parts = constraint.fieldCodes.map(code => values.get(code) ?? null);
+  const parts = constraint.fieldCodes.map(code => { const value = values.get(code); return emptyFieldValue(value) ? null : value; });
   if (constraint.ignoreNull && parts.some(emptyFieldValue)) return null;
   const key = canonical(parts);
   return constraint.caseInsensitive ? key.toLowerCase() : key;
+}
+export function normalizedFieldDefault(field: FieldDefinition, workspaceId: string): unknown {
+  if (!field.isActive || emptyFieldValue(field.defaultValue)) return null;
+  if (['USER', 'CRM_REF', 'FILE', 'SPA_REF'].includes(field.fieldType)) return field.defaultValue;
+  return parseFieldValue(field, field.defaultValue, workspaceId, { registeredEntityTypes: [], checkUser: () => 'MISSING',
+    isUserSelectable: () => false, checkCrmReference: () => 'MISSING', checkFile: () => 'MISSING' });
 }
 const registry = new FieldTypeRegistry();
 
