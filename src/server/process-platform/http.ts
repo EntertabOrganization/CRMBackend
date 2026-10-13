@@ -3,14 +3,14 @@ import { randomUUID } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { isAppError } from '../errors';
 import { prisma } from '../prisma-client';
-import { readJson } from '../request';
+import { readJson,readRawBody } from '../request';
 import { checkRateLimit,processRateLimitPolicies } from '../rate-limit';
 import { authenticate, type Principal } from './context';
 
 export type PackHandler = (context: { actor: Principal; body: unknown; query: Record<string, string>;
   params: Record<string, string>; request: NextRequest }) => Promise<unknown>;
-export type ScopedPublicHandler = (context: { body: unknown; query: Record<string,string>; params: Record<string,string>; request: NextRequest }) => Promise<unknown>;
-type Entry = { method: string; path: string; controller: string; status: number } &
+export type ScopedPublicHandler = (context: { body: unknown; rawBody?: string; query: Record<string,string>; params: Record<string,string>; request: NextRequest }) => Promise<unknown>;
+type Entry = { method: string; path: string; controller: string; status: number; signed?: boolean } &
   ({ public: false; handler: PackHandler } | { public: true; handler: ScopedPublicHandler });
 
 /** Only implemented vertical slices are registered. Unimplemented inventory entries do not become fake routes. */
@@ -24,6 +24,9 @@ export class PackRouter {
   addPublic(method: string, path: string, controller: string, handler: ScopedPublicHandler, status = 200) {
     this.entries.push({ method,path,controller,handler,status,public: true });
     return this;
+  }
+  addSignedPublic(path: string,controller: string,handler: ScopedPublicHandler,status = 202) {
+    this.entries.push({ method: 'POST',path,controller,handler,status,public: true,signed: true }); return this;
   }
   async dispatch(request: NextRequest) {
     const requestId = randomUUID();
@@ -45,8 +48,9 @@ export class PackRouter {
         message: 'Resource was not found.', details: null }, requestId }, { status: 404 });
       const actor = match.entry.public ? null : await authenticate(prisma,request);
       if (actor) checkRateLimit(actor.workspaceId + ':' + actor.userId,request.method==='GET' ? processRateLimitPolicies.read : processRateLimitPolicies.write);
-      const body = request.method === 'GET' ? {} : await readJson(request, 262144);
-      const context = { body,query: Object.fromEntries(request.nextUrl.searchParams),params: match.params,request };
+      const rawBody = match.entry.signed ? await readRawBody(request,262144) : undefined;
+      const body = match.entry.signed ? {} : request.method === 'GET' ? {} : await readJson(request, 262144);
+      const context = { body,rawBody,query: Object.fromEntries(request.nextUrl.searchParams),params: match.params,request };
       const result = match.entry.public ? await match.entry.handler(context)
         : await match.entry.handler({ ...context,actor: actor! });
       const paged = result && typeof result === 'object' && 'data' in result && 'meta' in result;

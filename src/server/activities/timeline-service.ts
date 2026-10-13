@@ -48,6 +48,12 @@ export function sanitizeCommentBody(value: string) {
  * from durable outbox events and can never be the source of business truth or an authorization bypass.
  */
 export class TimelineService {
+  private readonly targetAuthorities = new Map<string,(actor: ActorContext,id: string) => boolean>();
+  private readonly targetReadAuthorities = new Map<string,(actor: ActorContext,id: string) => boolean>();
+  /** Additional resources remain authorized by their owner; comments still belong to shared Timeline. */
+  registerTargetAuthority(type: string,authority: (actor: ActorContext,id: string) => boolean,reader = authority) {
+    this.targetAuthorities.set(type,authority); this.targetReadAuthorities.set(type,reader); return this;
+  }
   constructor(
     private readonly store: InMemoryStore,
     private readonly access: AccessService,
@@ -290,6 +296,11 @@ export class TimelineService {
 
   private assertTarget(actor: ActorContext, entityType: string, entityId: string) {
     const type = entityType.toUpperCase();
+    const authority = this.targetAuthorities.get(type);
+    if (authority) {
+      if (!authority(actor,entityId)) throw new AppError('TIMELINE_ACCESS_FORBIDDEN','You do not have access to this timeline.',403);
+      return type;
+    }
     // Missing, foreign and unauthorized records are indistinguishable to the caller.
     if (!TIMELINE_ENTITY_TYPES.includes(type) || !this.registry.has(type) || !this.access.canAccessCrmRecord(actor, type, entityId, 'read')) {
       throw new AppError('TIMELINE_ACCESS_FORBIDDEN', 'You do not have access to this timeline.', 403);
@@ -534,7 +545,8 @@ export class TimelineService {
       let canAccessRecord = false;
       if (mentioned) {
         try {
-          canAccessRecord = this.access.canAccessCrmRecord(this.access.actor(mentioned, comment.workspaceId), comment.entityType, comment.entityId, 'read');
+          const recipient = this.access.actor(mentioned,comment.workspaceId),authority = this.targetReadAuthorities.get(comment.entityType);
+          canAccessRecord = authority ? authority(recipient,comment.entityId) : this.access.canAccessCrmRecord(recipient,comment.entityType,comment.entityId,'read');
         } catch {
           canAccessRecord = false;
         }

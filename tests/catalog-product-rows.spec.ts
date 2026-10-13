@@ -1,6 +1,6 @@
 /**
  * Pricing, units, tax and commercial Product Rows
- * (Automation_Products_Catlouge/Testing/Products-Catalog/pricing-product-rows.spec.ts + catalog-security.e2e-spec.ts).
+ * (tests/modules/Automation_Products_Catlouge/Products-Catalog/pricing-product-rows.spec.ts + catalog-security.e2e-spec.ts).
  */
 import { calculateRow, fromScaled, toScaled } from '@/src/server/catalog/money';
 import { addMember, CRM_READ_UPDATE, expectAppError, fullApp, otherTenant } from './support/domain';

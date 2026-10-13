@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { FieldTypeRegistry, type FieldTypeContext } from '../fields/field-types';
 import type { CustomField, CustomFieldType } from '../fields/types';
-import { code, name, uuid, version } from '../process-platform/dto';
+import { canonical, code, name, uuid, version } from '../process-platform/dto';
 import { AppError } from '../errors';
 
 export const fieldTypes = ['TEXT','TEXTAREA','INTEGER','DECIMAL','BOOLEAN','DATE','DATETIME','LIST','MULTI_LIST',
@@ -28,12 +28,22 @@ export const relationDefinition = z.strictObject({ id: uuid, code, name: name.op
 export const layoutDefinition = z.strictObject({ id: uuid, name, context: z.enum(['CREATE','DETAIL','EDIT']), version: version.default(1),
   sections: z.array(z.strictObject({ id: uuid, name, fieldCodes: z.array(code).max(500) })).max(50) });
 export const uniqueDefinition = z.strictObject({ id: uuid, name,
-  fieldCodes: z.array(code).min(1).max(8), ignoreNull: z.boolean().default(true), caseInsensitive: z.boolean().default(true) });
+  fieldCodes: z.array(code).min(1).max(8).refine(codes => new Set(codes).size === codes.length,
+    'Unique constraints cannot repeat a field.'), ignoreNull: z.boolean().default(true), caseInsensitive: z.boolean().default(true) });
 export const schemaSnapshot = z.strictObject({ fields: z.array(fieldDefinition).max(500),
   uniqueConstraints: z.array(uniqueDefinition).max(100).default([]),
   relations: z.array(relationDefinition).max(100).default([]), layouts: z.array(layoutDefinition).max(50).default([]),
   capabilities: z.array(z.strictObject({ key: z.string(), enabled: z.boolean(), configuration: z.json() })).optional() });
 export type SchemaSnapshot = z.infer<typeof schemaSnapshot>;
+export const emptyFieldValue = (value: unknown) => value === undefined || value === null || value === '' || Array.isArray(value) && value.length === 0;
+
+/** Publication previews and Item writes must compare exactly the same normalized keys. */
+export function uniqueValueKey(constraint: z.infer<typeof uniqueDefinition>, values: Map<string, unknown>): string | null {
+  const parts = constraint.fieldCodes.map(code => values.get(code) ?? null);
+  if (constraint.ignoreNull && parts.some(emptyFieldValue)) return null;
+  const key = canonical(parts);
+  return constraint.caseInsensitive ? key.toLowerCase() : key;
+}
 const registry = new FieldTypeRegistry();
 
 export function sharedField(field: FieldDefinition, workspaceId: string): CustomField {

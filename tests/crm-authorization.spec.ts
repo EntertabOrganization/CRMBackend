@@ -31,6 +31,23 @@ function roleWithPermissions(
 }
 
 describe('CRM responsibility and observers', () => {
+  it('requires Deal delete permission and its ownership scope before mutation or audit', async () => {
+    const { app, user: owner, workspace } = await verifiedUser();
+    const readerRole = roleWithPermissions(app, owner, workspace.id, 'Read only', [{ permissionId: 'crm.deal.read', scope: 'WORKSPACE' }]);
+    const deleterRole = roleWithPermissions(app, owner, workspace.id, 'Own deletion', [{ permissionId: 'crm.deal.delete', scope: 'OWN' }]);
+    const reader = await inviteMember(app, owner, workspace.id, readerRole.id, 'delete-reader@example.com');
+    const deleter = await inviteMember(app, owner, workspace.id, deleterRole.id, 'delete-owner@example.com');
+    const company = app.crmCore.createCompany(owner, workspace.id, { name: 'Customer' });
+    const foreignOwned = app.crm.createDeal(owner, workspace.id, { title: 'Owner Deal', companyId: company.id });
+    const own = app.crm.createDeal(owner, workspace.id, { title: 'Member Deal', companyId: company.id, responsibleUserId: deleter.id });
+    const auditCount = app.store.state.auditLogs.length;
+    expect(() => app.crmCore.softDeleteDeal(reader, workspace.id, own.id)).toThrow('Permission denied.');
+    expect(() => app.crmCore.softDeleteDeal(deleter, workspace.id, foreignOwned.id)).toThrow('Permission denied.');
+    expect(own.isDeleted).toBe(false); expect(foreignOwned.isDeleted).toBe(false);
+    expect(app.store.state.auditLogs).toHaveLength(auditCount);
+    expect(app.crmCore.softDeleteDeal(deleter, workspace.id, own.id)).toMatchObject({ isDeleted: true, deletedByUserId: deleter.id });
+    expect(app.store.state.auditLogs).toHaveLength(auditCount + 1);
+  });
   it('interprets OWN scope only as current responsibleUserId', async () => {
     const { app, user: owner, workspace } = await verifiedUser();
     const role = roleWithPermissions(app, owner, workspace.id, 'Own CRM Reader', [{ permissionId: 'crm.lead.read', scope: 'OWN' }]);

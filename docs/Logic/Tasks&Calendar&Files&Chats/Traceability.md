@@ -1,0 +1,41 @@
+# Requirement Traceability
+
+This maps major requirement families to implementation specifications and executable contracts.
+
+| Requirement family | Module | Specification | Tests |
+|---|---|---|---|
+| Tasks & Projects | Tasks-Projects | `Tasks-Projects/overview.md` | `tests/modules/Tasks&Calendar&Files&Chats/Tasks-Projects/overview.spec.ts`, `tests/modules/Tasks&Calendar&Files&Chats/Tasks-Projects/overview.e2e-spec.ts` |
+| Calendar & Meetings | Calendar-Meetings | `Calendar-Meetings/overview.md` | `tests/modules/Tasks&Calendar&Files&Chats/Calendar-Meetings/overview.spec.ts`, `tests/modules/Tasks&Calendar&Files&Chats/Calendar-Meetings/overview.e2e-spec.ts` |
+| Files, Drive & Documents | Files-Drive-Documents | `Files-Drive-Documents/overview.md` | `tests/modules/Tasks&Calendar&Files&Chats/Files-Drive-Documents/overview.spec.ts`, `tests/modules/Tasks&Calendar&Files&Chats/Files-Drive-Documents/overview.e2e-spec.ts` |
+| Feed, Chat & Internal Communication | Communication | `Communication/overview.md` | `tests/modules/Tasks&Calendar&Files&Chats/Communication/overview.spec.ts`, `tests/modules/Tasks&Calendar&Files&Chats/Communication/overview.e2e-spec.ts` |
+| Tasks — Core | Tasks-Projects | `Tasks-Projects/tasks.md` | `tests/modules/Tasks&Calendar&Files&Chats/Tasks-Projects/tasks.spec.ts`, `tests/modules/Tasks&Calendar&Files&Chats/Tasks-Projects/tasks.e2e-spec.ts` |
+| Task Checklists | Tasks-Projects | `Tasks-Projects/task-checklists.md` | `tests/modules/Tasks&Calendar&Files&Chats/Tasks-Projects/task-checklists.spec.ts`, `tests/modules/Tasks&Calendar&Files&Chats/Tasks-Projects/task-checklists.e2e-spec.ts` |
+| Task Dependencies | Tasks-Projects | `Tasks-Projects/task-dependencies.md` | `tests/modules/Tasks&Calendar&Files&Chats/Tasks-Projects/task-dependencies.spec.ts`, `tests/modules/Tasks&Calendar&Files&Chats/Tasks-Projects/task-dependencies.e2e-spec.ts` |
+| Task Time Tracking | Tasks-Projects | `Tasks-Projects/task-time-tracking.md` | `tests/modules/Tasks&Calendar&Files&Chats/Tasks-Projects/task-time-tracking.spec.ts`, `tests/modules/Tasks&Calendar&Files&Chats/Tasks-Projects/task-time-tracking.e2e-spec.ts` |
+| Task Templates & Recurrence | Tasks-Projects | `Tasks-Projects/task-templates-recurrence.md` | `tests/modules/Tasks&Calendar&Files&Chats/Tasks-Projects/task-templates-recurrence.spec.ts`, `tests/modules/Tasks&Calendar&Files&Chats/Tasks-Projects/task-templates-recurrence.e2e-spec.ts` |
+| Projects & Workgroups | Tasks-Projects | `Tasks-Projects/projects-workgroups.md` | `tests/modules/Tasks&Calendar&Files&Chats/Tasks-Projects/projects-workgroups.spec.ts`, `tests/modules/Tasks&Calendar&Files&Chats/Tasks-Projects/projects-workgroups.e2e-spec.ts` |
+| Project Members & Contextual Permissions | Tasks-Projects | `Tasks-Projects/project-members-permissions.md` | `tests/modules/Tasks&Calendar&Files&Chats/Tasks-Projects/project-members-permissions.spec.ts`, `tests/modules/Tasks&Calendar&Files&Chats/Tasks-Projects/project-members-permissions.e2e-spec.ts` |
+| Project Kanban & Planning | Tasks-Projects | `Tasks-Projects/project-kanban-planning.md` | `tests/modules/Tasks&Calendar&Files&Chats/Tasks-Projects/project-kanban-planning.spec.ts`, `tests/modules/Tasks&Calendar&Files&Chats/Tasks-Projects/project-kanban-planning.e2e-spec.ts` |
+| Calendars | Calendar-Meetings | `Calendar-Meetings/calendars.md` | `tests/modules/Tasks&Calendar&Files&Chats/Calendar-Meetings/calendars.spec.ts`, `tests/modules/Tasks&Calendar&Files&Chats/Calendar-Meetings/calendars.e2e-spec.ts` |
+| Events & Meetings | Calendar-Meetings | `Calendar-Meetings/events-meetings.md` | `tests/modules/Tasks&Calendar&Files&Chats/Calendar-Meetings/events-meetings.spec.ts`, `tests/modules/Tasks&Calendar&Files&Chats/Calendar-Meetings/events-meetings.e2e-spec.ts` |
+| Calendar Recurrence & Reminders | Calendar-Meetings | `Calendar-Meetings/recurrence-reminders.md` | `tests/modules/Tasks&Calendar&Files&Chats/Calendar-Meetings/recurrence-reminders.spec.ts`, `tests/modules/Tasks&Calendar&Files&Chats/Calendar-Meetings/recurrence-reminders.e2e-spec.ts` |
+| Availability & Resources | Calendar-Meetings | `Calendar-Meetings/availability-resources.md` | `tests/modules/Tasks&Calendar&Files&Chats/Calendar-Meetings/availability-resources.spec.ts`, `tests/modules/Tasks&Calendar&Files&Chats/Calendar-Meetings/availability-resources.e2e-spec.ts` |
+| Booking Pages & Bookings | Calendar-Meetings | `Calendar-Meetings/booking-pages.md` | `tests/modules/Tasks&Calendar&Files&Chats/Calendar-Meetings/booking-pages.spec.ts`, `tests/modules/Tasks&Calendar&Files&Chats/Calendar-Meetings/booking-pages.e2e-spec.ts` |
+| External Calendar Sync | Calendar-Meetings | `Calendar-Meetings/external-calendar-sync.md` | `tests/modules/Tasks&Calendar&Files&Chats/Calendar-Meetings/external-calendar-sync.spec.ts`, `tests/modules/Tasks&Calendar&Files&Chats/Calendar-Meetings/external-calendar-sync.e2e-spec.ts` |
+| Storages & Folders | Files-Drive-Documents | `Files-Drive-Documents/storages-folders.md` | `tests/modules/Tasks&Calendar&Files&Chats/Files-Drive-Documents/storages-folders.spec.ts`, `tests/modules/Tasks&Calendar&Files&Chats/Files-Drive-Documents/storages-folders.e2e-spec.ts` |
+| Files, Versions & Uploads | Files-Drive-Documents | `Files-Drive-Documents/files-versions-uploads.md` | `tests/modules/Tasks&Calendar&Files&Chats/Files-Drive-Documents/files-versions-uploads.spec.ts`, `tests/modules/Tasks&Calendar&Files&Chats/Files-Drive-Documents/files-versions-uploads.e2e-spec.ts` |
+| File Permissions & Sharing | Files-Drive-Documents | `Files-Drive-Documents/permissions-sharing.md` | `tests/modules/Tasks&Calendar&Files&Chats/Files-Drive-Documents/permissions-sharing.spec.ts`, `tests/modules/Tasks&Calendar&Files&Chats/Files-Drive-Documents/permissions-sharing.e2e-spec.ts` |
+| Generic File Attachments | Files-Drive-Documents | `Files-Drive-Documents/attachments.md` | `tests/modules/Tasks&Calendar&Files&Chats/Files-Drive-Documents/attachments.spec.ts`, `tests/modules/Tasks&Calendar&Files&Chats/Files-Drive-Documents/attachments.e2e-spec.ts` |
+| Document Editing & Locking | Files-Drive-Documents | `Files-Drive-Documents/document-editing.md` | `tests/modules/Tasks&Calendar&Files&Chats/Files-Drive-Documents/document-editing.spec.ts`, `tests/modules/Tasks&Calendar&Files&Chats/Files-Drive-Documents/document-editing.e2e-spec.ts` |
+| Document Templates & Generated Documents | Files-Drive-Documents | `Files-Drive-Documents/templates-generated-documents.md` | `tests/modules/Tasks&Calendar&Files&Chats/Files-Drive-Documents/templates-generated-documents.spec.ts`, `tests/modules/Tasks&Calendar&Files&Chats/Files-Drive-Documents/templates-generated-documents.e2e-spec.ts` |
+| Feed | Communication | `Communication/feed.md` | `tests/modules/Tasks&Calendar&Files&Chats/Communication/feed.spec.ts`, `tests/modules/Tasks&Calendar&Files&Chats/Communication/feed.e2e-spec.ts` |
+| Chats & Messages | Communication | `Communication/chats-messages.md` | `tests/modules/Tasks&Calendar&Files&Chats/Communication/chats-messages.spec.ts`, `tests/modules/Tasks&Calendar&Files&Chats/Communication/chats-messages.e2e-spec.ts` |
+| Channels | Communication | `Communication/channels.md` | `tests/modules/Tasks&Calendar&Files&Chats/Communication/channels.spec.ts`, `tests/modules/Tasks&Calendar&Files&Chats/Communication/channels.e2e-spec.ts` |
+| Collabs | Communication | `Communication/collabs.md` | `tests/modules/Tasks&Calendar&Files&Chats/Communication/collabs.spec.ts`, `tests/modules/Tasks&Calendar&Files&Chats/Communication/collabs.e2e-spec.ts` |
+| Internal Calls | Communication | `Communication/calls.md` | `tests/modules/Tasks&Calendar&Files&Chats/Communication/calls.spec.ts`, `tests/modules/Tasks&Calendar&Files&Chats/Communication/calls.e2e-spec.ts` |
+
+## Cross-cutting contracts
+
+- Tenant isolation, API envelopes, pagination, optimistic concurrency, idempotency, outbox/jobs, audit, notifications, repository-first execution and Definition of FINISHED are governed by `Agent.md` and exercised by each applicable E2E contract.
+- Product decisions Q1–Q51 are preserved in `Decision-Register.md` and mapped into the relevant specifications above.
+- Source coverage and priority are documented in `Source-Coverage.md`.

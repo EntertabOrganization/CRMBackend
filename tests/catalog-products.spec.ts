@@ -1,6 +1,6 @@
 /**
  * Domain-level contract tests for Products, Catalogs, Categories, Variants, Units, Price Types and Prices
- * (Automation_Products_Catlouge/Testing/Products-Catalog/products.spec.ts and part of catalog.e2e-spec.ts).
+ * (tests/modules/Automation_Products_Catlouge/Products-Catalog/products.spec.ts and part of catalog.e2e-spec.ts).
  */
 import { PRODUCT_ENTITY_TYPE } from '@/src/server/catalog/property-service';
 import { addMember, expectAppError, fullApp, otherTenant, type FullApp } from './support/domain';

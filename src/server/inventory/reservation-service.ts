@@ -27,6 +27,31 @@ export class InventoryReservationService implements ReservationPostingPort {
     this.sources = sources ?? new InventorySourceAuthority(db);
   }
   setDocumentAuthority(owner: Pick<InventoryDocumentService,'document'>) { this.documents = owner; }
+  async inspectOrderReservation(tx:Tx,actor:Principal,id:string,orderId:string){
+    requirePermission(actor,'INVENTORY.RESERVATION_READ');
+    const row=await tx.inventoryReservation.findFirst({where:{workspaceId:actor.workspaceId,id,sourceType:'ORDER',sourceId:orderId}});
+    if(!row||!await ownerVisible(tx,actor,row.createdByUserId,'INVENTORY.RESERVATION_READ'))throw new AppError('RESERVATION_NOT_FOUND','Reservation was not found.',404);
+    await import('../commerce/order-authority').then(({commerceOrderRead})=>commerceOrderRead(tx,actor,orderId));
+    const legs=await tx.inventoryReservationAllocation.findMany({where:{workspaceId:actor.workspaceId,reservationId:id}});
+    for(const warehouseId of new Set([row.warehouseId,...legs.map(l=>l.warehouseId)]))await this.warehouses.warehouse(tx,actor,warehouseId,'INVENTORY.RESERVATION_READ');
+    return row;
+  }
+  async shipmentAllocations(tx: Tx,actor: Principal,orderId: string,inventoryKey: string,warehouseId: string,requestedQuantity: string,reservationIds?:string[]) {
+    await lock(tx,actor.workspaceId,'inventory:configuration');
+    requirePermission(actor,'INVENTORY.RESERVATION_READ'); parse(positiveQuantity,requestedQuantity);
+    const rows = await tx.inventoryReservation.findMany({ where: { workspaceId: actor.workspaceId,sourceType: 'ORDER',sourceId: orderId,inventoryKey,...(reservationIds?{id:{in:reservationIds}}:{}),status: { in: live },expiresAt: { gt: new Date() } },orderBy: { id: 'asc' } });
+    if (rows.length) {
+      const sku = (await inventoryCatalogPort(tx,actor)).sku(rows[0].productId,rows[0].variantId ?? undefined);
+      if (exact(requestedQuantity).decimalPlaces()>sku.unitPrecision) throw new AppError('RESERVATION_QUANTITY_INVALID','Shipment quantity exceeds Catalog unit precision.',422);
+    }
+    const result: { reservationId: string;locationId: string|null;quantity: string }[] = [];
+    for (const row of rows) {
+      await this.reservation(tx,actor,row.id,'INVENTORY.RESERVATION_READ');
+      const legs = await tx.inventoryReservationAllocation.findMany({ where: { workspaceId: actor.workspaceId,reservationId: row.id,warehouseId,quantity: { gt: 0 } },orderBy: { locationKey: 'asc' } });
+      result.push(...legs.map(leg => ({ reservationId: row.id,locationId: leg.locationId,quantity: leg.quantity.toFixed(6) })));
+    }
+    return result;
+  }
   private async source(tx: Tx,actor: Principal,row: { sourceType: string;sourceId: string },inventoryKey?: string) {
     if (row.sourceType==='MANUAL') return {};
     return this.sources.read(tx,actor,{ entityType: row.sourceType,entityId: row.sourceId },inventoryKey);
@@ -187,6 +212,17 @@ export class InventoryReservationService implements ReservationPostingPort {
     });
   }
   async release(actor: Principal,id: string,raw: unknown,key: string | null) { return this.db.$transaction(tx => this.releaseInTransaction(tx,actor,id,raw,key),{ timeout: 60000 }); }
+  async releaseShipmentAllocation(tx: Tx,actor: Principal,id: string,quantity: string,warehouseId: string,locationId: string|null,key: string) {
+    parse(positiveQuantity,quantity); await lock(tx,actor.workspaceId,'inventory:configuration'); await lock(tx,actor.workspaceId,'inventory:reservation:'+id);
+    actor = await resolvePrincipal(tx,actor.workspaceId,actor.userId);
+    const row = await this.reservation(tx,actor,id,'INVENTORY.RESERVATION_MANAGE');
+    return command(tx,actor,'INVENTORY.SHIPMENT_RELEASE:'+id,key,{ quantity,warehouseId,locationId },async () => {
+      if (!live.includes(row.status) || exact(quantity).gt(remaining(row))) throw new AppError('RESERVATION_QUANTITY_INVALID','Reservation no longer covers this shipment.',409);
+      await this.take(tx,actor,row,quantity,{ warehouseId,locationId });
+      const updated = await tx.inventoryReservation.update({ where: { id },data: { releasedQuantity: { increment: quantity },status: exact(quantity).eq(remaining(row)) ? 'RELEASED' : row.status,version: { increment: 1 } } });
+      await this.history(tx,actor,updated,'RELEASED',quantity); return { id,status: updated.status };
+    });
+  }
   private async consume(tx: Tx,actor: Principal,row: InventoryReservation,line: InventoryDocumentLine,document: InventoryDocument,qty: string) {
     if (document.type!=='SALES_ORDER' || document.reversedAt || line.inventoryKey!==row.inventoryKey || !document.sourceWarehouseId
       || row.sourceType!=='MANUAL' && (row.sourceType!==document.sourceEntityType || row.sourceId!==document.sourceEntityId)) throw new AppError('RESERVATION_SOURCE_INVALID','Sale line does not match this reservation source and SKU.',422);

@@ -945,6 +945,646 @@ model CommerceCoupon {
   @@map("commerce_coupons")
 }
 
+model CommerceCart {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  storeId String @map("store_id") @db.Uuid
+  tokenHash String @unique @map("token_hash")
+  status String @default("ACTIVE")
+  currency String @db.Char(3)
+  version BigInt @default(1)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  lastActivityAt DateTime @default(now()) @map("last_activity_at") @db.Timestamptz(6)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  @@unique([workspaceId,storeId,id])
+  @@index([workspaceId,storeId,status,expiresAt])
+  @@map("commerce_carts")
+}
+
+model CommerceCartItem {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  storeId String @map("store_id") @db.Uuid
+  cartId String @map("cart_id") @db.Uuid
+  productId String @map("product_id") @db.Uuid
+  variantId String? @map("variant_id") @db.Uuid
+  inventoryKey String @map("inventory_key") @db.Uuid
+  quantity Decimal @db.Decimal(18,6)
+  options Json @default("{}")
+  optionsHash String @map("options_hash")
+  version BigInt @default(1)
+  @@unique([cartId,inventoryKey,optionsHash])
+  @@index([workspaceId,storeId,cartId])
+  @@map("commerce_cart_items")
+}
+
+model CommerceCheckoutSession {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  storeId String @map("store_id") @db.Uuid
+  cartId String @map("cart_id") @db.Uuid
+  tokenHash String @unique @map("token_hash")
+  status String @default("DRAFT")
+  customerSnapshot Json @map("customer_snapshot")
+  addressSnapshot Json @map("address_snapshot")
+  payerType String @map("payer_type")
+  customerAccountId String? @map("customer_account_id") @db.Uuid
+  quoteHash String? @map("quote_hash")
+  quote Json?
+  quoteInput Json? @map("quote_input")
+  quoteExpiresAt DateTime? @map("quote_expires_at") @db.Timestamptz(6)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  orderId String? @unique @map("order_id") @db.Uuid
+  version BigInt @default(1)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([workspaceId,storeId,id])
+  @@index([workspaceId,storeId,cartId])
+  @@map("commerce_checkout_sessions")
+}
+
+model CommerceOrder {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  storeId String @map("store_id") @db.Uuid
+  cartId String @unique @map("cart_id") @db.Uuid
+  checkoutSessionId String @unique @map("checkout_session_id") @db.Uuid
+  customerAccountId String? @map("customer_account_id") @db.Uuid
+  status String @default("NEW")
+  currency String @db.Char(3)
+  total Decimal @db.Decimal(24,6)
+  paidAmount Decimal @default(0) @map("paid_amount") @db.Decimal(24,6)
+  refundedAmount Decimal @default(0) @map("refunded_amount") @db.Decimal(24,6)
+  paymentStatus String @default("UNPAID") @map("payment_status")
+  fulfillmentStatus String @default("UNFULFILLED") @map("fulfillment_status")
+  snapshot Json
+  consents Json
+  businessMetadata Json @default("{}") @map("business_metadata")
+  archivedAt DateTime? @map("archived_at") @db.Timestamptz(6)
+  version BigInt @default(1)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([workspaceId,storeId,id])
+  @@index([workspaceId,storeId,status,createdAt])
+  @@index([workspaceId,storeId,customerAccountId,createdAt])
+  @@map("commerce_orders")
+}
+
+model CommerceCustomerAccount {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  storeId String @map("store_id") @db.Uuid
+  identityAuthId String @map("identity_auth_id") @db.Uuid
+  emailNormalized String @map("email_normalized")
+  status String @default("ACTIVE")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([workspaceId,storeId,id])
+  @@unique([workspaceId,storeId,identityAuthId])
+  @@index([workspaceId,storeId,createdAt])
+  @@map("commerce_customer_accounts")
+}
+
+model CommerceCustomerBinding {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  storeId String @map("store_id") @db.Uuid
+  customerAccountId String @map("customer_account_id") @db.Uuid
+  entityType String @map("entity_type")
+  contactId String? @map("contact_id") @db.Uuid
+  companyId String? @map("company_id") @db.Uuid
+  resolutionReason String @map("resolution_reason")
+  linkedByUserId String @map("linked_by_user_id") @db.Uuid
+  version BigInt @default(1)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([workspaceId,customerAccountId,entityType])
+  @@index([workspaceId,storeId,customerAccountId])
+  @@map("commerce_customer_bindings")
+}
+
+model CommerceReturn {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  storeId String @map("store_id") @db.Uuid
+  orderId String @map("order_id") @db.Uuid
+  status String @default("REQUESTED")
+  reason String
+  policySnapshot Json @map("policy_snapshot")
+  inspectionPlan Json? @map("inspection_plan")
+  requestedByUserId String @map("requested_by_user_id") @db.Uuid
+  approvedByUserId String? @map("approved_by_user_id") @db.Uuid
+  receivedAt DateTime? @map("received_at") @db.Timestamptz(6)
+  version BigInt @default(1)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([workspaceId,id])
+  @@unique([workspaceId,storeId,orderId,id])
+  @@index([workspaceId,storeId,status,createdAt])
+  @@map("commerce_returns")
+}
+
+model CommerceReturnLine {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  storeId String @map("store_id") @db.Uuid
+  orderId String @map("order_id") @db.Uuid
+  returnId String @map("return_id") @db.Uuid
+  orderLineId String @map("order_line_id") @db.Uuid
+  quantity Decimal @db.Decimal(18,6)
+  receivedQuantity Decimal @default(0) @map("received_quantity") @db.Decimal(18,6)
+  disposition String?
+  inventoryDocumentLineId String? @unique @map("inventory_document_line_id") @db.Uuid
+  @@unique([workspaceId,returnId,orderLineId])
+  @@index([workspaceId,orderId,orderLineId])
+  @@map("commerce_return_lines")
+}
+
+model CommerceReturnEvent {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  returnId String @map("return_id") @db.Uuid
+  actorUserId String @map("actor_user_id") @db.Uuid
+  action String
+  details Json @default("{}")
+  occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  @@index([workspaceId,returnId,occurredAt])
+  @@map("commerce_return_events")
+}
+
+model CommerceReturnCommand {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  actorUserId String @map("actor_user_id") @db.Uuid
+  operation String
+  key String
+  requestHash String @map("request_hash")
+  response Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([workspaceId,actorUserId,operation,key])
+  @@map("commerce_return_commands")
+}
+
+model CommercePaidReservationJob {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  storeId String @map("store_id") @db.Uuid
+  orderId String @map("order_id") @db.Uuid
+  policy String @default("PAYMENT_PAID")
+  status String @default("WAITING")
+  correlationId String @default(uuid()) @map("correlation_id") @db.Uuid
+  attempts Int @default(0)
+  claimToken String? @map("claim_token") @db.Uuid
+  leaseExpiresAt DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  nextAttemptAt DateTime @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  errorCode String? @map("error_code")
+  version BigInt @default(1)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
+  @@unique([workspaceId,orderId])
+  @@index([workspaceId,storeId,orderId],map:"commerce_paid_reservation_order_fk")
+  @@index([status,nextAttemptAt,leaseExpiresAt])
+  @@map("commerce_paid_reservation_jobs")
+}
+
+model CommerceOrderLineReservation {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  storeId String @map("store_id") @db.Uuid
+  orderId String @map("order_id") @db.Uuid
+  orderLineId String @map("order_line_id") @db.Uuid
+  reservationId String @map("reservation_id") @db.Uuid
+  inventoryKey String @map("inventory_key") @db.Uuid
+  quantity Decimal @db.Decimal(24,6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([workspaceId,reservationId])
+  @@index([workspaceId,storeId,orderId],map: "commerce_line_reservation_order_fk")
+  @@index([workspaceId,orderId,orderLineId])
+  @@map("commerce_order_line_reservations")
+}
+
+model CommerceOrderHistory {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  storeId String @map("store_id") @db.Uuid
+  orderId String @map("order_id") @db.Uuid
+  action String
+  actorUserId String? @map("actor_user_id") @db.Uuid
+  details Json @default("{}")
+  occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  @@index([workspaceId,orderId,occurredAt])
+  @@map("commerce_order_history")
+}
+
+model CommerceCheckoutCommand {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  storeId String @map("store_id") @db.Uuid
+  sessionId String @map("session_id") @db.Uuid
+  key String
+  requestHash String @map("request_hash")
+  response Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([workspaceId,storeId,sessionId,key])
+  @@map("commerce_checkout_commands")
+}
+
+model CommerceDiscountRedemption {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  storeId String @map("store_id") @db.Uuid
+  orderId String @map("order_id") @db.Uuid
+  ruleId String @map("rule_id") @db.Uuid
+  couponId String? @map("coupon_id") @db.Uuid
+  customerKey String @map("customer_key")
+  amount Decimal @db.Decimal(24,6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([orderId,ruleId])
+  @@unique([orderId,couponId])
+  @@index([workspaceId,storeId,ruleId,customerKey])
+  @@index([workspaceId,storeId,couponId,customerKey])
+  @@map("commerce_discount_redemptions")
+}
+
+model CommerceOrderPaymentBinding {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  storeId String @map("store_id") @db.Uuid
+  orderId String @map("order_id") @db.Uuid
+  paymentId String @map("payment_id") @db.Uuid
+  amount Decimal @db.Decimal(24,6)
+  requestedAmount Decimal? @map("requested_amount") @db.Decimal(24,6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([orderId,paymentId])
+  @@index([workspaceId,paymentId])
+  @@map("commerce_order_payment_bindings")
+}
+
+/// Shared Payments owns durable provider effects; Commerce retains only Order allocations.
+model SharedPaymentCommand {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  paymentId String @map("payment_id") @db.Uuid
+  actorUserId String @map("actor_user_id") @db.Uuid
+  connectionId String @map("connection_id") @db.Uuid
+  methodId String @map("method_id") @db.Uuid
+  providerKey String @map("provider_key")
+  merchantId String @map("merchant_id")
+  requestScope String @map("request_scope")
+  requestKey String @map("request_key")
+  requestHash String @map("request_hash")
+  kind String
+  amount Decimal @db.Decimal(24,6)
+  baselineCapturedAmount Decimal @default(0) @map("baseline_captured_amount") @db.Decimal(24,6)
+  currency String @db.Char(3)
+  reason String?
+  status String @default("QUEUED")
+  attempts Int @default(0)
+  uncertain Boolean @default(false)
+  claimToken String? @map("claim_token") @db.Uuid
+  leaseExpiresAt DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  nextAttemptAt DateTime @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  lastErrorCode String? @map("last_error_code")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  @@index([status,nextAttemptAt])
+  @@index([workspaceId,paymentId,status])
+  @@unique([workspaceId,actorUserId,requestScope,requestKey])
+  @@map("shared_payment_commands")
+}
+
+model SharedPaymentProviderEvent {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  connectionId String @map("connection_id") @db.Uuid
+  providerCode String @map("provider_code")
+  externalEventId String @map("external_event_id")
+  paymentId String? @map("payment_id") @db.Uuid
+  payloadHash String @map("payload_hash")
+  normalized Json
+  signatureVerified Boolean @default(true) @map("signature_verified")
+  status String @default("QUEUED")
+  outcome String?
+  attempts Int @default(0)
+  nextAttemptAt DateTime @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  errorCode String? @map("error_code")
+  receivedAt DateTime @default(now()) @map("received_at") @db.Timestamptz(6)
+  processedAt DateTime? @map("processed_at") @db.Timestamptz(6)
+  @@unique([workspaceId,connectionId,providerCode,externalEventId])
+  @@index([status,nextAttemptAt])
+  @@index([workspaceId,paymentId])
+  @@map("shared_payment_provider_events")
+}
+
+model CommerceRefundBinding {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  storeId String @map("store_id") @db.Uuid
+  orderId String @map("order_id") @db.Uuid
+  paymentId String @map("payment_id") @db.Uuid
+  refundId String @unique @map("refund_id") @db.Uuid
+  returnId String? @map("return_id") @db.Uuid
+  requestedByUserId String @map("requested_by_user_id") @db.Uuid
+  policySnapshot Json @map("policy_snapshot")
+  requiresApproval Boolean @map("requires_approval")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([workspaceId,refundId])
+  @@index([workspaceId,storeId,orderId])
+  @@map("commerce_refund_bindings")
+}
+
+model CommerceRefundApproval {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  refundId String @map("refund_id") @db.Uuid
+  decidedByUserId String @map("decided_by_user_id") @db.Uuid
+  decision String
+  reason String
+  policySnapshot Json @map("policy_snapshot")
+  decidedAt DateTime @default(now()) @map("decided_at") @db.Timestamptz(6)
+  @@unique([workspaceId,refundId])
+  @@map("commerce_refund_approvals")
+}
+
+model CommerceRefundRequest {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  actorUserId String @map("actor_user_id") @db.Uuid
+  operation String
+  key String
+  requestHash String @map("request_hash")
+  response Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([workspaceId,actorUserId,operation,key])
+  @@map("commerce_refund_requests")
+}
+
+model SharedRefundCommand {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  refundId String @unique @map("refund_id") @db.Uuid
+  paymentId String @map("payment_id") @db.Uuid
+  actorUserId String @map("actor_user_id") @db.Uuid
+  status String @default("QUEUED")
+  attempts Int @default(0)
+  uncertain Boolean @default(false)
+  claimToken String? @map("claim_token") @db.Uuid
+  leaseExpiresAt DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  nextAttemptAt DateTime @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  lastErrorCode String? @map("last_error_code")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@index([status,nextAttemptAt,leaseExpiresAt])
+  @@index([workspaceId,paymentId])
+  @@map("shared_refund_commands")
+}
+
+model CommercePaymentDispute {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  storeId String @map("store_id") @db.Uuid
+  orderId String @map("order_id") @db.Uuid
+  paymentId String @map("payment_id") @db.Uuid
+  connectionId String @map("connection_id") @db.Uuid
+  providerCode String @map("provider_code")
+  providerDisputeId String @map("provider_dispute_id")
+  chargeId String @map("charge_id")
+  amount Decimal @db.Decimal(24,6)
+  currency String @db.Char(3)
+  status String
+  providerStatus String @map("provider_status")
+  reason String
+  evidence Json
+  openedAt DateTime @map("opened_at") @db.Timestamptz(6)
+  resolvedAt DateTime? @map("resolved_at") @db.Timestamptz(6)
+  lastProviderAt DateTime @map("last_provider_at") @db.Timestamptz(6)
+  version BigInt @default(1)
+  @@unique([workspaceId,connectionId,providerCode,providerDisputeId])
+  @@unique([workspaceId,id])
+  @@index([workspaceId,storeId,status,openedAt])
+  @@index([paymentId],map: "commerce_dispute_payment_fk")
+  @@index([workspaceId,storeId,orderId],map: "commerce_dispute_order_fk")
+  @@map("commerce_payment_disputes")
+}
+
+model CommercePaymentDisputeHistory {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  disputeId String @map("dispute_id") @db.Uuid
+  receiptId String @unique @map("receipt_id") @db.Uuid
+  providerEventId String @map("provider_event_id")
+  status String
+  providerStatus String @map("provider_status")
+  evidence Json
+  outcome String
+  occurredAt DateTime @map("occurred_at") @db.Timestamptz(6)
+  @@index([workspaceId,disputeId,occurredAt])
+  @@map("commerce_payment_dispute_history")
+}
+
+model CommerceCrmBinding {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  storeId String @map("store_id") @db.Uuid
+  orderId String @map("order_id") @db.Uuid
+  entityType String @map("entity_type")
+  targetId String? @map("target_id") @db.Uuid
+  linkPolicy String @map("link_policy")
+  status String @default("PENDING")
+  lastErrorCode String? @map("last_error_code")
+  version BigInt @default(1)
+  @@unique([workspaceId,orderId,entityType])
+  @@index([workspaceId,storeId,orderId],map: "commerce_crm_binding_order_fk")
+  @@index([entityType,targetId],map: "commerce_crm_binding_target")
+  @@map("commerce_crm_bindings")
+}
+
+model CommerceCrmSync {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  storeId String @map("store_id") @db.Uuid
+  orderId String @map("order_id") @db.Uuid
+  dealPolicy String @map("deal_policy")
+  mode String @default("AUTO")
+  requestedByUserId String? @map("requested_by_user_id") @db.Uuid
+  status String @default("QUEUED")
+  attempts Int @default(0)
+  cycleAttempts Int @default(0) @map("cycle_attempts")
+  customerWasNew Boolean? @map("customer_was_new")
+  dealCreated Boolean? @map("deal_created")
+  claimToken String? @map("claim_token") @db.Uuid
+  leaseExpiresAt DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  nextAttemptAt DateTime @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  errorCode String? @map("error_code")
+  version BigInt @default(1)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
+  @@unique([workspaceId,orderId])
+  @@unique([workspaceId,id])
+  @@index([workspaceId,storeId,orderId],map: "commerce_crm_sync_order_fk")
+  @@index([requestedByUserId],map: "commerce_crm_sync_principal_fk")
+  @@index([status,nextAttemptAt,leaseExpiresAt])
+  @@map("commerce_crm_sync")
+}
+
+model CommerceCrmSyncRequest {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  syncId String @map("sync_id") @db.Uuid
+  actorUserId String @map("actor_user_id") @db.Uuid
+  requestKey String @map("request_key")
+  requestHash String @map("request_hash")
+  response Json
+  @@unique([workspaceId,actorUserId,requestKey])
+  @@index([workspaceId,syncId],map: "commerce_crm_request_sync_fk")
+  @@index([actorUserId],map: "commerce_crm_request_actor_fk")
+  @@map("commerce_crm_sync_requests")
+}
+
+model CommerceCrmSyncHistory {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  syncId String @map("sync_id") @db.Uuid
+  action String
+  actorUserId String? @map("actor_user_id") @db.Uuid
+  errorCode String? @map("error_code")
+  attempt Int
+  occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  @@index([workspaceId,syncId,occurredAt],map: "commerce_crm_history_sync_fk")
+  @@index([actorUserId],map: "commerce_crm_history_actor_fk")
+  @@map("commerce_crm_sync_history")
+}
+
+model CommerceReconciliationJob {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  storeId String @map("store_id") @db.Uuid
+  orderId String @map("order_id") @db.Uuid
+  requestedByUserId String @map("requested_by_user_id") @db.Uuid
+  idempotencyKey String @map("idempotency_key")
+  requestHash String @map("request_hash")
+  correlationId String @default(uuid()) @map("correlation_id") @db.Uuid
+  status String @default("QUEUED")
+  attempts Int @default(0)
+  claimToken String? @map("claim_token") @db.Uuid
+  leaseExpiresAt DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  nextAttemptAt DateTime @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  result Json?
+  errorCode String? @map("error_code")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
+  @@unique([workspaceId,requestedByUserId,idempotencyKey])
+  @@index([workspaceId,storeId,orderId],map: "commerce_reconciliation_order_fk")
+  @@index([status,nextAttemptAt,leaseExpiresAt])
+  @@index([requestedByUserId],map: "commerce_reconciliation_principal_fk")
+  @@map("commerce_reconciliation_jobs")
+}
+
+model CommerceDeliveryService {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  storeId String @map("store_id") @db.Uuid
+  type String
+  providerConnectionId String? @map("provider_connection_id") @db.Uuid
+  active Boolean @default(true)
+  conditions Json @default("{}")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([workspaceId,storeId,id])
+  @@map("commerce_delivery_services")
+}
+
+model CommerceDeliveryRate {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  storeId String @map("store_id") @db.Uuid
+  serviceId String @map("service_id") @db.Uuid
+  conditions Json @default("{}")
+  price Decimal @db.Decimal(24,6)
+  currency String @db.Char(3)
+  estimatedDaysMin Int @map("estimated_days_min")
+  estimatedDaysMax Int @map("estimated_days_max")
+  active Boolean @default(true)
+  @@unique([workspaceId,storeId,id])
+  @@index([workspaceId,serviceId])
+  @@map("commerce_delivery_rates")
+}
+
+model CommerceShipment {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  storeId String @map("store_id") @db.Uuid
+  orderId String @map("order_id") @db.Uuid
+  warehouseId String @map("warehouse_id") @db.Uuid
+  deliveryServiceId String @map("delivery_service_id") @db.Uuid
+  inventoryDocumentId String? @unique @map("inventory_document_id") @db.Uuid
+  status String @default("NEW")
+  trackingNumber String? @map("tracking_number")
+  externalShipmentId String? @map("external_shipment_id")
+  shippedAt DateTime? @map("shipped_at") @db.Timestamptz(6)
+  deliveredAt DateTime? @map("delivered_at") @db.Timestamptz(6)
+  lastProviderEventAt DateTime? @map("last_provider_event_at") @db.Timestamptz(6)
+  version BigInt @default(1)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([workspaceId,storeId,id])
+  @@index([workspaceId,orderId,status])
+  @@map("commerce_shipments")
+}
+
+model CommerceShipmentItem {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  storeId String @map("store_id") @db.Uuid
+  orderId String @map("order_id") @db.Uuid
+  shipmentId String @map("shipment_id") @db.Uuid
+  orderLineId String @map("order_line_id") @db.Uuid
+  quantity Decimal @db.Decimal(18,6)
+  @@unique([shipmentId,orderLineId])
+  @@unique([workspaceId,id])
+  @@index([workspaceId,orderId,orderLineId])
+  @@map("commerce_shipment_items")
+}
+
+model CommerceShipmentStockBinding {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  shipmentId String @map("shipment_id") @db.Uuid
+  itemId String @map("item_id") @db.Uuid
+  reservationId String @map("reservation_id") @db.Uuid
+  locationId String? @map("location_id") @db.Uuid
+  quantity Decimal @db.Decimal(18,6)
+  inventoryDocumentLineId String? @unique @map("inventory_document_line_id") @db.Uuid
+  @@index([workspaceId,reservationId,locationId])
+  @@map("commerce_shipment_stock_bindings")
+}
+
+model CommerceShipmentEvent {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  storeId String @map("store_id") @db.Uuid
+  shipmentId String @map("shipment_id") @db.Uuid
+  actorUserId String? @map("actor_user_id") @db.Uuid
+  action String
+  evidence Json @default("{}")
+  occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  @@index([workspaceId,shipmentId,occurredAt])
+  @@map("commerce_shipment_events")
+}
+
+model CommerceDeliveryProviderEvent {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  storeId String @map("store_id") @db.Uuid
+  connectionId String @map("connection_id") @db.Uuid
+  shipmentId String @map("shipment_id") @db.Uuid
+  providerCode String @map("provider_code")
+  externalEventId String @map("external_event_id")
+  payloadHash String @map("payload_hash")
+  normalized Json
+  status String @default("QUEUED")
+  attempts Int @default(0)
+  errorCode String? @map("error_code")
+  receivedAt DateTime @default(now()) @map("received_at") @db.Timestamptz(6)
+  processedAt DateTime? @map("processed_at") @db.Timestamptz(6)
+  nextAttemptAt DateTime @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  @@unique([workspaceId,connectionId,providerCode,externalEventId])
+  @@index([status,nextAttemptAt,receivedAt])
+  @@map("commerce_delivery_provider_events")
+}
+
 model CommerceTaxRule {
   id String @id @default(uuid()) @db.Uuid
   workspaceId String @map("workspace_id") @db.Uuid

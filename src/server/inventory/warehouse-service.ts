@@ -62,7 +62,7 @@ export class InventoryWarehouseService {
       await tx.inventorySettings.upsert({ where: { workspaceId: actor.workspaceId },create: { workspaceId: actor.workspaceId,defaultWarehouseId: row.id },
         update: row.isDefault ? { defaultWarehouseId: row.id,version: { increment: 1 } } : {} });
       await evidence(tx,actor,'WAREHOUSE',row.id,'WAREHOUSE_CREATED',{ code: row.code,version: row.version.toString() }); return row;
-    });
+    },{ timeout: 60000 });
   }
   async list(actor: Principal,raw: unknown) {
     requirePermission(actor,'INVENTORY.WAREHOUSE_READ'); const query = parse(pageQuery.extend({ status: warehouseStatus.optional(),type: warehouseType.optional() }),raw);

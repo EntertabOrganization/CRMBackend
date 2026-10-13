@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { appContext } from './app-context';
+import type { appContext as ApplicationContext } from './app-context';
 import { AppError, isAppError } from './errors';
 import type { ApiFailure, ApiSuccess, PageMeta } from './domain';
 import { claimDueJobsInDb } from './automation/db-claim';
@@ -7,6 +7,10 @@ import { hydrateState, persistState } from './persistence';
 import { prisma } from './prisma-client';
 import { claimCalendarReminders } from './collab/calendar/reminder-delivery';
 import { LeaseJobRunner } from './jobs/lease-runner';
+
+/** The Collaboration module imports response helpers while constructing the application.
+ * Resolve the singleton only when a request/job runs, after module initialization completes. */
+function context(): typeof ApplicationContext { return require('./app-context').appContext; }
 
 export function ok<T>(data: T, meta: PageMeta | null = null) {
   return NextResponse.json<ApiSuccess<T>>({ success: true, data, meta });
@@ -178,15 +182,15 @@ async function withState<T>(handler: () => Promise<T>): Promise<{ result?: T; er
   } catch (error) {
     return { error: translateDatabaseError(error) };
   }
-  appContext.store.state = structuredClone(snapshot);
-  appContext.realtime.discard();
+  context().store.state = structuredClone(snapshot);
+  context().realtime.discard();
   let committed = false;
   let outcome: { result?: T; error?: unknown };
   try {
     const result = await handler();
     try {
       // Timeline is projected from the outbox events this request just wrote, in the same transaction.
-      appContext.timeline.projectPending();
+      context().timeline.projectPending();
     } catch (projectionError) {
       // A projection failure must never fail the business operation; the events stay unprojected and are retried.
       console.error('Timeline projection failed:', projectionError);
@@ -194,7 +198,7 @@ async function withState<T>(handler: () => Promise<T>): Promise<{ result?: T; er
     try {
       // Automation matches the new events against active Rules and only records durable jobs here (no side effects);
       // the jobs run afterwards in their own transactions. A failure leaves the events unprocessed for a later retry.
-      appContext.automation.ingestPending();
+      context().automation.ingestPending();
     } catch (ingestError) {
       console.error('Automation ingestion failed:', ingestError);
     }
@@ -205,21 +209,21 @@ async function withState<T>(handler: () => Promise<T>): Promise<{ result?: T; er
   }
   if (committed) {
     try {
-      await persistState(prisma, snapshot, appContext.store.state);
+      await persistState(prisma, snapshot, context().store.state);
     } catch (persistError) {
       committed = false;
-      appContext.store.state = structuredClone(snapshot);
+      context().store.state = structuredClone(snapshot);
       outcome = { error: translatePersistError(persistError) };
     }
   } else {
     // A failed handler is a failed transaction. Never persist mutations that
     // happened before validation/provider failure, and do not leave them in the
     // shared working state for the next request.
-    appContext.store.state = structuredClone(snapshot);
+    context().store.state = structuredClone(snapshot);
   }
   // Advisory hints are released only after the commit, and only for successful requests.
-  if (committed) appContext.realtime.flush();
-  else appContext.realtime.discard();
+  if (committed) context().realtime.flush();
+  else context().realtime.discard();
   return outcome;
 }
 
@@ -232,7 +236,7 @@ export function readOnly<T>(handler: () => Promise<T>): Promise<{ result?: T; er
     } catch (error) {
       return { error: translateDatabaseError(error) };
     }
-    appContext.store.state = structuredClone(snapshot);
+    context().store.state = structuredClone(snapshot);
     try {
       return { result: await handler() };
     } catch (error) {
@@ -275,8 +279,8 @@ const dbStateRunner = {
 };
 
 function useDbRunner() {
-  appContext.automation.setStateRunner(dbStateRunner);
-  return appContext.automation.runner;
+  context().automation.setStateRunner(dbStateRunner);
+  return context().automation.runner;
 }
 
 /** Claims and runs due Automation jobs (scheduler endpoint / optional inline runner). */
@@ -285,29 +289,29 @@ export async function runAutomationDue(limit = 25) {
 }
 /** Abort/expiry is committed before private multipart objects are removed. */
 export async function runUploadCleanup(limit = 25) {
-  return new LeaseJobRunner(appContext.collab.files.uploadCleanup, { unit: runStateUnit }).runDue({ limit });
+  return new LeaseJobRunner(context().collab.files.uploadCleanup, { unit: runStateUnit }).runDue({ limit });
 }
 export async function runFileObjectGarbage(limit = 25) {
-  return new LeaseJobRunner(appContext.collab.files.objectGarbage, { unit: runStateUnit }).runDue({ limit });
+  return new LeaseJobRunner(context().collab.files.objectGarbage, { unit: runStateUnit }).runDue({ limit });
 }
 export async function runDocumentEditCleanup(limit = 25) {
-  return new LeaseJobRunner(appContext.collab.editingCleanup, { unit: runStateUnit }).runDue({ limit });
+  return new LeaseJobRunner(context().collab.editingCleanup, { unit: runStateUnit }).runDue({ limit });
 }
 /** Generated documents render and scan outside state units; publication re-proves authority under a durable lease. */
 export async function runDocumentGeneration(limit = 25) {
-  return new LeaseJobRunner(appContext.collab.documents.generated, { unit: runStateUnit }).runDue({ limit });
+  return new LeaseJobRunner(context().collab.documents.generated, { unit: runStateUnit }).runDue({ limit });
 }
 /** Accepted immutable bytes are processed outside state transactions; verdicts commit under a durable lease. */
 export async function runUploadProcessing(limit = 25) {
-  return new LeaseJobRunner(appContext.collab.files.uploadProcessing, { unit: runStateUnit }).runDue({ limit });
+  return new LeaseJobRunner(context().collab.files.uploadProcessing, { unit: runStateUnit }).runDue({ limit });
 }
 /** Calendar reminder leases commit before provider I/O. Provider idempotency keys survive worker crashes. */
 export async function runCalendarReminders(limit = 25, now?: Date) {
   await runStateUnit(() => {
-    appContext.collab.calendar.reminders.materialize(now ?? new Date());
-    appContext.collab.calendar.reminderDelivery.expireExhausted(now ?? new Date());
+    context().collab.calendar.reminders.materialize(now ?? new Date());
+    context().collab.calendar.reminderDelivery.expireExhausted(now ?? new Date());
   });
-  return appContext.collab.calendar.reminderRunner({ unit: runStateUnit,
+  return context().collab.calendar.reminderRunner({ unit: runStateUnit,
     claimDue: (count, token, at) => claimCalendarReminders(prisma, count, token, at),
   }).runDue({ limit, now });
 }
@@ -318,7 +322,7 @@ export async function runCalendarAvailability(limit = 25) {
   const metrics = { processed: 0, ready: 0, failed: 0, cancelled: 0, skipped: 0 };
   for (let page = 0; page < limit; page += 1) {
     try {
-      const result = await runStateUnit(() => appContext.collab.calendar.availabilityRebuilds.runOne());
+      const result = await runStateUnit(() => context().collab.calendar.availabilityRebuilds.runOne());
       if (!result) break;
       metrics.processed += 1;
       if (result.status === 'READY') metrics.ready += 1;
@@ -336,7 +340,7 @@ export async function runCalendarAvailability(limit = 25) {
 export async function runAutomationJob(jobId: string): Promise<string | null> {
   const runner = useDbRunner();
   const claimed = await runStateUnit(() => {
-    const job = appContext.automation.support.state.automationJobs.find((item) => item.id === jobId);
+    const job = context().automation.support.state.automationJobs.find((item) => item.id === jobId);
     if (!job || job.status !== 'PENDING') return false;
     job.status = 'RUNNING';
     job.claimedBy = 'manual';
@@ -354,7 +358,7 @@ let inlineRunnerActive = false;
  */
 export function kickAutomationRunner() {
   if (process.env.AUTOMATION_INLINE_RUNNER !== '1' || inlineRunnerActive) return;
-  if (!appContext.automation.hasWork()) return;
+  if (!context().automation.hasWork()) return;
   inlineRunnerActive = true;
   setImmediate(() => {
     runAutomationDue()

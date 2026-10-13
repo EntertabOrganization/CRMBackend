@@ -12,6 +12,7 @@ import { inventoryCatalogPort } from './catalog-port';
 import { InventorySourceAuthority } from './source-port';
 import { InventoryCostBook } from './cost-book';
 import { observeReorder } from './reorder-service';
+import { commerceReturnPosting } from '../commerce/order-authority';
 
 const warehousesDto = z.strictObject({ source: uuid.optional(),destination: uuid.optional() });
 const sourceDto = z.strictObject({ entityType: z.enum(['DEAL','ORDER','INVOICE','SPA_ITEM']),entityId: uuid });
@@ -307,6 +308,7 @@ export class InventoryDocumentService {
       }
       const lines = await tx.inventoryDocumentLine.findMany({ where: { workspaceId: actor.workspaceId,documentId: id },orderBy: { lineNumber: 'asc' } });
       if (!lines.length || lines.length>1000) throw new AppError('INVENTORY_LINE_INVALID','Posting requires 1 to 1000 lines.',422);
+      if(row.type==='CUSTOMER_RETURN')await commerceReturnPosting(tx,actor,id);
       await this.binding(tx,actor,row.type,{ source: row.sourceWarehouseId ?? undefined,destination: row.destinationWarehouseId ?? undefined },'INVENTORY.DOCUMENT_PROCESS');
       await this.stockLocks(tx,actor,row,lines);
       const catalog = await inventoryCatalogPort(tx,actor);
@@ -342,6 +344,21 @@ export class InventoryDocumentService {
   async process(actor: Principal,id: string,raw: unknown,key: string | null) {
     return this.db.$transaction(tx => this.processInTransaction(tx,actor,id,raw,key),{ timeout: 60000 });
   }
+  async cancelForShipment(tx: Tx,actor: Principal,id: string) {
+    await lock(tx,actor.workspaceId,'inventory:configuration'); await lock(tx,actor.workspaceId,'inventory:document:'+id);
+    actor = await resolvePrincipal(tx,actor.workspaceId,actor.userId);
+    const row = await this.document(tx,actor,id,'INVENTORY.DOCUMENT_EDIT');
+    if (row.type!=='SALES_ORDER' || row.sourceEntityType!=='ORDER' || row.status==='PROCESSED') throw new AppError('INVENTORY_DOCUMENT_NOT_DRAFT','A posted shipment document cannot be cancelled.',409);
+    if (row.status==='CANCELLED') return row;
+    const updated = await tx.inventoryDocument.update({ where: { id },data: { status: 'CANCELLED',version: { increment: 1 } } });
+    await this.history(tx,actor,updated,'INVENTORY_DOCUMENT_CANCELLED',{ reason: 'Shipment cancellation' }); return updated;
+  }
+  async shipmentPlan(tx: Tx,actor: Principal,id: string) {
+    await lock(tx,actor.workspaceId,'inventory:configuration'); await lock(tx,actor.workspaceId,'inventory:document:'+id);
+    const document = await this.document(tx,actor,id,'INVENTORY.DOCUMENT_READ');
+    const lines = await tx.inventoryDocumentLine.findMany({ where: { workspaceId: actor.workspaceId,documentId: id },orderBy: { id: 'asc' } });
+    return { document,lines: lines.map(({ id,inventoryKey,quantity,reservationId,sourceLocationId }) => ({ id,inventoryKey,quantity: quantity.toFixed(6),reservationId,sourceLocationId })) };
+  }
   async reverseInTransaction(tx: Tx,actor: Principal,id: string,raw: unknown,key: string | null) {
     const input = parse(z.strictObject({ expectedVersion: inventoryVersion,reason: z.string().trim().min(1).max(2000) }),raw);
     await lock(tx,actor.workspaceId,'inventory:configuration'); await lock(tx,actor.workspaceId,'inventory:document:' + id); actor = await resolvePrincipal(tx,actor.workspaceId,actor.userId);
@@ -349,6 +366,7 @@ export class InventoryDocumentService {
     return command(tx,actor,'INVENTORY.DOCUMENT_REVERSE:' + id,key,input,async () => {
       assertInventoryVersion(document.version,input.expectedVersion);
       if (document.status!=='PROCESSED' || document.reversedAt) throw new AppError('INVENTORY_DOCUMENT_REVERSAL_BLOCKED','Only an unreversed processed document can be reversed.',409);
+      if (document.sourceEntityType && document.sourceEntityId) await this.sources.reversible(tx,actor,{ entityType: document.sourceEntityType,entityId: document.sourceEntityId },document.id);
       const settings = await tx.inventorySettings.findUniqueOrThrow({ where: { workspaceId: actor.workspaceId } });
       const lines = await tx.inventoryDocumentLine.findMany({ where: { workspaceId: actor.workspaceId,documentId: id },orderBy: { lineNumber: 'asc' } });
       await this.stockLocks(tx,actor,document,lines);

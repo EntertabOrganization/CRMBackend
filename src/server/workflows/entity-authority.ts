@@ -14,6 +14,7 @@ export class WorkflowEntityAuthority {
   private readonly readers = new Map<string,(tx: Tx,actor: Principal,id: string) => Promise<Record<string,unknown>>>();
   constructor(db: PrismaClient) { this.spa = new SpaItemService(db); }
   register(type: string, reader: (tx: Tx,actor: Principal,id: string) => Promise<Record<string,unknown>>) { this.readers.set(type,reader); }
+  references(tx: Tx,actor: Principal) { return spaReferenceContext(tx,actor,this.spa.policies); }
   async read(tx: Tx, actor: Principal, entityType: string, entityId: string, subtypeId?: string) {
     if (this.readers.has(entityType)) return this.readers.get(entityType)!(tx,actor,entityId);
     if (entityType === 'SPA_ITEM') {

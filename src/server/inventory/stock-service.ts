@@ -1,7 +1,7 @@
 import { Prisma,type PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { AppError } from '../errors';
-import { requirePermission,type Principal,type Tx } from '../process-platform/context';
+import { lock,requirePermission,type Principal,type Tx } from '../process-platform/context';
 import { parse,uuid,pageQuery } from '../process-platform/dto';
 import { quantity } from './dto';
 import { InventoryWarehouseService } from './warehouse-service';
@@ -10,6 +10,25 @@ import { exact } from './decimal';
 
 export class InventoryStockService {
   constructor(private readonly db: PrismaClient,readonly warehouses = new InventoryWarehouseService(db)) {}
+  /** Read-only owning ledger/projection comparison for authorized Commerce consistency checks. */
+  async reconcileProjection(tx:Tx,actor:Principal,warehouseIds:string[],inventoryKeys:string[]){
+    requirePermission(actor,'INVENTORY.STOCK_READ');requirePermission(actor,'INVENTORY.MOVEMENT_READ');
+    await lock(tx,actor.workspaceId,'inventory:configuration');
+    const ids=[...new Set(warehouseIds)].sort(),keys=[...new Set(inventoryKeys)].sort();
+    for(const id of ids){await this.warehouses.warehouse(tx,actor,id,'INVENTORY.STOCK_READ');await this.warehouses.warehouse(tx,actor,id,'INVENTORY.MOVEMENT_READ');}
+    const balances=await tx.inventoryBalance.findMany({where:{workspaceId:actor.workspaceId,warehouseId:{in:ids},inventoryKey:{in:keys}}});
+    const movements=await tx.inventoryMovement.groupBy({by:['warehouseId','inventoryKey','locationId'],where:{workspaceId:actor.workspaceId,warehouseId:{in:ids},inventoryKey:{in:keys}},_sum:{quantityDelta:true}});
+    const live=await tx.inventoryReservation.findMany({where:{workspaceId:actor.workspaceId,inventoryKey:{in:keys},status:{in:['ACTIVE','PARTIALLY_FULFILLED']}},select:{id:true,inventoryKey:true}});
+    const allocations=await tx.inventoryReservationAllocation.findMany({where:{workspaceId:actor.workspaceId,warehouseId:{in:ids},reservationId:{in:live.map(r=>r.id)}}});
+    const rows=new Map<string,{warehouseId:string;inventoryKey:string;locationId:string|null;onHand:string;ledgerOnHand:string;reserved:string;ledgerReserved:string}>();
+    const identity=(r:{warehouseId:string;inventoryKey:string;locationId:string|null})=>r.warehouseId+':'+r.inventoryKey+':'+(r.locationId??'');
+    const get=(r:{warehouseId:string;inventoryKey:string;locationId:string|null})=>{const key=identity(r);if(!rows.has(key))rows.set(key,{...r,onHand:'0.000000',ledgerOnHand:'0.000000',reserved:'0.000000',ledgerReserved:'0.000000'});return rows.get(key)!;};
+    for(const r of balances)Object.assign(get({warehouseId:r.warehouseId,inventoryKey:r.inventoryKey,locationId:r.locationId}),{onHand:r.onHand.toFixed(6),reserved:r.reserved.toFixed(6)});
+    for(const r of movements)get(r).ledgerOnHand=exact(r._sum.quantityDelta??0).toFixed(6);
+    const owners=new Map(live.map(r=>[r.id,r.inventoryKey]));
+    for(const r of allocations){const row=get({warehouseId:r.warehouseId,inventoryKey:owners.get(r.reservationId)!,locationId:r.locationId});row.ledgerReserved=exact(row.ledgerReserved).plus(r.quantity).toFixed(6);}
+    return [...rows.values()].sort((a,b)=>identity(a).localeCompare(identity(b)));
+  }
   /** Internal owning projection. Commerce supplies scope only after resolving a published Store.
    * Never exposes warehouse quantities, cost, location or identities to public callers. */
   async publicSellability(tx: Tx,workspaceId: string,inventoryKey: string,warehouseId?: string | null) {

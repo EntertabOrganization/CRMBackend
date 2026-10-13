@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { AppError } from '../errors';
 import { assertVersion, command, evidence, lock, requirePermission, type Principal, type Tx } from '../process-platform/context';
 import { canonical, name, pageQuery, parse, uuid, version } from '../process-platform/dto';
-import { parseFieldValue, schemaSnapshot, type SchemaSnapshot, type FieldDefinition } from './field-metadata';
+import { parseFieldValue, schemaSnapshot, uniqueValueKey, type SchemaSnapshot, type FieldDefinition } from './field-metadata';
 import { SpaPolicyService } from './policy-service';
 import { SpaNumberingService } from './numbering-service';
 import { spaReferenceContext } from './reference-adapter';
@@ -113,13 +113,15 @@ export class SpaItemService {
       result.set(field.code, parseFieldValue(field, raw, actor.workspaceId, references, oldItems));
     }
     for (const constraint of snapshot.uniqueConstraints) {
-      const parts = constraint.fieldCodes.map(code => result.get(code));
-      if (constraint.ignoreNull && parts.some(empty)) continue;
-      const key = canonical(parts);
-      const keyNormalized = constraint.caseInsensitive ? key.toLowerCase() : key;
+      const keyNormalized = uniqueValueKey(constraint, result);
+      if (keyNormalized === null) continue;
       const ids = snapshot.fields.filter(f => constraint.fieldCodes.includes(f.code)).map(f => f.id);
-      const rows = await tx.spaItemValue.findMany({ where: { workspaceId: actor.workspaceId, fieldId: { in: ids } } });
+      const liveItems = await tx.spaItem.findMany({ where: { workspaceId: actor.workspaceId, typeId,
+        status: { not: 'TRASHED' } }, select: { id: true } });
+      const rows = await tx.spaItemValue.findMany({ where: { workspaceId: actor.workspaceId, fieldId: { in: ids },
+        itemId: { in: liveItems.map(item => item.id) } } });
       const itemValues = new Map<string, Map<string, unknown>>();
+      for (const item of liveItems) itemValues.set(item.id, new Map(snapshot.fields.map(field => [field.code, field.defaultValue ?? null])));
       for (const row of rows) {
         const values = itemValues.get(row.itemId) ?? new Map<string, unknown>();
         const field = snapshot.fields.find(f => f.id === row.fieldId)!;
@@ -127,10 +129,7 @@ export class SpaItemService {
       }
       // The caller excludes its current Item below, under the Type lock.
       for (const [itemId, item] of itemValues) {
-        const otherParts = constraint.fieldCodes.map(code => item.get(code));
-        if (constraint.ignoreNull && otherParts.some(empty)) continue;
-        const other = canonical(otherParts);
-        if ((constraint.caseInsensitive ? other.toLowerCase() : other) === keyNormalized)
+        if (uniqueValueKey(constraint, item) === keyNormalized)
           result.set('__conflict:' + itemId, true);
       }
     }

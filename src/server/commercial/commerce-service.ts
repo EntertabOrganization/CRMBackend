@@ -1318,6 +1318,7 @@ export class CommerceService {
       const attempt = this.store.state.paymentAttempts.find(
         (x) =>
           x.providerKey === providerKey &&
+          !x.lifecycleControlled &&
           x.providerTransactionId === event.transactionId,
       );
       if (!attempt)
@@ -1487,6 +1488,8 @@ export class CommerceService {
     return this.store.atomicSync(() => {
       const p = this.payment(actor.workspaceId, paymentId);
       this.support.requireRecord(actor, "payment.refund", p.responsibleUserId);
+      if ((p as Payment & {flow?:string}).flow === "COMMERCE")
+        throw conflict("REFUND_APPROVAL_REQUIRED", "Use the Commerce approval and provider refund lifecycle.");
       if (p.settlementStatus !== "SUCCEEDED")
         throw conflict("REFUND_PAYMENT_NOT_SETTLED", "Payment is not settled.");
       if (input.currencyCode.toUpperCase() !== p.currencyCode)
@@ -1565,6 +1568,8 @@ export class CommerceService {
     const refund = this.store.state.refunds.find((x) => x.id === refundId);
     if (!refund)
       throw new AppError("REFUND_NOT_FOUND", "Refund was not found.", 404);
+    if ((refund as typeof refund & {flow?:string}).flow === "COMMERCE")
+      throw conflict("REFUND_APPROVAL_REQUIRED", "Use the durable Commerce refund worker.");
     if (refund.status === "SUCCEEDED") return refund;
     const payment = this.payment(refund.workspaceId, refund.paymentId);
     const attempt = [...this.store.state.paymentAttempts]

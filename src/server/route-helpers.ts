@@ -1,9 +1,12 @@
 import type { NextRequest } from 'next/server';
-import { appContext } from './app-context';
+import type { appContext as ApplicationContext } from './app-context';
+
 import { AppError, badRequest } from './errors';
 import { rateLimitUser } from './rate-limit';
 import type { CrmRateLimit } from './rate-limit';
 import { requireUser, workspaceHeader } from './request';
+
+function context(): typeof ApplicationContext { return require('./app-context').appContext; }
 
 /** Authenticated user + the workspace resolved from the server-checked header (never from the request body). */
 export async function requireWorkspaceContext(request: NextRequest, rateLimit?: CrmRateLimit) {
@@ -14,19 +17,19 @@ export async function requireWorkspaceContext(request: NextRequest, rateLimit?: 
     if (!requiredScope && request.nextUrl.pathname !== '/api/v1/batch') {
       throw new AppError('API_SCOPE_DENIED', 'API credentials cannot access this endpoint.', 403);
     }
-    const credential = appContext.intelligence.integrations.authenticateApi(rawCredential, requiredScope ?? undefined);
-    const user = appContext.store.state.users.find((item) => item.id === credential.principalId && !item.isDeleted);
+    const credential = context().intelligence.integrations.authenticateApi(rawCredential, requiredScope ?? undefined);
+    const user = context().store.state.users.find((item) => item.id === credential.principalId && !item.isDeleted);
     if (!user) throw badRequest('CREDENTIAL_REVOKED', 'API credential principal is inactive.');
     const suppliedWorkspace = workspaceHeader(request);
     if (suppliedWorkspace && suppliedWorkspace !== credential.workspaceId) throw badRequest('WORKSPACE_CONTEXT_INVALID', 'Credential workspace cannot be overridden.');
     if (rateLimit) rateLimitUser(`api:${credential.id}`, rateLimit);
-    return { user, workspaceId: credential.workspaceId, actor: appContext.access.actor(user, credential.workspaceId), credential };
+    return { user, workspaceId: credential.workspaceId, actor: context().access.actor(user, credential.workspaceId), credential };
   }
-  const user = await requireUser(request, appContext.store);
+  const user = await requireUser(request, context().store);
   const workspaceId = workspaceHeader(request);
   if (!workspaceId) throw badRequest('WORKSPACE_REQUIRED', 'X-Workspace-Id is required.');
   if (rateLimit) rateLimitUser(user.id, rateLimit);
-  return { user, workspaceId, actor: appContext.access.actor(user, workspaceId), credential: null };
+  return { user, workspaceId, actor: context().access.actor(user, workspaceId), credential: null };
 }
 
 /** Coarse API scope; normal RBAC and record scope are still enforced by each service. */

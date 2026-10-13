@@ -2,8 +2,11 @@ import 'reflect-metadata';
 import { Controller, Delete, Get, Patch, Post, Put, Req, Res, type Type } from '@nestjs/common';
 import { NextRequest } from 'next/server';
 import type { PackRouter } from './http';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 
-type Incoming = { method: string; originalUrl: string; headers: Record<string, string | string[] | undefined>; body?: unknown };
+export function configurePackBodyParsing(app: NestExpressApplication) { app.useBodyParser('json',{ limit: 262144 }); }
+
+type Incoming = { method: string; originalUrl: string; headers: Record<string, string | string[] | undefined>; body?: unknown;rawBody?: Buffer };
 type Outgoing = { status(code: number): Outgoing; setHeader(name: string, value: string): void; send(body: string): void };
 const methods = { GET: Get, POST: Post, PUT: Put, PATCH: Patch, DELETE: Delete };
 
@@ -27,7 +30,7 @@ export function nestControllers(router: PackRouter): Type[] {
           // Internal fixed origin avoids trusting Host/forwarded headers in access decisions.
           const request = new NextRequest(new URL(req.originalUrl, 'http://process-platform.internal'), {
             method: req.method, headers,
-            ...(req.method !== 'GET' && req.method !== 'HEAD' ? { body: JSON.stringify(req.body ?? {}) } : {}),
+            ...(req.method !== 'GET' && req.method !== 'HEAD' ? { body: entry.signed ? req.rawBody?.toString('utf8') ?? '' : JSON.stringify(req.body ?? {}) } : {}),
           });
           const response = await router.dispatch(request);
           response.headers.forEach((value, key) => res.setHeader(key, value));

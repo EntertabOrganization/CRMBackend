@@ -1,0 +1,84 @@
+{
+  "packName": "TrueCRM_Automation_Products_Codex_Pack",
+  "version": "1.0.0",
+  "entrypoint": "Agent.md",
+  "purpose": "Implementation contract for TrueCRM Automation Rules & Triggers and Products & Catalog.",
+  "modules": [
+    {
+      "name": "Automation Rules & Triggers",
+      "path": "Automation-Rules-Triggers/",
+      "specFiles": [
+        "Automation-Rules-Triggers/actions-registry.md",
+        "Automation-Rules-Triggers/api.md",
+        "Automation-Rules-Triggers/condition-engine.md",
+        "Automation-Rules-Triggers/custom-extensions.md",
+        "Automation-Rules-Triggers/execution-retries-loop-protection.md",
+        "Automation-Rules-Triggers/frontend.md",
+        "Automation-Rules-Triggers/observability.md",
+        "Automation-Rules-Triggers/overview.md",
+        "Automation-Rules-Triggers/permissions-security.md",
+        "Automation-Rules-Triggers/rules-and-revisions.md",
+        "Automation-Rules-Triggers/scheduling-and-jobs.md",
+        "Automation-Rules-Triggers/triggers-events.md"
+      ]
+    },
+    {
+      "name": "Products & Catalog",
+      "path": "Products-Catalog/",
+      "specFiles": [
+        "Products-Catalog/api.md",
+        "Products-Catalog/catalogs-categories.md",
+        "Products-Catalog/frontend.md",
+        "Products-Catalog/lifecycle-archive.md",
+        "Products-Catalog/overview.md",
+        "Products-Catalog/permissions.md",
+        "Products-Catalog/pricing-price-types.md",
+        "Products-Catalog/product-model-variants.md",
+        "Products-Catalog/product-properties.md",
+        "Products-Catalog/product-rows.md",
+        "Products-Catalog/taxes.md",
+        "Products-Catalog/units-ratios.md"
+      ]
+    }
+  ],
+  "sharedFiles": [
+    "Shared/authorization-security.md",
+    "Shared/bitrix-reference-notes.md",
+    "Shared/data-model.md",
+    "Shared/domain-events.md",
+    "Shared/errors-idempotency-concurrency.md",
+    "Shared/integration-boundaries.md",
+    "Shared/migrations.md",
+    "Shared/requirement-traceability.md"
+  ],
+  "testingFiles": [
+    "tests/modules/Automation_Products_Catlouge/Automation/automation-execution.spec.ts",
+    "tests/modules/Automation_Products_Catlouge/Automation/automation-rules.spec.ts",
+    "tests/modules/Automation_Products_Catlouge/Automation/automation-security.e2e-spec.ts",
+    "tests/modules/Automation_Products_Catlouge/Automation/automation.e2e-spec.ts",
+    "tests/modules/Automation_Products_Catlouge/Frontend/automation.ui.spec.ts",
+    "tests/modules/Automation_Products_Catlouge/Frontend/catalog.ui.spec.ts",
+    "tests/modules/Automation_Products_Catlouge/Products-Catalog/catalog-security.e2e-spec.ts",
+    "tests/modules/Automation_Products_Catlouge/Products-Catalog/catalog.e2e-spec.ts",
+    "tests/modules/Automation_Products_Catlouge/Products-Catalog/pricing-product-rows.spec.ts",
+    "tests/modules/Automation_Products_Catlouge/Products-Catalog/products.spec.ts",
+    "tests/modules/Automation_Products_Catlouge/README.md",
+    "tests/modules/Automation_Products_Catlouge/coverage-matrix.md"
+  ],
+  "rootFiles": [
+    "Agent.md",
+    "README.md",
+    "Decision-Register.md",
+    "manifest.json"
+  ],
+  "confirmedDecisionCount": 25,
+  "unresolvedImportantDecisions": 0,
+  "sourceCoverage": [
+    "TrueCRM Product Requirements Document (PRD)",
+    "TrueCRM Business Requirements Document (BRD)",
+    "TrueCRM System Architecture Document",
+    "SKILL.md design-tree interview method",
+    "TrueAgent Auth reference Codex Pack structural/testing philosophy",
+    "Official Bitrix REST API documentation (reference behavior only)"
+  ]
+}

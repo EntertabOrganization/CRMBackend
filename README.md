@@ -2,6 +2,17 @@
 
 Next.js backend for authentication, CRM, automation, catalog, commercial operations, contact center, data integration, sales intelligence, and analytics.
 
+## Repository layout
+
+- `src/`: application and domain modules.
+- `app/`: Next.js pages and API route handlers.
+- `Script/`: database, seeding, testing, and operational scripts.
+- `tests/`: executable tests and shared fixtures; module test packs live in `tests/modules/`.
+- `docs/Logic/`: module specifications, decisions, and module `Agent.md` contracts.
+- `prisma/`: database schema and migrations.
+
+Read root `AGENTS.md` before working on a module. Jest discovers both `.spec.ts` and `.e2e-spec.ts` files under `tests/`, including preserved contract scenarios that still fail until wired to the implementation.
+
 ## Local development on Windows
 
 The backend uses the project-local PostgreSQL 18 cluster under `.local-postgres/data-utf8`. The incomplete Windows service cluster at `D:\Applications\PostgreSql\data` is not modified. PostgreSQL binaries default to `D:\Applications\PostgreSql\bin`; set `POSTGRES_BIN` to use another installation.

@@ -4,13 +4,8 @@ const config: Config = {
   preset: 'ts-jest',
   testEnvironment: 'node',
   cacheDirectory: '<rootDir>/.local-postgres/jest-cache',
-  roots: ['<rootDir>/tests', '<rootDir>/Commercial_Capture_ContactCenter/Testing', '<rootDir>/Data_Integration_Intelligence_Analytics/Testing', '<rootDir>/Tasks&Calendar&Files&Chats/Testing'],
-  testMatch: [
-    '**/*.spec.ts',
-    '**/Commercial_Capture_ContactCenter/Testing/**/*.e2e-spec.ts',
-    '**/Data_Integration_Intelligence_Analytics/Testing/**/*.e2e-spec.ts',
-    '**/Tasks&Calendar&Files&Chats/Testing/**/*.e2e-spec.ts',
-  ],
+  roots: ['<rootDir>/tests'],
+  testMatch: ['**/*.spec.ts', '**/*.e2e-spec.ts'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
   },

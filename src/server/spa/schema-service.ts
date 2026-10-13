@@ -5,7 +5,7 @@ import { AppError } from '../errors';
 import { assertVersion, evidence, lock, requirePermission, type Principal, type Tx } from '../process-platform/context';
 import { canonical, parse, uuid, version } from '../process-platform/dto';
 import { createField, fieldDefinition, patchField, schemaSnapshot, uniqueDefinition,
-  validateDefinition, withOptionIds, type FieldDefinition, type SchemaSnapshot } from './field-metadata';
+  emptyFieldValue, parseFieldValue, uniqueValueKey, validateDefinition, withOptionIds, type FieldDefinition, type SchemaSnapshot } from './field-metadata';
 import { SpaPolicyService } from './policy-service';
 import { valueHash } from './migration-service';
 import { storedValue, valueColumns } from './item-service';
@@ -83,6 +83,7 @@ export class SpaSchemaService {
         version: snapshot.fields[index].version + 1 }));
       snapshot.fields[index] = updated;
       await this.save(tx, actor, typeId, draft.id, snapshot);
+      if (deactivate) await evidence(tx, actor, 'SPA_TYPE', typeId, 'SPA_FIELD_DEACTIVATED', { fieldId, fieldVersion: updated.version });
       return updated;
     });
   }
@@ -105,9 +106,42 @@ export class SpaSchemaService {
       return this.save(tx, actor, typeId, draft.id, snapshot);
     });
   }
+  private async existingValues(tx: Tx, actor: Principal, typeId: string, snapshot: SchemaSnapshot,
+    convertedValues = new Map<string, { fieldId: string; value: unknown }>()) {
+    const items = await tx.spaItem.findMany({ where: { workspaceId: actor.workspaceId, typeId,
+      status: { not: 'TRASHED' } }, select: { id: true } });
+    const values = new Map(items.map(item => [item.id,
+      new Map<string, unknown>(snapshot.fields.map(field => [field.code, field.defaultValue ?? null]))]));
+    const fields = new Map(snapshot.fields.map(field => [field.id, field]));
+    const rows = await tx.spaItemValue.findMany({ where: { workspaceId: actor.workspaceId,
+      itemId: { in: items.map(item => item.id) }, fieldId: { in: [...fields.keys()] } } });
+    for (const row of rows) {
+      const field = fields.get(row.fieldId)!;
+      const conversion = convertedValues.get(row.itemId);
+      values.get(row.itemId)!.set(field.code, conversion?.fieldId === field.id ? conversion.value : storedValue(row, field));
+    }
+    return values;
+  }
+  private duplicateIssues(snapshot: SchemaSnapshot, values: Map<string, Map<string, unknown>>) {
+    const issues: Array<{ code: string; fieldCode: string; affectedItems: number }> = [];
+    for (const constraint of snapshot.uniqueConstraints) {
+      if (constraint.fieldCodes.some(code => !snapshot.fields.some(field => field.code === code)))
+        throw new AppError('SPA_FIELD_TYPE_INVALID', 'Constraint references an unavailable field.', 422);
+      const groups = new Map<string, number>();
+      for (const item of values.values()) {
+        const key = uniqueValueKey(constraint, item);
+        if (key !== null) groups.set(key, (groups.get(key) ?? 0) + 1);
+      }
+      const affectedItems = [...groups.values()].filter(count => count > 1).reduce((total, count) => total + count, 0);
+      if (affectedItems) issues.push({ code: 'SPA_SCHEMA_DUPLICATE_VALUES', fieldCode: constraint.fieldCodes.join(','), affectedItems });
+    }
+    return issues;
+  }
   /** Impact preview reads existing values and cannot clear or coerce them. */
-  private async impact(tx: Tx, actor: Principal, typeId: string, snapshot: SchemaSnapshot, migratedFieldId?: string) {
+  private async impact(tx: Tx, actor: Principal, typeId: string, snapshot: SchemaSnapshot, migratedFieldId?: string,
+    convertedValues = new Map<string, { fieldId: string; value: unknown }>()) {
     const published = await tx.spaFieldDefinition.findMany({ where: { workspaceId: actor.workspaceId, typeId } });
+    const values = await this.existingValues(tx, actor, typeId, snapshot, convertedValues);
     const issues: Array<{ code: string; fieldCode: string; affectedItems: number }> = [];
     for (const field of snapshot.fields) {
       validateDefinition(field, actor.workspaceId);
@@ -115,14 +149,32 @@ export class SpaSchemaService {
       const count = await tx.spaItemValue.count({ where: { workspaceId: actor.workspaceId, fieldId: field.id } });
       if (old && old.fieldType !== field.fieldType && count > 0 && field.id !== migratedFieldId)
         issues.push({ code: 'SPA_SCHEMA_MIGRATION_REQUIRED', fieldCode: field.code, affectedItems: count });
-      if (field.isRequired && field.isActive && (field.defaultValue === undefined || field.defaultValue === null || field.defaultValue === '')) {
-        const items = await tx.spaItem.count({ where: { workspaceId: actor.workspaceId, typeId, status: { not: 'TRASHED' } } });
-        if (items > count) issues.push({ code: 'SPA_REQUIRED_FIELD_MISSING', fieldCode: field.code, affectedItems: items - count });
+      if (field.isRequired && field.isActive) {
+        const missing = [...values.values()].filter(item => emptyFieldValue(item.get(field.code))).length;
+        if (missing) issues.push({ code: 'SPA_REQUIRED_FIELD_MISSING', fieldCode: field.code, affectedItems: missing });
+      }
+      if (field.isActive && (!old || old.fieldType === field.fieldType || field.id === migratedFieldId) &&
+          !['USER', 'CRM_REF', 'FILE', 'SPA_REF'].includes(field.fieldType)) {
+        let invalid = 0;
+        for (const item of values.values()) {
+          const value = item.get(field.code);
+          if (emptyFieldValue(value)) continue;
+          try {
+            parseFieldValue(field, value, actor.workspaceId, { registeredEntityTypes: [], checkUser: () => 'MISSING',
+              isUserSelectable: () => false, checkCrmReference: () => 'MISSING', checkFile: () => 'MISSING' },
+              Array.isArray(value) ? value : [value]);
+          } catch (error) {
+            if (!(error instanceof AppError)) throw error;
+            invalid++;
+          }
+        }
+        if (invalid) issues.push({ code: 'SPA_ITEM_VALIDATION_FAILED', fieldCode: field.code, affectedItems: invalid });
       }
     }
     for (const old of published) if (!snapshot.fields.some(field => field.id === old.id))
       issues.push({ code: 'SPA_SCHEMA_MIGRATION_REQUIRED', fieldCode: old.code, affectedItems:
         await tx.spaItemValue.count({ where: { workspaceId: actor.workspaceId, fieldId: old.id } }) });
+    issues.push(...this.duplicateIssues(snapshot, values));
     return { valid: issues.length === 0, issues };
   }
   async validate(actor: Principal, typeId: string, raw: unknown) {
@@ -162,7 +214,8 @@ export class SpaSchemaService {
             throw new AppError('SPA_SCHEMA_MIGRATION_REQUIRED', 'Items changed since the migration preview. Queue a fresh preview.', 422);
         }
       }
-      const impact = await this.impact(tx, actor, typeId, snapshot, job?.fieldId);
+      const convertedValues = new Map(conversions.map(value => [value.itemId, { fieldId: job!.fieldId, value: value.convertedValue }]));
+      const impact = await this.impact(tx, actor, typeId, snapshot, job?.fieldId, convertedValues);
       if (!impact.valid) throw new AppError('SPA_SCHEMA_MIGRATION_REQUIRED', 'Schema has unresolved conversion or required-value impacts.', 422, impact);
       const nextVersion = type.schemaVersion + 1;
       const publication = await tx.spaSchemaVersion.create({ data: { workspaceId: actor.workspaceId, typeId,
@@ -220,29 +273,16 @@ export class SpaSchemaService {
   }
   async uniqueConstraint(actor: Principal, typeId: string, raw: unknown) {
     requirePermission(actor, 'SPA.SCHEMA.MANAGE', true);
-    const input = parse(uniqueDefinition.omit({ id: true, ignoreNull: true, caseInsensitive: true }), raw);
+    const input = parse(uniqueDefinition.omit({ id: true }), raw);
     return this.db.$transaction(async tx => {
       await lock(tx, actor.workspaceId, 'spa:type:' + typeId);
       const { draft, snapshot } = await this.load(tx, actor, typeId, true);
       if (input.fieldCodes.some(code => !snapshot.fields.some(field => field.code === code && field.isActive)))
         throw new AppError('SPA_FIELD_TYPE_INVALID', 'Constraint references an unavailable field.', 422);
-      const fields = snapshot.fields.filter(field => input.fieldCodes.includes(field.code));
-      const values = await tx.spaItemValue.findMany({ where: { workspaceId: actor.workspaceId, fieldId: { in: fields.map(field => field.id) } } });
-      const items = new Map<string, Map<string, string>>();
-      for (const value of values) {
-        const item = items.get(value.itemId) ?? new Map<string, string>();
-        item.set(value.fieldId, canonical(value.valueJson ?? value.valueText ?? value.valueNumber?.toString() ?? value.valueDate?.toISOString() ?? value.valueBoolean).toLowerCase());
-        items.set(value.itemId, item);
-      }
-      const seen = new Set<string>();
-      for (const item of items.values()) {
-        if (fields.some(field => !item.has(field.id))) continue;
-        const key = canonical(fields.map(field => item.get(field.id)));
-        if (seen.has(key)) throw new AppError('SPA_SCHEMA_DUPLICATE_VALUES', 'Existing Item values conflict with this uniqueness rule.', 422);
-        seen.add(key);
-      }
       const constraint = parse(uniqueDefinition, { ...input, id: randomUUID() });
       snapshot.uniqueConstraints.push(constraint);
+      const issues = this.duplicateIssues(snapshot, await this.existingValues(tx, actor, typeId, snapshot));
+      if (issues.length) throw new AppError('SPA_SCHEMA_DUPLICATE_VALUES', 'Existing Item values conflict with this uniqueness rule.', 422, { issues });
       await this.save(tx, actor, typeId, draft.id, snapshot);
       return constraint;
     });

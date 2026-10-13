@@ -47,7 +47,8 @@ export function requirePermission(actor: Principal, permission: string, workspac
 
 /** Stable tenant-scoped advisory locks also fence missing rows and competing API processes. */
 export async function lock(tx: Tx, workspaceId: string, aggregate: string) {
-  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${workspaceId + ':' + aggregate}, 0))`;
+  // PostgreSQL returns void; expose a supported scalar so Prisma can deserialize the result.
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${workspaceId + ':' + aggregate}, 0))::text`;
 }
 
 export function assertVersion(actual: number, expected: number) {

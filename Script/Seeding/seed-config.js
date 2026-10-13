@@ -96,7 +96,7 @@ const PERMISSIONS = [
   'seller_company.manage', 'seller_company.read',
   'estimate.create', 'estimate.read', 'estimate.update', 'estimate.send', 'estimate.accept', 'estimate.decline', 'estimate.convert', 'estimate.archive', 'estimate.restore',
   'invoice.create', 'invoice.read', 'invoice.update_draft', 'invoice.issue', 'invoice.void', 'invoice.cancel', 'invoice.read_payments', 'invoice.archive',
-  'payment.create_attempt', 'payment.record', 'payment.read', 'payment.allocate', 'payment.reverse_allocation', 'payment.refund',
+  'payment.create_attempt', 'payment.record', 'payment.read', 'payment.allocate', 'payment.reverse_allocation', 'payment.refund', 'payment.capture', 'payment.void', 'payment.provider_confirm',
   'recurring_invoice.create', 'recurring_invoice.read', 'recurring_invoice.update', 'recurring_invoice.activate', 'recurring_invoice.deactivate',
   'form.create', 'form.read', 'form.update', 'form.publish', 'form.unpublish', 'form.archive', 'form.read_submission', 'form.export_submission', 'form.manage_security', 'form.manage_capture',
   'contact_center.channel_manage', 'contact_center.queue_manage',

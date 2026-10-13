@@ -4,7 +4,7 @@ import { AppError, badRequest, unauthorized } from './errors';
 import { verifyAccessToken } from './security';
 import type { InMemoryStore } from './store';
 
-export async function readJson<T>(request: NextRequest, maxBytes?: number): Promise<T> {
+export async function readRawBody(request: NextRequest, maxBytes?: number): Promise<string> {
   let text: string;
   if (maxBytes === undefined) text = await request.text();
   else {
@@ -27,6 +27,11 @@ export async function readJson<T>(request: NextRequest, maxBytes?: number): Prom
     }
     text = Buffer.concat(chunks, size).toString('utf8');
   }
+  return text;
+}
+
+export async function readJson<T>(request: NextRequest, maxBytes?: number): Promise<T> {
+  const text = await readRawBody(request,maxBytes);
   if (!text.trim()) return {} as T;
   try {
     return JSON.parse(text) as T;

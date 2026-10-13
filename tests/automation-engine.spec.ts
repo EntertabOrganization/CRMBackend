@@ -1,6 +1,6 @@
 /**
  * Automation Rules & Triggers - domain contract tests
- * (Automation_Products_Catlouge/Testing/Automation/automation-rules.spec.ts + automation-execution.spec.ts).
+ * (tests/modules/Automation_Products_Catlouge/Automation/automation-rules.spec.ts + automation-execution.spec.ts).
  * Everything runs through the real services against the in-memory store; time is driven by the runner's `now`.
  */
 import { RecordingCommunicationPort, RecordingNotificationPort } from '@/src/server/ports';

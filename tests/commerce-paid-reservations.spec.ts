@@ -1,0 +1,79 @@
+import { PrismaClient } from '@prisma/client';
+import { createHmac,randomUUID } from 'node:crypto';
+import { prepareProcessPlatformDatabase } from './support/process-platform-db';
+import { paymentCommandFixture } from './support/payment-command-fixture';
+import { CommercePaidReservationService,preparePaidReservations } from '../src/server/commerce/paid-reservation-service';
+import { CommerceOrderService } from '../src/server/commerce/order-service';
+import { CommerceIntegrationInspectionService } from '../src/server/commerce/integration-inspection-service';
+import { CommercePaymentCallbackService } from '../src/server/commerce/payment-callback-service';
+import { CommerceShipmentService } from '../src/server/commerce/shipment-service';
+import { CommerceCartService } from '../src/server/commerce/cart-service';
+import { CommerceCheckoutService } from '../src/server/commerce/checkout-service';
+import { CommerceStoreService } from '../src/server/commerce/store-service';
+import { AppError } from '../src/server/errors';
+
+jest.setTimeout(120000);let db:PrismaClient;
+beforeAll(async()=>{const url=await prepareProcessPlatformDatabase('truecrm_paid_reservations_test');db=new PrismaClient({datasources:{db:{url}}});},300000);
+afterAll(async()=>{await db?.$disconnect();});afterEach(()=>jest.restoreAllMocks());
+async function fixture(){
+ const productId=randomUUID(),lineId=randomUUID(),f=await paymentCommandFixture(db,{paymentMethodId:'OFFLINE',payerType:'PERSON',customer:{name:'Buyer',email:'buyer@example.test'},address:{region:'EG'},lines:[{itemId:lineId,productId,variantId:null,inventoryKey:productId,quantity:'1',stockable:true,name:'Stock'}]}),shipments=new CommerceShipmentService(db);
+ const unit=await db.catalogUnit.create({data:{workspaceId:f.workspace.id,name:'Each',code:'EA',precision:0}});await db.catalogProduct.create({data:{id:productId,workspaceId:f.workspace.id,catalogId:f.store.catalogId,type:'SIMPLE_PRODUCT',name:'Stock',sku:'STOCK',skuKey:'stock',primaryUnitId:unit.id}});
+ const warehouse=await shipments.warehouses.create(f.actor,{name:'Stock',code:'STOCK',type:'PHYSICAL',timezone:'Africa/Cairo'}),receipt=await shipments.documents.create(f.actor,{documentType:'STOCK_RECEIPT',warehouseIds:{destination:warehouse.id},currency:'EGP'}),line=await shipments.documents.line(f.actor,receipt.id,{productId,quantity:'2',unitCost:'5'}) as {documentVersion:string};await shipments.documents.process(f.actor,receipt.id,{expectedVersion:line.documentVersion},randomUUID());
+ const store=await db.commerceStore.update({where:{id:f.store.id},data:{reservationTiming:'PAYMENT_PAID',dealCreationPolicy:'NEVER',defaultWarehouseId:warehouse.id,settings:{...f.store.settings as object,inventoryPrincipalUserId:f.user.id}}}),job=await db.$transaction(tx=>preparePaidReservations(tx,f.order,store));
+ return{...f,store,warehouse,productId,lineId,job:job!,jobs:new CommercePaidReservationService(db),orders:new CommerceOrderService(db),inspection:new CommerceIntegrationInspectionService(db),shipments};
+}
+type F=Awaited<ReturnType<typeof fixture>>;
+async function settled(f:F,amount='100'){
+ const id=randomUUID();await db.commercialPackRecord.create({data:{id,workspaceId:f.workspace.id,collection:'payments',data:{id,workspaceId:f.workspace.id,amount,currencyCode:'EGP',settlementStatus:'SUCCEEDED',responsibleUserId:f.user.id,methodType:'MANUAL'}}});await db.commerceOrderPaymentBinding.create({data:{workspaceId:f.workspace.id,storeId:f.store.id,orderId:f.order.id,paymentId:id,amount}});await refresh(f);return id;
+}
+async function refresh(f:F){await db.$transaction(tx=>f.orders.refreshPaymentProjection(tx,f.actor,f.order.id,'test-'+randomUUID()));}
+async function due(f:F){await db.commercePaidReservationJob.update({where:{id:f.job.id},data:{nextAttemptAt:new Date(0),version:{increment:1}}});}
+async function grant(f:F,key:string){const p=await db.permission.findUniqueOrThrow({where:{key}});await db.rolePermission.update({where:{roleId_permissionId:{roleId:f.role.id,permissionId:p.id}},data:{isDeleted:true}});}
+describe('Changed PAYMENT_PAID reservation lifecycle',()=>{
+ it('waits for full shared payment coverage, then reserves exactly once under concurrent workers',async()=>{
+  const f=await fixture();expect(await f.jobs.process(f.job.id)).toBe(false);await settled(f,'40');expect(await db.commercePaidReservationJob.findUnique({where:{id:f.job.id}})).toMatchObject({status:'WAITING'});await settled(f,'60');
+  const results=await Promise.all([f.jobs.process(f.job.id),f.jobs.process(f.job.id)]);expect(results.filter(Boolean)).toHaveLength(1);expect(await f.jobs.process(f.job.id)).toBe(false);expect(await db.inventoryReservation.count({where:{workspaceId:f.workspace.id}})).toBe(1);expect(await db.commerceOrderLineReservation.findFirst({where:{orderId:f.order.id}})).toMatchObject({orderLineId:f.lineId,inventoryKey:f.productId});
+  expect(await db.outboxEvent.count({where:{entityId:f.order.id,eventType:'ORDER_STOCK_RESERVED'}})).toBe(1);expect(await db.outboxEvent.count({where:{entityId:f.order.id,eventType:'ORDER_STOCK_RESERVATION_QUEUED'}})).toBe(1);
+  await expect(db.commercePaidReservationJob.update({where:{id:f.job.id},data:{status:'QUEUED',version:{increment:1}}})).rejects.toThrow('COMMERCE_PAID_RESERVATION_IMMUTABLE');
+ });
+ it('rechecks settled coverage after queuing and waits when payment is no longer available',async()=>{
+  const f=await fixture(),id=await settled(f);const payment=await db.commercialPackRecord.findUniqueOrThrow({where:{id}});await db.commercialPackRecord.update({where:{id},data:{data:{...payment.data as object,settlementStatus:'FAILED'}}});expect(await f.jobs.process(f.job.id)).toBe(false);expect(await db.commercePaidReservationJob.findUnique({where:{id:f.job.id}})).toMatchObject({status:'WAITING',claimToken:null});expect(await db.inventoryReservation.count({where:{workspaceId:f.workspace.id}})).toBe(0);
+  await db.commercialPackRecord.update({where:{id},data:{data:payment.data as never}});await refresh(f);expect(await f.jobs.process(f.job.id)).toBe(true);
+ });
+ it('pins the original policy across Store changes and exposes sanitized job status',async()=>{
+  const f=await fixture();await db.commerceStore.update({where:{id:f.store.id},data:{reservationTiming:'ORDER_PLACED'}});await settled(f);expect(await f.jobs.process(f.job.id)).toBe(true);
+  const projection=await f.inspection.integrations(f.actor,f.order.id);expect(projection.reservationJob).toMatchObject({policy:'PAYMENT_PAID',status:'SUCCEEDED',attemptCount:1});expect(JSON.stringify(projection.reservationJob)).not.toMatch(/claimToken|leaseExpiresAt|Principal|apiKey/);
+ });
+ it('rolls back a reservation and binding failure while leaving confirmed payment intact, then retries',async()=>{
+  const f=await fixture();await settled(f);const original=f.jobs.inventory.createInTransaction.bind(f.jobs.inventory),spy=jest.spyOn(f.jobs.inventory,'createInTransaction').mockImplementationOnce(async(...args)=>{await original(...args);throw new Error('private-sensitive-failure');});expect(await f.jobs.process(f.job.id)).toBe(false);spy.mockRestore();
+  expect(await db.inventoryReservation.count({where:{workspaceId:f.workspace.id}})).toBe(0);expect(await db.commerceOrderLineReservation.count({where:{orderId:f.order.id}})).toBe(0);expect(await db.commerceOrder.findUnique({where:{id:f.order.id}})).toMatchObject({paymentStatus:'PAID'});expect(await db.commercePaidReservationJob.findUnique({where:{id:f.job.id}})).toMatchObject({status:'QUEUED',errorCode:'COMMERCE_STOCK_RESERVATION_FAILED'});await due(f);expect(await f.jobs.process(f.job.id)).toBe(true);
+ });
+ it('uses current Inventory, payment and warehouse permissions without borrowing another principal',async()=>{
+  const f=await fixture();await settled(f);await grant(f,'INVENTORY.RESERVATION_CREATE');expect(await f.jobs.process(f.job.id)).toBe(false);expect(await db.commercePaidReservationJob.findUnique({where:{id:f.job.id}})).toMatchObject({errorCode:'PERMISSION_DENIED'});expect(await db.inventoryReservation.count({where:{workspaceId:f.workspace.id}})).toBe(0);
+  const g=await fixture();await settled(g);await grant(g,'payment.read');expect(await g.jobs.process(g.job.id)).toBe(false);expect(await db.inventoryReservation.count({where:{workspaceId:g.workspace.id}})).toBe(0);
+  const h=await fixture();await settled(h);await db.inventoryWarehousePermission.update({where:{workspaceId_warehouseId_roleId_action:{workspaceId:h.workspace.id,warehouseId:h.warehouse.id,roleId:h.role.id,action:'INVENTORY.RESERVATION_CREATE'}},data:{scope:'NONE'}});expect(await h.jobs.process(h.job.id)).toBe(false);expect(await db.inventoryReservation.count({where:{workspaceId:h.workspace.id}})).toBe(0);
+ });
+ it('recovers expired leases, refuses live claims and exhausts bounded failures visibly',async()=>{
+  const f=await fixture();await settled(f);await db.commercePaidReservationJob.update({where:{id:f.job.id},data:{status:'RUNNING',claimToken:randomUUID(),leaseExpiresAt:new Date(Date.now()+60000),attempts:1,version:{increment:1}}});expect(await f.jobs.process(f.job.id)).toBe(false);await db.commercePaidReservationJob.update({where:{id:f.job.id},data:{leaseExpiresAt:new Date(0),version:{increment:1}}});expect(await f.jobs.process(f.job.id)).toBe(true);
+  const g=await fixture();await settled(g);await db.commerceStore.update({where:{id:g.store.id},data:{settings:{}}});for(let i=0;i<5;i++){await due(g);expect(await g.jobs.process(g.job.id)).toBe(false);}expect(await db.commercePaidReservationJob.findUnique({where:{id:g.job.id}})).toMatchObject({status:'FAILED',attempts:5,claimToken:null,errorCode:'COMMERCE_STOCK_RESERVATION_FAILED'});expect(await g.jobs.process(g.job.id)).toBe(false);expect(await db.commerceOrder.findUnique({where:{id:g.order.id}})).toMatchObject({paymentStatus:'PAID'});
+  const result=await db.$transaction(tx=>g.inspection.inspect(tx,g.actor,g.order.id));expect(result.mismatches).toContainEqual({code:'STOCK_RESERVATION_FAILED',entityId:g.job.id});
+ });
+ it('rejects closed sources and cross-Workspace job bindings without creating stock',async()=>{
+  const f=await fixture(),g=await fixture();await expect(db.commercePaidReservationJob.create({data:{workspaceId:g.workspace.id,storeId:g.store.id,orderId:f.order.id}})).rejects.toMatchObject({code:'P2003'});await settled(f);await db.commerceOrder.update({where:{id:f.order.id},data:{status:'CANCELLED'}});expect(await f.jobs.process(f.job.id)).toBe(false);expect(await db.inventoryReservation.count({where:{workspaceId:f.workspace.id}})).toBe(0);
+ });
+ it('queues stock work from a signed provider callback only after shared confirmation commits',async()=>{
+  const f=await fixture(),callbacks=new CommercePaymentCallbackService(db,undefined,f.authority),command=await f.service.create(f.actor,f.order.id,{methodId:f.method.id,amount:'100',mode:'SALE'},randomUUID());await f.service.process(command.commandId);
+  const payment=await db.commercialPackRecord.findUniqueOrThrow({where:{id:command.paymentId}}),transactionId=(payment.data as {providerTransactionId:string}).providerTransactionId,at=Math.floor(Date.now()/1000);
+  const raw=JSON.stringify({id:'evt_'+randomUUID(),created:at-1,account:'merchant-test',type:'payment_intent.succeeded',data:{object:{id:transactionId,currency:'egp',amount:10000,amount_received:10000,amount_capturable:0,status:'succeeded',metadata:{}}}}),secret=JSON.parse(f.secrets.get('test-payment-bundle')!).webhookSecret,signature=createHmac('sha256',secret).update(at+'.'+raw).digest('hex');
+  const ack=await callbacks.receive('stripe',new Headers({'x-payment-connection-id':f.connection.id,'stripe-signature':'t='+at+',v1='+signature}),raw);expect(await db.commercePaidReservationJob.findUnique({where:{id:f.job.id}})).toMatchObject({status:'WAITING'});await db.sharedPaymentProviderEvent.update({where:{id:ack.eventId},data:{nextAttemptAt:new Date(0)}});expect((await callbacks.tick()).processed).toBe(1);expect(await db.commercePaidReservationJob.findUnique({where:{id:f.job.id}})).toMatchObject({status:'QUEUED'});expect(await db.inventoryReservation.count({where:{workspaceId:f.workspace.id}})).toBe(0);expect(await f.jobs.process(f.job.id)).toBe(true);
+ });
+ it('activates a PAYMENT_PAID Store and atomically places a waiting checkout without reserving stock',async()=>{
+  const f=await fixture(),priceType=await db.catalogPriceType.create({data:{workspaceId:f.workspace.id,name:'Retail',code:'RETAIL'}});await db.catalogProductPrice.create({data:{workspaceId:f.workspace.id,productId:f.productId,priceTypeId:priceType.id,currency:'EGP',amount:'100'}});await db.commerceStore.update({where:{id:f.store.id},data:{status:'DRAFT',priceTypeId:priceType.id}});
+  const front=await db.commerceStorefront.create({data:{workspaceId:f.workspace.id,storeId:f.store.id,type:'WEB',slug:'paid-'+randomUUID()}});await db.commerceProductPublication.create({data:{workspaceId:f.workspace.id,storeId:f.store.id,productId:f.productId,inventoryKey:f.productId,seoSlug:'stock',published:true,createdByUserId:f.user.id}});const stores=new CommerceStoreService(db);await stores.activate(f.actor,f.store.id,{expectedVersion:'1'});await stores.publishStorefront(f.actor,front.id,{expectedVersion:'1'});
+  const carts=new CommerceCartService(db),checkout=new CommerceCheckoutService(db,carts),cart=await carts.create(front.slug,{},randomUUID());await carts.mutate(front.slug,cart.cartToken,{productId:f.productId,quantity:'1'},'ADD');const session=await checkout.create(front.slug,{cartToken:cart.cartToken,customerInfo:{name:'Buyer',email:'buyer@example.test'},shippingInfo:{country:'EG',region:'EG',city:'Cairo',line1:'Street'},payerType:'PERSON'}),quote=await checkout.quote(front.slug,session.id,session.checkoutSessionToken,{paymentMethodId:'OFFLINE'}),key=randomUUID(),request={quoteHash:quote.quoteHash,consents:[{kind:'TERMS',version:'1',accepted:true},{kind:'PRIVACY',version:'1',accepted:true}]};
+  const result=await checkout.place(front.slug,session.id,session.checkoutSessionToken,request,key) as {orderId:string};expect(await checkout.place(front.slug,session.id,session.checkoutSessionToken,request,key)).toEqual(result);expect(await db.commercePaidReservationJob.findUnique({where:{workspaceId_orderId:{workspaceId:f.workspace.id,orderId:result.orderId}}})).toMatchObject({status:'WAITING',policy:'PAYMENT_PAID'});expect(await db.inventoryReservation.count({where:{workspaceId:f.workspace.id}})).toBe(0);
+  const price=await db.catalogProductPrice.findFirstOrThrow({where:{workspaceId:f.workspace.id,productId:f.productId}});await db.catalogProductPrice.update({where:{id:price.id},data:{amount:'0',version:{increment:1}}});
+  const freeCart=await carts.create(front.slug,{},randomUUID());await carts.mutate(front.slug,freeCart.cartToken,{productId:f.productId,quantity:'1'},'ADD');const freeSession=await checkout.create(front.slug,{cartToken:freeCart.cartToken,customerInfo:{name:'Buyer',email:'free@example.test'},shippingInfo:{country:'EG',region:'EG',city:'Cairo',line1:'Street'},payerType:'PERSON'}),freeQuote=await checkout.quote(front.slug,freeSession.id,freeSession.checkoutSessionToken,{paymentMethodId:'OFFLINE'}),free=await checkout.place(front.slug,freeSession.id,freeSession.checkoutSessionToken,{quoteHash:freeQuote.quoteHash,consents:request.consents},randomUUID()) as {orderId:string};
+  const freeJob=await db.commercePaidReservationJob.findUniqueOrThrow({where:{workspaceId_orderId:{workspaceId:f.workspace.id,orderId:free.orderId}}});expect(freeQuote.total).toBe('0');expect(freeJob.status).toBe('QUEUED');expect(free).toMatchObject({paymentStatus:'PAID'});expect(await f.jobs.process(freeJob.id)).toBe(true);expect(await db.commerceOrder.findUnique({where:{id:free.orderId}})).toMatchObject({paymentStatus:'PAID'});expect(await db.commerceOrderPaymentBinding.count({where:{orderId:free.orderId}})).toBe(0);
+ });
+});

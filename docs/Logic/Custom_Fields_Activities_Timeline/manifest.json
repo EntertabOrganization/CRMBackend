@@ -1,0 +1,98 @@
+{
+  "pack": "TrueCRM Custom Fields + Activities & Timeline Codex Pack",
+  "version": "1.0",
+  "entrypoint": "Agent.md",
+  "decision_register": "Decision-Register.md",
+  "goal_examples": [
+    "Complete Custom & Required Fields",
+    "Complete Activities & Timeline",
+    "Complete the entire TrueCRM Custom Fields + Activities pack"
+  ],
+  "specifications": [
+    "Custom-Required-Fields/overview.md",
+    "Custom-Required-Fields/field-definitions.md",
+    "Custom-Required-Fields/field-types-values.md",
+    "Custom-Required-Fields/validation-options-lifecycle.md",
+    "Custom-Required-Fields/permissions-exposure.md",
+    "Custom-Required-Fields/required-fields.md",
+    "Custom-Required-Fields/api.md",
+    "Custom-Required-Fields/frontend.md",
+    "Activities-Timeline/overview.md",
+    "Activities-Timeline/activity-model.md",
+    "Activities-Timeline/activity-types-adapters.md",
+    "Activities-Timeline/bindings-communications-reminders.md",
+    "Activities-Timeline/lifecycle-permissions.md",
+    "Activities-Timeline/timeline.md",
+    "Activities-Timeline/api.md",
+    "Activities-Timeline/frontend.md",
+    "Shared/data-model.md",
+    "Shared/authorization-security.md",
+    "Shared/errors-idempotency-concurrency.md",
+    "Shared/domain-events-realtime.md",
+    "Shared/migrations-retention.md",
+    "Shared/requirement-traceability.md"
+  ],
+  "testing": {
+    "root": "Testing",
+    "readme": "tests/modules/Custom_Fields_Activities_Timeline/README.md",
+    "coverage_matrix": "tests/modules/Custom_Fields_Activities_Timeline/coverage-matrix.md"
+  },
+  "modules": [
+    {
+      "name": "Custom & Required Fields",
+      "root": "Custom-Required-Fields"
+    },
+    {
+      "name": "Activities & Timeline",
+      "root": "Activities-Timeline"
+    }
+  ],
+  "shared_spec_root": "Shared",
+  "all_files": [
+    "Activities-Timeline/activity-model.md",
+    "Activities-Timeline/activity-types-adapters.md",
+    "Activities-Timeline/api.md",
+    "Activities-Timeline/bindings-communications-reminders.md",
+    "Activities-Timeline/frontend.md",
+    "Activities-Timeline/lifecycle-permissions.md",
+    "Activities-Timeline/overview.md",
+    "Activities-Timeline/timeline.md",
+    "Agent.md",
+    "Custom-Required-Fields/api.md",
+    "Custom-Required-Fields/field-definitions.md",
+    "Custom-Required-Fields/field-types-values.md",
+    "Custom-Required-Fields/frontend.md",
+    "Custom-Required-Fields/overview.md",
+    "Custom-Required-Fields/permissions-exposure.md",
+    "Custom-Required-Fields/required-fields.md",
+    "Custom-Required-Fields/validation-options-lifecycle.md",
+    "Decision-Register.md",
+    "README.md",
+    "Shared/authorization-security.md",
+    "Shared/data-model.md",
+    "Shared/domain-events-realtime.md",
+    "Shared/errors-idempotency-concurrency.md",
+    "Shared/migrations-retention.md",
+    "Shared/requirement-traceability.md",
+    "tests/modules/Custom_Fields_Activities_Timeline/Activities-Timeline/activities.e2e-spec.ts",
+    "tests/modules/Custom_Fields_Activities_Timeline/Activities-Timeline/activity-lifecycle.spec.ts",
+    "tests/modules/Custom_Fields_Activities_Timeline/Activities-Timeline/bindings-reminders.spec.ts",
+    "tests/modules/Custom_Fields_Activities_Timeline/Activities-Timeline/timeline.e2e-spec.ts",
+    "tests/modules/Custom_Fields_Activities_Timeline/Activities-Timeline/timeline.spec.ts",
+    "tests/modules/Custom_Fields_Activities_Timeline/Custom-Required-Fields/custom-fields.e2e-spec.ts",
+    "tests/modules/Custom_Fields_Activities_Timeline/Custom-Required-Fields/custom-fields.spec.ts",
+    "tests/modules/Custom_Fields_Activities_Timeline/Custom-Required-Fields/required-fields.spec.ts",
+    "tests/modules/Custom_Fields_Activities_Timeline/Frontend/activities-timeline.ui.spec.ts",
+    "tests/modules/Custom_Fields_Activities_Timeline/Frontend/custom-fields.ui.spec.ts",
+    "tests/modules/Custom_Fields_Activities_Timeline/README.md",
+    "tests/modules/Custom_Fields_Activities_Timeline/coverage-matrix.md",
+    "manifest.json"
+  ],
+  "counts": {
+    "total_files": 38,
+    "markdown_files": 27,
+    "specification_markdown_files": 22,
+    "test_contract_files": 10,
+    "testing_support_markdown_files": 2
+  }
+}

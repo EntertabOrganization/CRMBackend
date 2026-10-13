@@ -9,6 +9,7 @@ import { WorkflowActionsService } from './actions-service';
 import { WorkflowCompensationService } from './compensation-service';
 import { WorkflowTemplateService } from './template-service';
 import { WorkflowGovernanceService } from './governance-service';
+import { ResourceTimelineService } from '../activities/resource-timeline-service';
 
 export const workflowDefinitions = new WorkflowDefinitionService(prisma);
 export const workflowExecutions = new WorkflowExecutionService(prisma,workflowDefinitions);
@@ -19,6 +20,7 @@ export const workflowActionService = new WorkflowActionsService(prisma,workflowE
 export const workflowCompensations = new WorkflowCompensationService(prisma,workflowExecutions);
 export const workflowTemplates = new WorkflowTemplateService(prisma,workflowDefinitions);
 export const workflowGovernance = new WorkflowGovernanceService(prisma,workflowExecutions);
+export const workflowDiscussions = new ResourceTimelineService(prisma,workflowExecutions);
 export const workflowRouter = new PackRouter()
   .add('POST','/api/v1/workflows','WorkflowDefinitionsController',c => workflowDefinitions.create(c.actor,c.body),201)
   .add('GET','/api/v1/workflows','WorkflowDefinitionsController',c => workflowDefinitions.list(c.actor,c.query))
@@ -71,4 +73,5 @@ export const workflowRouter = new PackRouter()
   .add('POST','/api/v1/workflow-templates','WorkflowTemplatesController',c => workflowTemplates.create(c.actor,c.body),201)
   .add('POST','/api/v1/workflow-templates/:templateId/instantiate','WorkflowTemplatesController',c => workflowTemplates.instantiate(c.actor,c.params.templateId,c.body),201)
   .add('GET','/api/v1/workflows/admin/health','WorkflowAdminController',c => workflowGovernance.health(c.actor,c.query))
-  .add('POST','/api/v1/workflows/admin/reconcile','WorkflowAdminController',c => workflowGovernance.reconcile(c.actor,c.body,c.request.headers.get('idempotency-key')),202);
+  .add('POST','/api/v1/workflows/admin/reconcile','WorkflowAdminController',c => workflowGovernance.reconcile(c.actor,c.body,c.request.headers.get('idempotency-key')),202)
+  .add('GET','/api/v1/workflow-executions/:executionId/discussion','WorkflowAdminController',c => workflowDiscussions.reference(c.actor,c.params.executionId));

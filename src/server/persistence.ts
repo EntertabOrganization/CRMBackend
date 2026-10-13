@@ -547,8 +547,11 @@ function decimalsToStrings(row: Record<string, unknown>, columns: string[]) {
 }
 
 export async function persistState(client: PrismaClient, before: DbState, after: DbState): Promise<void> {
-  await client.$transaction(
-    async (tx: Prisma.TransactionClient) => {
+  await client.$transaction(tx => persistStateInTransaction(tx,before,after),{ maxWait: 10_000,timeout: 30_000 });
+}
+
+/** Owning services may join an existing domain transaction without introducing a second commit. */
+export async function persistStateInTransaction(tx: Prisma.TransactionClient,before: DbState,after: DbState): Promise<void> {
       const fileScopes = new Set<string>();
       for (const key of ['chatMessages', 'chatMessageVersions', 'fileStorages', 'fileFolders', 'driveFiles', 'driveFileVersions', 'uploadSessions', 'fileObjectGarbage', 'fileDeliveryGrants', 'fileAttachments', 'fileLocks', 'documentEditSessions', 'documentTemplates', 'documentTemplateRevisions', 'generatedDocuments', 'crmActivities', 'crmTimelineComments', 'catalogProductMedia', 'crmCustomFieldValues', 'filePermissionAssignments', 'filePublicLinks', 'storageAccessSources', 'retentionRecords', 'entitlementGrants', 'calendarEventFiles', 'taskResults', 'taskTemplates'] as const) {
         const previous = new Map(before[key].map(row => [row.id, row]));
@@ -645,7 +648,4 @@ export async function persistState(client: PrismaClient, before: DbState, after:
         const removed=(before[key] as unknown as Array<{id:string}>).filter(row=>!afterIds.has(row.id)).map(row=>row.id);
         if(removed.length)await packDelegate.deleteMany({where:{id:{in:removed}}});
       }
-    },
-    { maxWait: 10_000, timeout: 30_000 },
-  );
 }

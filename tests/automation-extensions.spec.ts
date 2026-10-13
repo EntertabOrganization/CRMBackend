@@ -1,6 +1,6 @@
 /**
  * Automation custom extensions, integration credentials, custom trigger ingestion, external calls and SSRF policy
- * (Automation_Products_Catlouge/Testing/Automation/automation-security.e2e-spec.ts).
+ * (tests/modules/Automation_Products_Catlouge/Automation/automation-security.e2e-spec.ts).
  */
 import { EgressError, SafeHttpEgress, assertSafeUrlShape, isPrivateAddress } from '@/src/server/automation/egress';
 import type { EgressPort, EgressRequest } from '@/src/server/automation/egress';

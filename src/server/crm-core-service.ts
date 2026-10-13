@@ -252,6 +252,19 @@ export class CrmCoreService {
     return source;
   }
 
+  /** Exact shared customer identity resolver. A name never establishes an existing identity. */
+  resolveCustomerIdentity(workspaceId:string,type:'CONTACT'|'COMPANY',communications:CommunicationInput[]){
+    const keys=communications.filter(c=>c.type==='EMAIL'||c.type==='PHONE').map(c=>({type:c.type,value:normalizeCommunication(c.type,c.value)}));
+    const rows=type==='CONTACT'?this.store.state.crmContactCommunications:this.store.state.crmCompanyCommunications;
+    return [...new Set(rows.filter(r=>r.workspaceId===workspaceId&&keys.some(k=>k.type===r.type&&k.value===r.normalizedValue)).map(r=>'contactId' in r?r.contactId:r.companyId))].sort();
+  }
+
+  /** Commerce supplies a single historical display name, without inventing a missing surname. */
+  createContactFromDisplayName(actor:User,workspaceId:string,input:AddressInput&{name:string;communications:CommunicationInput[]}){
+    requireText(input.name,'name');const parts=input.name.trim().split(/\s+/),firstName=parts.shift()!,lastName=parts.join(' ');
+    return this.store.atomicSync(()=>this.createContactUnsafe(actor,workspaceId,{...input,firstName,lastName},true));
+  }
+
   createContact(
     actor: User,
     workspaceId: string,
@@ -278,10 +291,11 @@ export class CrmCoreService {
       forceCreate?: boolean;
       customFields?: Record<string, unknown>;
     },
+    allowSingleName=false,
   ) {
     this.assertMembership(actor.id, workspaceId);
     requireText(input.firstName, 'firstName');
-    requireText(input.lastName, 'lastName');
+    if(!allowSingleName||input.lastName.trim())requireText(input.lastName, 'lastName');
     const communications = input.communications ?? [];
     this.assertNoDuplicateContactCommunications(workspaceId, communications, Boolean(input.forceCreate));
     const contact: CrmContact = {
@@ -739,7 +753,9 @@ export class CrmCoreService {
 
   softDeleteDeal(actor: User, workspaceId: string, dealId: string) {
     this.assertMembership(actor.id, workspaceId);
-    return this.softDeleteRecord(actor, workspaceId, this.activeDeal(workspaceId, dealId), 'CrmDeal', 'CRM.DEAL.SOFT_DELETED');
+    const deal = this.activeDeal(workspaceId, dealId);
+    this.assertRecordPermission(actor.id, workspaceId, 'crm.deal.delete', deal);
+    return this.softDeleteRecord(actor, workspaceId, deal, 'CrmDeal', 'CRM.DEAL.SOFT_DELETED');
   }
 
   assignRecord(
