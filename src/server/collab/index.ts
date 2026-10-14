@@ -36,6 +36,7 @@ import { DocumentTemplateService } from './files/document-template-service';
 import { GeneratedDocumentService } from './files/generated-document-service';
 import { AppError } from '../errors';
 import { listed, WithStatus } from './http';
+import type { FileContentAuthority } from './files/content-authority';
 
 export type CollaborationDeps = {
   store: InMemoryStore;
@@ -43,6 +44,7 @@ export type CollaborationDeps = {
   realtime: RealtimeHub;
   files: () => FilePort;
   notifications?: () => NotificationPort | null;
+  authorizeFileContent?: FileContentAuthority;
 };
 
 /**
@@ -110,14 +112,15 @@ export class CollaborationModule {
     this.locks = new FileLockService(this.support, storageService, bindingAuthority);
     const fileService = new FileService(this.support, storageService, bindingAuthority, (workspaceId, ids, allowedLockId) => this.locks.assertUnlocked(workspaceId, ids, allowedLockId));
     const uploadService = new UploadService(this.support, storageService, fileService);
-    this.editing = new DocumentEditingService(this.support, storageService, this.locks, uploadService, bindingAuthority);
+    this.editing = new DocumentEditingService(this.support, storageService, this.locks, uploadService, bindingAuthority, deps.authorizeFileContent);
     this.editingCleanup = new EditingCleanup(this.support, this.editing);
     this.locks.onSessionClosed(row => this.editing.scheduleCleanup(row));
-    const linkService = new PublicLinkService(this.support, storageService, (workspaceId, id) => this.attachments.hasPrivateBindings(workspaceId, id));
-    const delivery = new FileDeliveryService(this.support, storageService, () => uploadService.objectStorage(), bindingAuthority, linkService);
+    const linkService = new PublicLinkService(this.support, storageService, (workspaceId, id) => this.attachments.hasPrivateBindings(workspaceId, id), deps.authorizeFileContent);
+    const delivery = new FileDeliveryService(this.support, storageService, () => uploadService.objectStorage(),
+      (actor, id) => this.attachments.authorizeContentBindings(actor, id), linkService, deps.authorizeFileContent);
     this.files = { storages: storageService, folders: new FolderService(this.support, storageService, fileService), access: new FileAccessService(this.support, storageService), publicLinks: linkService, records: fileService, uploads: uploadService, uploadCleanup: new UploadCleanup(this.support, () => uploadService.objectStorage()), uploadProcessing: new UploadProcessing(this.support, uploadService), objectGarbage: new ObjectGarbage(this.support, () => uploadService.objectStorage()), delivery };
     this.tasks.projects.registerProvisioner(this.files.storages.projectProvisioner());
-    const templates = new DocumentTemplateService(this.support, storageService, uploadService, bindingAuthority);
+    const templates = new DocumentTemplateService(this.support, storageService, uploadService, bindingAuthority, deps.authorizeFileContent);
     this.documents = { templates, generated: new GeneratedDocumentService(this.support, storageService, templates, fileService, uploadService, delivery) };
     templates.registerContext({ entityType: 'TASK', fields: ['id', 'title', 'description', 'status', 'priority', 'startAt', 'deadlineAt', 'progressPercent', 'responsibleUserId', 'projectId'],
       read: (actor, id) => {

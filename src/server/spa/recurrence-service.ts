@@ -8,11 +8,11 @@ import { spaCreateItemDto, SpaItemService } from './item-service';
 import { SpaPolicyService } from './policy-service';
 import { schemaSnapshot } from './field-metadata';
 
-const ruleSettings = z.strictObject({ timezone, frequency: z.enum(['DAILY','WEEKLY','MONTHLY','YEARLY','CUSTOM']),
+export const ruleSettings = z.strictObject({ timezone, frequency: z.enum(['DAILY','WEEKLY','MONTHLY','YEARLY','CUSTOM']),
   interval: z.number().int().min(1).max(1000), startsAt: z.iso.datetime({ offset: true }),
   endsAt: z.iso.datetime({ offset: true }).optional(), byDay: z.array(z.enum(['MO','TU','WE','TH','FR','SA','SU'])).max(7).optional(),
   maxInstances: z.number().int().min(1).max(100000).optional(), customRule: z.string().max(2000).optional() });
-const createRule = ruleSettings.extend({ templatePayload: spaCreateItemDto });
+export const createRule = ruleSettings.extend({ templatePayload: spaCreateItemDto });
 type Settings = z.infer<typeof ruleSettings>;
 function definition(settings: Settings): RecurrenceDefinition {
   if (settings.endsAt && new Date(settings.endsAt) < new Date(settings.startsAt) ||
@@ -113,11 +113,13 @@ export class SpaRecurrenceService {
       return updated;
     }, { timeout: 30000 });
   }
-  async pause(actor: Principal, typeId: string, ruleId: string, resume = false) {
+  async pause(actor: Principal, typeId: string, ruleId: string, resume = false, raw: unknown = {}) {
     requirePermission(actor, 'SPA.RECURRENCE.MANAGE', true);
+    parse(z.strictObject({}), raw);
     return this.db.$transaction(async tx => {
       await lock(tx, actor.workspaceId, 'spa:type:' + typeId); await this.enabled(tx, actor, typeId, resume);
       const row = await this.row(tx, actor, typeId, ruleId);
+      if (row.isActive === resume) return row;
       if (resume) await this.items.validateTemplate(tx, actor, typeId, row.templatePayload);
       const result = await tx.spaRecurrenceRule.update({ where: { id: ruleId }, data: { isActive: resume,
         ...(resume ? { nextScheduledFor: next(fromRow(row), new Date()), nextRetryAt: null, lastErrorCode: null, failureCount: 0 } : {}), version: { increment: 1 } } });
@@ -185,3 +187,4 @@ export class SpaRecurrenceService {
     return { selected: due.length, generated, failed, skipped };
   }
 }
+

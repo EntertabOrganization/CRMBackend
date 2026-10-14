@@ -4,7 +4,7 @@ import { AppError } from '../errors';
 import { assertVersion, evidence, lock, requirePermission, type Principal, type Tx } from '../process-platform/context';
 import { parse, uuid, version } from '../process-platform/dto';
 
-const scheme = z.strictObject({ expectedVersion: version, prefixTemplate: z.string().max(100),
+export const scheme = z.strictObject({ expectedVersion: version, prefixTemplate: z.string().max(100),
   padding: z.number().int().min(1).max(18), resetPolicy: z.enum(['NEVER','YEARLY','MONTHLY']) });
 function validateTemplate(template: string, resetPolicy: string) {
   const literals = template.replace(/\{YYYY\}|\{MM\}|\{0{1,18}\}/g, '');
@@ -68,3 +68,4 @@ export class SpaNumberingService {
     return result;
   }
 }
+

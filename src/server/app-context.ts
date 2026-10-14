@@ -29,8 +29,10 @@ import type { TemplateValue } from './collab/files/document-render';
 import { NotificationService } from './notifications/service';
 import { BookingNotificationDelivery } from './collab/calendar/booking-notification-delivery';
 import { prisma } from './prisma-client';
+import { defaultContentAuthority, type FileContentAuthority } from './collab/files/content-authority';
+import { SpaSharedRegistry } from './spa/shared-registry';
 
-function createAppContext() {
+function createAppContext(contentAuthority?: FileContentAuthority) {
   const store = new InMemoryStore();
   const mailer = new MemoryMailService();
   const google = new FakeGoogleAuthProvider();
@@ -56,7 +58,16 @@ function createAppContext() {
   automation.setNotificationPort(notifications);
   const commercialPack = new CommercialCaptureContactCenterModule({ store, access, crmCore, crm });
   const intelligence = new DataIntegrationIntelligenceAnalyticsModule({ store, access, crmCore });
-  const collab = new CollaborationModule({ store, access, realtime, files: () => ports.files, notifications: () => ports.notifications });
+  const collab = new CollaborationModule({ store, access, realtime, files: () => ports.files, notifications: () => ports.notifications,
+    authorizeFileContent: contentAuthority ?? (async (actor, key, purpose) => {
+      const { SpaTransferService } = await import('./spa/transfer-service');
+      const { authorizeSpaFileBindings } = await import('./spa/file-authority');
+      const { SpaPolicyService } = await import('./spa/policy-service');
+      await prisma.$transaction(async tx => {
+        await new SpaTransferService(prisma).authorizeArtifact(tx, actor.workspaceId, actor.user.id, key, purpose);
+        await authorizeSpaFileBindings(tx, new SpaPolicyService(prisma), actor.workspaceId, actor.user.id, key, purpose);
+      }, { timeout: 30000 });
+    }) });
   for (const adapter of registry.list()) collab.attachments.register({ entityType: adapter.entityType,
     exists: (workspaceId, id) => Boolean(adapter.findRecord(workspaceId, id)), authorize: (actor, id, write) => {
     if (!adapter.findRecord(actor.workspaceId, id) || !adapter.canRead(actor, id) || write && !adapter.canUpdate(actor, id))
@@ -89,7 +100,10 @@ function createAppContext() {
     const activity = store.state.crmActivities.find((row) => row.id === id && !row.isDeleted);
     return Boolean(activity && activities.policy.canRead(actor, activity));
   } });
+  const spaResources = contentAuthority ? null : new SpaSharedRegistry(prisma);
+  spaResources?.bind({ access, collab, timeline, catalog, store });
   return {
+    spaResources,
     store,
     notifications,
     bookingNotifications,
@@ -139,6 +153,8 @@ const globalState = globalThis as typeof globalThis & {
 export const appContext = globalState.__trueAgentAppContext ??= createAppContext();
 
 export function resetAppContextForTests() {
-  globalState.__trueAgentAppContext = createAppContext();
+  // In-memory tests have no database; managed artifacts remain fail-closed unless
+  // a persistence fixture explicitly installs its owning-domain authority.
+  globalState.__trueAgentAppContext = createAppContext(defaultContentAuthority);
   return globalState.__trueAgentAppContext;
 }

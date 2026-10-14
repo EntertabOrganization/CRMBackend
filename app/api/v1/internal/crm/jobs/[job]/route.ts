@@ -5,6 +5,8 @@ import { appContext } from '@/src/server/app-context';
 import { badRequest, unauthorized } from '@/src/server/errors';
 import { readJson } from '@/src/server/request';
 import { fail, ok, route, runAutomationDue, runCalendarReminders, runCalendarAvailability, runUploadCleanup, runUploadProcessing, runFileObjectGarbage, runDocumentEditCleanup, runDocumentGeneration } from '@/src/server/response';
+import { AutomationDiagnosticRetention } from '@/src/server/automation/diagnostic-retention';
+import { prisma } from '@/src/server/prisma-client';
 
 function assertJobToken(request: NextRequest) {
   const fixturePath = process.env.TEST_INTERNAL_JOB_TOKEN_FILE;
@@ -25,6 +27,12 @@ function assertJobToken(request: NextRequest) {
  */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ job: string }> }) {
   const jobName = (await params).job;
+  if (jobName === 'automation-diagnostic-retention') {
+    try {
+      assertJobToken(request);
+      return ok(await new AutomationDiagnosticRetention(prisma).run(await readJson(request, 64 * 1024)));
+    } catch (error) { return fail(error); }
+  }
   if (jobName === 'automation-run' || jobName === 'calendar-reminders' || jobName === 'calendar-availability' || jobName === 'booking-notifications' || jobName === 'upload-cleanup' || jobName === 'upload-processing' || jobName === 'file-object-garbage' || jobName === 'document-edit-cleanup' || jobName === 'document-generation') {
     // Runs outside the request transaction wrapper. Reminder/automation claims use leases; availability pages
     // use optimistic version fencing. Each worker commits its own bounded steps without nesting the request queue.

@@ -1,15 +1,29 @@
-/** Contract scenarios MUST be wired to real NestJS services, repositories, transactions and a test DB.
- * Deliberately FAIL CLOSED until each scenario has real assertions. Do not skip/todo. */
-const contract = (scenario: string): never => { throw new Error(`CONTRACT NOT WIRED: ${scenario}`); };
+import { randomUUID } from 'node:crypto';
+import { spaContractDatabase, contractFixture } from '@/tests/support/spa-contract';
+const database = spaContractDatabase();
 
 describe('SPA Relations, Shared Business Bindings and Views — unit/integration contract', () => {
-  it('ONE relation enforces cardinality under concurrent writes', async () => { contract('ONE relation enforces cardinality under concurrent writes'); });
-  it('cross-workspace target cannot be linked', async () => { contract('cross-workspace target cannot be linked'); });
-  it('item list hides relation to inaccessible target', async () => { contract('item list hides relation to inaccessible target'); });
-  it('relation unlink does not delete target entity', async () => { contract('relation unlink does not delete target entity'); });
-  it('inverse relation is query view not duplicate row', async () => { contract('inverse relation is query view not duplicate row'); });
-  it('layout rejects missing fields and preserves versions', async () => { contract('layout rejects missing fields and preserves versions'); });
-  it('user view preferences cannot affect coworkers', async () => { contract('user view preferences cannot affect coworkers'); });
+  it('ONE relation enforces cardinality under concurrent writes', async () => {
+    const f=await contractFixture(database()); const {SpaRelationService}=await import('@/src/server/spa/relation-service'); const r=new SpaRelationService(database()); const d=await r.addDefinition(f.actor,f.type.id,{code:'RELATED',name:'Related',targetType:'SPA_ITEM',targetSubtypeId:f.type.id,cardinality:'ONE'}); await f.publish(); const source=await f.create('Source'), a=await f.create('A'), b=await f.create('B'); const link=(id:string)=>r.link(f.actor,f.type.id,source.id,{definitionId:d.id,targetType:'SPA_ITEM',targetId:id}); const results=await Promise.allSettled([link(a.id),link(b.id)]); expect(results.filter(x=>x.status==='fulfilled')).toHaveLength(1); expect((results.find(x=>x.status==='rejected') as PromiseRejectedResult).reason.code).toBe('SPA_RELATION_CARDINALITY'); expect(await database().spaItemRelation.count({where:{sourceItemId:source.id}})).toBe(1);
+  });
+  it('cross-workspace target cannot be linked', async () => {
+    const f=await contractFixture(database()); const {SpaRelationService}=await import('@/src/server/spa/relation-service'); const r=new SpaRelationService(database()); const d=await r.addDefinition(f.actor,f.type.id,{code:'RELATED',name:'Related',targetType:'SPA_ITEM',targetSubtypeId:f.type.id,cardinality:'ONE'}); await f.publish(); const source=await f.create('Source'), a=await f.create('A'), b=await f.create('B'); const link=(id:string)=>r.link(f.actor,f.type.id,source.id,{definitionId:d.id,targetType:'SPA_ITEM',targetId:id}); const foreign=await contractFixture(database()), i=await foreign.create('Foreign'); await expect(link(i.id)).rejects.toMatchObject({code:'SPA_RELATION_TARGET_INVALID'}); expect(await database().spaItemRelation.count({where:{sourceItemId:source.id}})).toBe(0);
+  });
+  it('item list hides relation to inaccessible target', async () => {
+    const f=await contractFixture(database()); const {SpaRelationService}=await import('@/src/server/spa/relation-service'); const r=new SpaRelationService(database()); const d=await r.addDefinition(f.actor,f.type.id,{code:'RELATED',name:'Related',targetType:'SPA_ITEM',targetSubtypeId:f.type.id,cardinality:'ONE'}); await f.publish(); const source=await f.create('Source'), a=await f.create('A'), b=await f.create('B'); const link=(id:string)=>r.link(f.actor,f.type.id,source.id,{definitionId:d.id,targetType:'SPA_ITEM',targetId:id}); await link(a.id); const m=await f.member({'SPA.ITEM.READ':'OWN'}); await f.items.assign(f.actor,f.type.id,source.id,{expectedVersion:2,responsibleUserId:m.user.id}); expect((await r.list(m.actor,f.type.id,source.id,{})).data).toEqual([]); expect((await r.list(f.actor,f.type.id,source.id,{})).data).toHaveLength(1);
+  });
+  it('relation unlink does not delete target entity', async () => {
+    const f=await contractFixture(database()); const {SpaRelationService}=await import('@/src/server/spa/relation-service'); const r=new SpaRelationService(database()); const d=await r.addDefinition(f.actor,f.type.id,{code:'RELATED',name:'Related',targetType:'SPA_ITEM',targetSubtypeId:f.type.id,cardinality:'ONE'}); await f.publish(); const source=await f.create('Source'), a=await f.create('A'), b=await f.create('B'); const link=(id:string)=>r.link(f.actor,f.type.id,source.id,{definitionId:d.id,targetType:'SPA_ITEM',targetId:id}); const row=await link(a.id); await r.unlink(f.actor,f.type.id,source.id,row.id); expect(await database().spaItemRelation.count({where:{sourceItemId:source.id}})).toBe(0); expect(await f.items.get(f.actor,f.type.id,a.id)).toMatchObject({id:a.id,status:'ACTIVE'});
+  });
+  it('inverse relation is query view not duplicate row', async () => {
+    const f=await contractFixture(database()); const {SpaRelationService}=await import('@/src/server/spa/relation-service'); const r=new SpaRelationService(database()); const d=await r.addDefinition(f.actor,f.type.id,{code:'RELATED',name:'Related',targetType:'SPA_ITEM',targetSubtypeId:f.type.id,cardinality:'ONE'}); await f.publish(); const source=await f.create('Source'), a=await f.create('A'), b=await f.create('B'); const link=(id:string)=>r.link(f.actor,f.type.id,source.id,{definitionId:d.id,targetType:'SPA_ITEM',targetId:id}); await link(a.id); const incoming=await database().spaItemRelation.findMany({where:{workspaceId:f.workspace.id,targetType:'SPA_ITEM',targetId:a.id}}); expect(incoming.map(x=>x.sourceItemId)).toEqual([source.id]); expect(await database().spaItemRelation.count({where:{sourceItemId:a.id}})).toBe(0); expect((await r.list(f.actor,f.type.id,source.id,{})).data).toHaveLength(1);
+  });
+  it('layout rejects missing fields and preserves versions', async () => {
+    const f=await contractFixture(database()); const {SpaRelationService}=await import('@/src/server/spa/relation-service'); const r=new SpaRelationService(database()), l=(await r.layouts(f.actor,f.type.id,{}))[0], section={id:randomUUID(),name:'Details',fieldCodes:['MISSING']}; await expect(r.updateLayout(f.actor,f.type.id,l.id,{expectedVersion:l.version,sections:[section]})).rejects.toMatchObject({code:'SPA_LAYOUT_FIELD_INVALID'}); const next=await r.updateLayout(f.actor,f.type.id,l.id,{expectedVersion:l.version,sections:[{...section,fieldCodes:['VALUE']}]}); expect(next.version).toBe(l.version+1); await expect(r.updateLayout(f.actor,f.type.id,l.id,{expectedVersion:l.version,sections:[]})).rejects.toMatchObject({status:409}); const pub=await database().spaSchemaVersion.findFirstOrThrow({where:{typeId:f.type.id}}); expect((pub.snapshot as {layouts:Array<{version:number}>}).layouts[0].version).toBe(l.version);
+  });
+  it('user view preferences cannot affect coworkers', async () => {
+    const f=await contractFixture(database()), m=await f.member(); const {SpaRelationService}=await import('@/src/server/spa/relation-service'); const r=new SpaRelationService(database()); const saved=await r.saveView(f.actor,f.type.id,{viewType:'LIST',columns:['title','VALUE'],filters:[],sort:{fieldCode:'createdAt',direction:'desc'}}); expect((await r.views(f.actor,f.type.id))[0].id).toBe(saved.id); expect(await r.views(m.actor,f.type.id)).toEqual([]);
+  });
 });
 
 export {};

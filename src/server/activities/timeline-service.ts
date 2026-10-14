@@ -201,6 +201,12 @@ export class TimelineService {
       }));
     }
 
+    if (event.entityType === 'SPA_ITEM' && /^(SPA_ITEM_|SPA_RELATION_|SPA_RECURRING_ITEM_)/.test(type)) {
+      // Domain history stays authoritative; this is a rebuildable metadata-only shared projection.
+      return [this.crmProjection(event, type === 'SPA_ITEM_STAGE_CHANGED' ? 'STAGE_CHANGE' : 'CRM_CHANGE', type,
+        type.toLowerCase().replaceAll('_', ' '), { version: payload.version, status: payload.status,
+          oldStageId: payload.oldStageId, newStageId: payload.newStageId })];
+    }
     if (type === 'CRM.LEAD.CREATED' || type === 'CRM.DEAL.CREATED' || type === 'CRM.CONTACT.CREATED' || type === 'CRM.COMPANY.CREATED') {
       const label = this.recordLabel(event.entityType, event.entityId);
       return [this.crmProjection(event, 'CRM_CHANGE', 'CRM_RECORD_CREATED', `${this.entityLabel(event.entityType)} created${label ? `: ${label}` : ''}`, { recordLabel: label })];

@@ -84,7 +84,7 @@ const ROWS: Row[] = [
   ['/crm/companies/{id}', 'get', 'CRM Companies', 'Get a company with authorized custom fields.'],
   ['/crm/companies/{id}', 'patch', 'CRM Companies', 'Update a company and its custom fields atomically (expectedVersion required).'],
   ['/crm/realtime', 'get', 'Realtime', 'Server-Sent Events stream of advisory invalidation hints (ids/versions only). REST stays authoritative.', { sse: true }],
-  ['/internal/crm/jobs/{job}', 'post', 'Operations', 'Scheduler jobs: overdue, reminders, timeline-project, timeline-rebuild, automation-ingest, automation-run. Requires the x-internal-job-token header.', { jobToken: true }],
+  ['/internal/crm/jobs/{job}', 'post', 'Operations', 'Scheduler jobs include overdue, reminders, timeline-project, timeline-rebuild, automation-ingest, automation-run and automation-diagnostic-retention. Requires the x-internal-job-token header.', { jobToken: true }],
 ];
 
 function operation([path, , tag, summary, extras]: Row) {
@@ -121,5 +121,21 @@ export function crmExtensionPaths(): Record<string, Record<string, unknown>> {
     paths[row[0]] ??= {};
     paths[row[0]][row[1]] = operation(row);
   }
+  const retention = operation(['/internal/crm/jobs/automation-diagnostic-retention', 'post', 'Operations',
+    'Prune a bounded batch of expired Automation diagnostic logs for one Workspace. Requires the configured scheduler token; employee bearer sessions do not authorize this job. Preserves shared retention/holds, active recovery, execution checkpoints, immutable configuration and Audit. Invalid retention policy returns 409 AUTOMATION_RETENTION_POLICY_INVALID.',
+    { jobToken: true }]);
+  paths['/internal/crm/jobs/automation-diagnostic-retention'] = { post: {
+    ...retention,
+    requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false,
+      required: ['workspaceId'], properties: { workspaceId: { type: 'string', format: 'uuid' },
+        limit: { type: 'integer', minimum: 1, maximum: 5000, default: 500 } } } } } },
+    responses: { ...retention.responses, '200': { description: 'Committed batch totals. Repeat while hasMore is true.',
+      content: { 'application/json': { schema: { type: 'object', required: ['success','data','meta'], properties: {
+        success: { type: 'boolean', const: true }, meta: { nullable: true }, data: { type: 'object',
+          required: ['workspaceId','retentionDays','cutoff','deletedLogs','hasMore'], properties: {
+            workspaceId: { type: 'string', format: 'uuid' }, retentionDays: { type: 'integer', minimum: 1, maximum: 3650 },
+            cutoff: { type: 'string', format: 'date-time' }, deletedLogs: { type: 'integer', minimum: 0, maximum: 5000 },
+            hasMore: { type: 'boolean' } } } } } } } } },
+  } };
   return paths;
 }

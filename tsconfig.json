@@ -33,6 +33,9 @@
     ".next-live/types/**/*.ts",
     ".next/types/**/*.ts",
     "app/**/*.ts",
+    "app/**/*.tsx",
+    "src/client/**/*.ts",
+    "src/client/**/*.tsx",
     "next-env.d.ts",
     "src/server/**/*.ts",
     "tests/**/*.ts"

@@ -9,13 +9,15 @@ import { schemaSnapshot, type SchemaSnapshot } from './field-metadata';
 import { SpaItemService } from './item-service';
 import { spaReferenceContext } from './reference-adapter';
 import { FileArtifactService, type PreparedFileArtifact } from '../collab/files/artifact-service';
+import type { FileContentPurpose } from '../collab/files/content-authority';
 
 const filterSchema = z.array(z.strictObject({ fieldCode: z.string().max(64), operator: z.enum(['EQ','NEQ','CONTAINS']), value: z.json() })).max(30);
-const importInput = z.strictObject({ fileId: uuid, fieldMapping: z.record(z.string().min(1).max(160), z.string().min(1).max(64)),
+export const importInput = z.strictObject({ fileId: uuid, fieldMapping: z.record(z.string().min(1).max(160), z.string().min(1).max(64)),
   mode: z.enum(['CREATE_ONLY','UPSERT_BY_EXTERNAL_KEY']), sourceSystem: z.string().regex(/^[A-Za-z0-9._-]{1,64}$/).optional(),
   externalKeyColumn: z.string().trim().min(1).max(160).optional() });
-const exportInput = z.strictObject({ filters: filterSchema.default([]), fieldCodes: z.array(z.string().max(64)).min(1).max(100) });
+export const exportInput = z.strictObject({ filters: filterSchema.default([]), fieldCodes: z.array(z.string().max(64)).min(1).max(100) });
 const systemExportFields = new Set(['title','itemNumber','status','createdAt','updatedAt','assignedUserId']);
+const exportScope = exportInput.extend({ itemIds: z.array(uuid), artifactItemIds: z.array(uuid).optional() });
 const emptyBody = z.strictObject({});
 
 export class SpaTransferService {
@@ -43,6 +45,43 @@ export class SpaTransferService {
   private accessibleJob(actor: Principal, requester: string, permission: string) {
     const scope = requirePermission(actor, permission);
     if (requester !== actor.userId && scope !== 'WORKSPACE') throw new AppError('PERMISSION_DENIED', 'Job permission is required.', 403);
+  }
+  private async authorizeExport(tx: Tx, actor: Principal, job: SpaExportJob) {
+    this.accessibleJob(actor, job.requestedByUserId, 'SPA.ITEM.EXPORT');
+    requirePermission(actor, 'SPA.ITEM.READ');
+    const scope = parse(exportScope, job.scopeSnapshot);
+    const snapshot = await this.schema(tx, actor, job.typeId);
+    await this.exportFields(tx, actor, job.typeId, snapshot,
+      [...new Set([...scope.fieldCodes, ...scope.filters.map(filter => filter.fieldCode)])]);
+    for (const filter of scope.filters) if (!systemExportFields.has(filter.fieldCode) &&
+      !snapshot.fields.some(field => field.code === filter.fieldCode && field.isSearchable))
+      throw new AppError('SPA_EXPORT_FORBIDDEN_FIELD', 'Filter field is unavailable.', 403);
+    // Older artifacts lack the exact output IDs; check their entire original scope.
+    const ids = scope.artifactItemIds ?? scope.itemIds;
+    const total = await tx.spaItem.count({ where: { workspaceId: actor.workspaceId, typeId: job.typeId,
+      id: { in: ids }, status: { not: 'TRASHED' }, AND: [await this.items.policies.itemWhere(tx, actor, job.typeId, 'SPA.ITEM.READ'),
+        await this.items.policies.itemWhere(tx, actor, job.typeId, 'SPA.ITEM.EXPORT')] } });
+    if (total !== ids.length)
+      throw new AppError('PERMISSION_DENIED', 'Export scope is no longer accessible.', 403);
+  }
+  /** Files calls this at every byte boundary, including copied immutable objects. */
+  async authorizeArtifact(tx: Tx, workspaceId: string, userId: string, objectKey: string, purpose: FileContentPurpose) {
+    const binding = await tx.fileArtifactBinding.findUnique({ where: { workspaceId_objectKey: { workspaceId, objectKey } } });
+    if (!binding) return;
+    if (!['DOWNLOAD', 'PROCESS'].includes(purpose))
+      throw new AppError('PERMISSION_DENIED', 'Private job artifacts cannot be published or repurposed.', 403);
+    const actor = await resolvePrincipal(tx, workspaceId, userId);
+    if (binding.entityType === 'SPA_EXPORT_JOB') {
+      const job = await tx.spaExportJob.findFirst({ where: { workspaceId, id: binding.entityId } });
+      if (!job || job.status !== 'SUCCEEDED' || job.expiresAt <= new Date())
+        throw new AppError('FILE_DELIVERY_UNAVAILABLE', 'The export is unavailable or expired.', 410);
+      await this.authorizeExport(tx, actor, job);
+    } else if (binding.entityType === 'SPA_IMPORT_JOB') {
+      const job = await tx.spaImportJob.findFirst({ where: { workspaceId, id: binding.entityId } });
+      if (!job || !job.reportFileId || !['SUCCEEDED', 'CANCELLED'].includes(job.status))
+        throw new AppError('FILE_DELIVERY_UNAVAILABLE', 'The import report is unavailable.', 410);
+      this.accessibleJob(actor, job.createdByUserId, 'SPA.ITEM.IMPORT');
+    } else throw new AppError('PERMISSION_DENIED', 'Artifact owner is unavailable.', 403);
   }
   async queueImport(actor: Principal, typeId: string, raw: unknown) {
     requirePermission(actor, 'SPA.ITEM.IMPORT');
@@ -104,10 +143,10 @@ export class SpaTransferService {
       const snapshot = await this.schema(tx, actor, typeId);
       await this.exportFields(tx, actor, typeId, snapshot, input.fieldCodes);
       await this.exportFields(tx, actor, typeId, snapshot, [...new Set(input.filters.map(f => f.fieldCode))]);
-      const ids = [];
-      const items = await tx.spaItem.findMany({ where: { workspaceId: actor.workspaceId, typeId, status: { not: 'TRASHED' } }, orderBy: { id: 'asc' } });
-      for (const item of items) if (await this.items.policies.allowed(tx, actor, item, 'SPA.ITEM.READ') &&
-        await this.items.policies.allowed(tx, actor, item, 'SPA.ITEM.EXPORT')) ids.push(item.id);
+      const items = await tx.spaItem.findMany({ where: { workspaceId: actor.workspaceId, typeId, status: { not: 'TRASHED' },
+        AND: [await this.items.policies.itemWhere(tx, actor, typeId, 'SPA.ITEM.READ'), await this.items.policies.itemWhere(tx, actor, typeId, 'SPA.ITEM.EXPORT')] },
+        orderBy: { id: 'asc' }, select: { id: true } });
+      const ids = items.map(item => item.id);
       const job = await tx.spaExportJob.create({ data: { workspaceId: actor.workspaceId, typeId,
         requestedByUserId: actor.userId, scopeSnapshot: { ...input, itemIds: ids }, expiresAt: new Date(Date.now() + 3600000) } });
       await evidence(tx, actor, 'SPA_TYPE', typeId, 'SPA_EXPORT_QUEUED', { jobId: job.id });
@@ -119,9 +158,7 @@ export class SpaTransferService {
     return this.db.$transaction(async tx => {
       const job = await tx.spaExportJob.findFirst({ where: { workspaceId: actor.workspaceId, typeId, id: jobId } });
       if (!job) throw new AppError('SPA_EXPORT_NOT_FOUND', 'Export Job was not found.', 404);
-      this.accessibleJob(actor, job.requestedByUserId, 'SPA.ITEM.EXPORT');
-      const scope = parse(exportInput.extend({ itemIds: z.array(uuid) }), job.scopeSnapshot);
-      await this.exportFields(tx, actor, typeId, await this.schema(tx, actor, typeId), scope.fieldCodes);
+      await this.authorizeExport(tx, actor, job);
       return { jobId, status: job.status, errorCode: job.errorCode, expiresAt: job.expiresAt, correlationId: job.correlationId,
         downloadFileId: job.expiresAt > new Date() && job.status === 'SUCCEEDED' ? job.downloadFileId : null };
     });
@@ -131,12 +168,12 @@ export class SpaTransferService {
     const query = parse(pageQuery, raw);
     return this.db.$transaction(async tx => {
       await this.schema(tx, actor, typeId);
-      const rows = await tx.spaItem.findMany({ where: { workspaceId: actor.workspaceId, typeId, status: 'TRASHED' }, orderBy: [{ trashedAt: 'desc' }, { id: 'asc' }] });
-      const data = [];
-      for (const item of rows) if (await this.items.policies.allowed(tx, actor, item, 'SPA.ITEM.RESTORE'))
-        data.push({ id: item.id, title: item.title, itemNumber: item.itemNumber, status: item.status, version: item.version, trashedAt: item.trashedAt, purgeAfter: item.purgeAfter });
-      return { data: data.slice((query.page - 1) * query.limit, query.page * query.limit),
-        meta: { page: query.page, limit: query.limit, total: data.length, totalPages: Math.ceil(data.length / query.limit) } };
+      const where = { AND: [await this.items.policies.itemWhere(tx, actor, typeId, 'SPA.ITEM.RESTORE')], workspaceId: actor.workspaceId, typeId, status: 'TRASHED' };
+      const data = await tx.spaItem.findMany({ where, orderBy: [{ trashedAt: 'desc' }, { id: 'asc' }],
+        skip: (query.page - 1) * query.limit, take: query.limit,
+        select: { id: true, title: true, itemNumber: true, status: true, version: true, trashedAt: true, purgeAfter: true } });
+      const total = await tx.spaItem.count({ where });
+      return { data, meta: { page: query.page, limit: query.limit, total, totalPages: Math.ceil(total / query.limit) } };
     });
   }
   async queuePurge(actor: Principal, typeId: string, itemId: string, raw: unknown) {
@@ -263,7 +300,8 @@ export class SpaTransferService {
       const actor = await resolvePrincipal(tx, job.workspaceId, job.createdByUserId);
       requirePermission(actor, 'SPA.ITEM.IMPORT');
       await this.schema(tx, actor, job.typeId);
-      const reportFileId = await this.artifacts.publish(tx, actor, prepared, 'SPA import report ' + job.id + '.csv');
+      const reportFileId = await this.artifacts.publish(tx, actor, prepared, 'SPA import report ' + job.id + '.csv',
+        { entityType: 'SPA_IMPORT_JOB', entityId: job.id });
       await tx.spaImportJob.update({ where: { id: job.id }, data: { status, totals: { total: rows.length, processed: outcomes.length, succeeded, failed },
         reportFileId, errorCode: null, claimToken: null, leaseExpiresAt: null } });
       await evidence(tx, actor, 'SPA_TYPE', job.typeId, status === 'CANCELLED' ? 'SPA_IMPORT_CANCELLED' : 'SPA_IMPORT_COMPLETED',
@@ -273,7 +311,7 @@ export class SpaTransferService {
     } finally { if (!published) await this.artifacts.discard(prepared); }
   }
   private async runExport(job: SpaExportJob, token: string) {
-    const scope = parse(exportInput.extend({ itemIds: z.array(uuid) }), job.scopeSnapshot);
+    const scope = parse(exportScope, job.scopeSnapshot);
     const capture = await this.db.$transaction(async tx => {
       await lock(tx, job.workspaceId, 'spa:type:' + job.typeId);
       const actor = await resolvePrincipal(tx, job.workspaceId, job.requestedByUserId);
@@ -323,8 +361,10 @@ export class SpaTransferService {
             !await this.items.policies.allowed(tx, actor, item, 'SPA.ITEM.EXPORT'))
             throw new AppError('RESOURCE_VERSION_CONFLICT', 'Export scope changed during artifact processing.', 409);
         }
-        const fileId = await this.artifacts.publish(tx, actor, prepared, 'SPA export ' + job.id + '.csv');
+        const fileId = await this.artifacts.publish(tx, actor, prepared, 'SPA export ' + job.id + '.csv',
+          { entityType: 'SPA_EXPORT_JOB', entityId: job.id });
         await tx.spaExportJob.update({ where: { id: job.id }, data: { status: 'SUCCEEDED', downloadFileId: fileId,
+          scopeSnapshot: { ...scope, artifactItemIds: capture.records.map(record => record.id) },
           claimToken: null, leaseExpiresAt: null, errorCode: null } });
         await evidence(tx, actor, 'SPA_TYPE', job.typeId, 'SPA_EXPORT_COMPLETED', { jobId: job.id, downloadFileId: fileId, rowCount: capture.rows.length });
         return true;
@@ -400,3 +440,4 @@ export class SpaTransferService {
     return { claimed: jobs.length, purged, failed, skipped };
   }
 }
+

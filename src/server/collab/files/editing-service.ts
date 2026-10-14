@@ -7,6 +7,7 @@ import { EnvironmentEditingProvider, type EditingProvider, type EditorIdentity, 
 import type { FileLockService } from './lock-service';
 import type { ProjectDriveService } from './project-drive-service';
 import type { UploadService } from './upload-service';
+import { defaultContentAuthority, type FileContentAuthority } from './content-authority';
 
 export type EditStartTicket = EditorIdentity & { objectKey: string; checksum: string; sizeBytes: number; mimeType: string; name: string; expiresAt: Date; lockToken?: string };
 /** Each phase runs in a fresh state unit. Provider I/O runs between committed phases. */
@@ -14,7 +15,8 @@ export class DocumentEditingService {
   private provider: EditingProvider = new EnvironmentEditingProvider();
   constructor(private readonly support: CollabSupport, private readonly storages: ProjectDriveService,
     private readonly locks: FileLockService, private readonly uploads: UploadService,
-    private readonly bindings: (actor: ActorContext, id: string) => void) {}
+    private readonly bindings: (actor: ActorContext, id: string) => void,
+    private readonly authorizeContent: FileContentAuthority = defaultContentAuthority) {}
   configure(provider: EditingProvider) { this.provider = provider; }
   editingProvider() { return this.provider; }
   private get state() { return this.support.state; }
@@ -75,6 +77,9 @@ export class DocumentEditingService {
       mimeType: version.mimeType, name: file.name, expiresAt: row.expiresAt, ...(lock ? { lockToken: lock.lockToken } : {}) };
   }
   async open(ticket: EditStartTicket, signal?: AbortSignal) {
+    const user = this.state.users.find(row => row.id === ticket.userId);
+    if (!user) throw new AppError('PERMISSION_DENIED', 'Editor principal is unavailable.', 403);
+    await this.authorizeContent(this.support.access.actor(user, ticket.workspaceId), ticket.objectKey, 'EDIT');
     let bytes: Buffer;
     try { bytes = await this.uploads.objectStorage().read(ticket.objectKey); }
     catch { throw new AppError('EDIT_PROVIDER_ERROR', 'The source content is unavailable.', 502); }

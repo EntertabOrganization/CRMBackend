@@ -6,6 +6,7 @@ import { assertInertHtml, docxText, escapeMarkup, inspectDocx, invalidTemplate, 
 import { INPUT_TYPES, OUTPUT_FORMATS, TEMPLATE_TYPES, type DocumentContextAdapter, type DocumentTemplate, type DocumentTemplateRevision, type TemplateInput, type TemplateSchema } from './document-types';
 import type { ProjectDriveService } from './project-drive-service';
 import type { UploadService } from './upload-service';
+import { defaultContentAuthority, type FileContentAuthority } from './content-authority';
 
 const MAX_HTML = 256 * 1024, MAX_DOCX = 10 * 1024 * 1024, KEY_RE = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
 const DOCUMENT_FIELDS = ['number', 'date', 'title', 'type'], WORKSPACE_FIELDS = ['name'];
@@ -18,7 +19,8 @@ type Content = { htmlTemplate: string | null; sourceFileId: string | null; schem
 export class DocumentTemplateService {
   private readonly adapters = new Map<string, DocumentContextAdapter>();
   constructor(private readonly support: CollabSupport, private readonly storages: ProjectDriveService, private readonly uploads: UploadService,
-    private readonly bindings: (actor: ActorContext, fileId: string) => void) {}
+    private readonly bindings: (actor: ActorContext, fileId: string) => void,
+    private readonly authorizeContent: FileContentAuthority = defaultContentAuthority) {}
   private get state() { return this.support.state; }
   registerContext(adapter: DocumentContextAdapter) { this.adapters.set(adapter.entityType, adapter); }
   adapter(entityType: string) {
@@ -261,6 +263,7 @@ export class DocumentTemplateService {
       const version = this.state.driveFileVersions.find(item => item.workspaceId === actor.workspaceId && item.fileId === file.id && item.id === file.currentVersionId);
       if (file.status !== 'ACTIVE' || version?.scanStatus !== 'CLEAN' || !version.processedAt) throw invalidTemplate('The source File must have clean, processed content.', { field: 'sourceFileId' });
       if (version.sizeBytes > MAX_DOCX) throw invalidTemplate('DOCX templates may be at most 10 MiB.', { field: 'sourceFileId' });
+      await this.authorizeContent(actor, version.objectKey, 'TEMPLATE');
       let bytes: Buffer;
       try { bytes = await this.uploads.objectStorage().read(version.objectKey); }
       catch { throw new AppError('FILE_CONTENT_UNAVAILABLE', 'File content is temporarily unavailable.', 503); }

@@ -5,13 +5,13 @@ import { assertVersion, evidence, lock, requirePermission, type Principal, type 
 import { code, name, pageQuery, parse, uuid, version } from '../process-platform/dto';
 import { SpaItemService } from './item-service';
 
-const createPipeline = z.strictObject({ code, name, isDefault: z.boolean().default(false) });
-const changePipeline = z.strictObject({ expectedVersion: version, name: name.optional(),
+export const createPipeline = z.strictObject({ code, name, isDefault: z.boolean().default(false) });
+export const changePipeline = z.strictObject({ expectedVersion: version, name: name.optional(),
   sortOrder: z.number().int().min(0).optional(), isDefault: z.boolean().optional() });
 const semantic = z.enum(['PROGRESS', 'SUCCESS', 'FAILURE']);
-const createStage = z.strictObject({ code, name, semantic, sortOrder: z.number().int().min(0),
+export const createStage = z.strictObject({ code, name, semantic, sortOrder: z.number().int().min(0),
   isDefault: z.boolean().default(false) });
-const changeStage = z.strictObject({ expectedVersion: version, name: name.optional(),
+export const changeStage = z.strictObject({ expectedVersion: version, name: name.optional(),
   sortOrder: z.number().int().min(0).optional(), semantic: semantic.optional() });
 
 export class SpaPipelineService {
@@ -183,3 +183,4 @@ export class SpaPipelineService {
     }, { timeout: 30000 });
   }
 }
+

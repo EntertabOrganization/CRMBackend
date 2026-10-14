@@ -118,7 +118,7 @@ it('Recording permission.', async () => {
   await expectAppError(() => x.calls.recording(auditor, call.id, new URLSearchParams()), 'CALL_NOT_FOUND', 404);
   const priorSecret = process.env.FILE_DELIVERY_SECRET;
   process.env.FILE_DELIVERY_SECRET = 'test-delivery-signing-secret-with-32-bytes';
-  try { expect(x.calls.recording(x.alice, call.id, new URLSearchParams())).toMatchObject({ callId: call.id, fileId, deliveryPath: expect.stringContaining('/api/v1/file-delivery/') }); }
+  try { expect(await x.calls.recording(x.alice, call.id, new URLSearchParams())).toMatchObject({ callId: call.id, fileId, deliveryPath: expect.stringContaining('/api/v1/file-delivery/') }); }
   finally { if (priorSecret === undefined) delete process.env.FILE_DELIVERY_SECRET; else process.env.FILE_DELIVERY_SECRET = priorSecret; }
   const plain = await x.calls.start(x.alice, b({ chatId: x.chat.id }));
   await expectAppError(() => x.calls.end(x.alice, plain.id, b({ recordingFileId: fileId })), 'CALL_INVALID_STATE', 409);

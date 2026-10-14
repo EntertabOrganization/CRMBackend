@@ -780,7 +780,9 @@ export class TaskService {
 
   bindings(actor: ActorContext, id: string) {
     const task = this.policy.task(actor, id);
-    return this.state.taskCrmBindings.filter((row) => row.taskId === task.id);
+    return this.state.taskCrmBindings.filter((row) => row.taskId === task.id && (CRM_BINDING_TYPES.includes(row.entityType)
+      ? this.support.access.canAccessCrmRecord(actor, row.entityType, row.entityId, 'read')
+      : (this.bindingResolvers.get(row.entityType)?.canRead ?? this.bindingResolvers.get(row.entityType)?.canBind)?.(actor, row.entityId)));
   }
 
   addBinding(actor: ActorContext, id: string, body: Body) {

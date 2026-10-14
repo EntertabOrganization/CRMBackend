@@ -5,11 +5,13 @@ import { AppError } from '../../errors';
 import { Body, type CollabSupport, isUuid, pageOf } from '../support';
 import type { FilePublicLink, ProjectRootFolder } from './types';
 import type { ProjectDriveService } from './project-drive-service';
+import { defaultContentAuthority, type FileContentAuthority } from './content-authority';
 
 /** Opaque, revocable public capabilities; no guest Workspace actor is synthesized. */
 export class PublicLinkService {
   constructor(private readonly support: CollabSupport, private readonly storages: ProjectDriveService,
-    private readonly privateBindings: (workspaceId: string, fileId: string) => boolean) {}
+    private readonly privateBindings: (workspaceId: string, fileId: string) => boolean,
+    private readonly authorizeContent: FileContentAuthority = defaultContentAuthority) {}
   private get state() { return this.support.state; }
   private missing(): never { throw new AppError('PUBLIC_LINK_NOT_FOUND', 'Public link was not found.', 404); }
   private disabled(code = 'PUBLIC_LINK_REVOKED'): never { throw new AppError(code, 'This public link is unavailable.', 410); }
@@ -65,7 +67,12 @@ export class PublicLinkService {
   private async create(actor: ActorContext, resourceType: FilePublicLink['resourceType'], id: string, body: Body) {
     body.only(['permissionMode', 'password', 'expiresAt', 'maxDownloads', 'includeChildren']);
     const resource = this.resource(actor, resourceType, id);
-    if (resourceType === 'FILE') this.publicContent(actor.workspaceId, id);
+    if (resourceType === 'FILE') {
+      this.publicContent(actor.workspaceId, id);
+      const file = this.state.driveFiles.find(row => row.workspaceId === actor.workspaceId && row.id === id)!;
+      const version = this.state.driveFileVersions.find(row => row.workspaceId === actor.workspaceId && row.id === file.currentVersionId)!;
+      await this.authorizeContent(actor, version.objectKey, 'PUBLIC');
+    }
     const expiresAt = this.expiry(actor.workspaceId, body);
     const permissionMode = body.enumOf('permissionMode', ['VIEW', 'DOWNLOAD'] as const) ?? 'VIEW';
     const maxDownloads = body.int('maxDownloads', { min: 1, max: 1_000_000 }) ?? null;

@@ -1430,7 +1430,7 @@ export class ActivityService {
       const entityType = typeof item?.entityType === 'string' ? item.entityType.toUpperCase() : '';
       const entityId = typeof item?.entityId === 'string' ? item.entityId : '';
       // Missing, foreign-workspace and unreadable records all fail identically so nothing about them is disclosed.
-      if (!['LEAD', 'CONTACT', 'COMPANY', 'DEAL'].includes(entityType) || !entityId || !this.access.canAccessCrmRecord(actor, entityType, entityId, 'read')) {
+      if (!['LEAD', 'CONTACT', 'COMPANY', 'DEAL', 'SPA_ITEM'].includes(entityType) || !entityId || !this.access.canAccessCrmRecord(actor, entityType, entityId, 'read')) {
         throw new AppError('ACTIVITY_BINDING_FORBIDDEN', 'You are not allowed to bind this activity to the requested record.', 403);
       }
       const key = `${entityType}:${entityId}`;

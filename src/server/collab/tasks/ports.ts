@@ -33,4 +33,6 @@ export interface BindingTargetResolver {
   readonly entityType: string;
   /** True only when the target exists in the actor's Workspace and the actor can read it. */
   canBind(actor: ActorContext, entityId: string): boolean;
+  /** Existing bindings require read authority; a mutation grant is not a discovery grant. */
+  canRead?(actor: ActorContext, entityId: string): boolean;
 }

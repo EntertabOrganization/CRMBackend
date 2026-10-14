@@ -10,7 +10,7 @@ import type { CommunicationCall, CommunicationCallParticipant } from './call-typ
 const ACCESS_MS = 4 * 3600_000, GUEST_MS = 24 * 3600_000;
 const hash = (token: string) => createHash('sha256').update(token).digest('hex');
 export type CallStartTicket = { callId: string; workspaceId: string; callType: CommunicationCall['callType']; replay: boolean; ready: boolean };
-type FileAccess = { check(workspaceId: string, actor: ActorContext, fileId: string): 'OK' | 'MISSING' | 'FORBIDDEN'; issue(actor: ActorContext, fileId: string, query: URLSearchParams): object };
+type FileAccess = { check(workspaceId: string, actor: ActorContext, fileId: string): 'OK' | 'MISSING' | 'FORBIDDEN'; issue(actor: ActorContext, fileId: string, query: URLSearchParams): object | Promise<object> };
 
 /**
  * Call lifecycle metadata and authorization. Media rooms belong to the provider adapter: the start reservation commits
@@ -258,10 +258,10 @@ export class CallService {
     const expiresAt = new Date(Math.min(now.getTime() + ACCESS_MS, invitation.expiresAt.getTime()));
     return { callId: call.id, callType: call.callType, title: call.title, participantId: row.id, access: this.provider.participantAccess(call.providerRoomId, row.id, displayName, expiresAt) };
   }
-  recording(actor: ActorContext, id: string, query: URLSearchParams) {
+  async recording(actor: ActorContext, id: string, query: URLSearchParams) {
     const call = this.call(actor, id);
     this.support.require(actor, 'call.recording_read');
     if (!call.recordingFileId) throw notFoundError('CALL_RECORDING_NOT_FOUND', 'Call recording');
-    return { callId: call.id, ...this.files.issue(actor, call.recordingFileId, query) };
+    return { callId: call.id, ...await this.files.issue(actor, call.recordingFileId, query) };
   }
 }

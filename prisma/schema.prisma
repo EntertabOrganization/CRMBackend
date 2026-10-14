@@ -2337,6 +2337,19 @@ model FilePublicLink {
   @@map("file_public_links")
 }
 
+// Object provenance survives File copies and removal of the original File.
+model FileArtifactBinding {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  objectKey String @map("object_key")
+  entityType String @map("entity_type")
+  entityId String @map("entity_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([workspaceId, objectKey])
+  @@index([workspaceId, entityType, entityId])
+  @@map("file_artifact_bindings")
+}
+
 model DriveFile {
   id String @id @db.Uuid
   workspaceId String @map("workspace_id") @db.Uuid
@@ -3908,6 +3921,7 @@ model AutomationLog {
 
   @@index([workspaceId, executionId, createdAt])
   @@index([workspaceId, ruleId, createdAt])
+  @@index([workspaceId, createdAt, id])
   @@map("automation_logs")
 }
 

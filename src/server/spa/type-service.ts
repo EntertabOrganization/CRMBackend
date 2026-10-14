@@ -6,6 +6,7 @@ import { assertVersion, evidence, lock, requirePermission, type Principal, type 
 import { parse, uuid } from '../process-platform/dto';
 import { capabilityKeys, createType, listTypes, typeAction, updateCapability, updateType } from './dto';
 import { schemaSnapshot } from './field-metadata';
+import { spaEntitlements, assertSpaSchemaEntitlements } from './entitlements';
 
 export class SpaTypeService {
   constructor(private readonly db: PrismaClient) {}
@@ -19,11 +20,7 @@ export class SpaTypeService {
 
   /** Type counts are configured in Workspace settings by the existing entitlement owner. */
   private async entitlement(tx: Tx, actor: Principal) {
-    const workspace = await tx.workspace.findUniqueOrThrow({ where: { id: actor.workspaceId } });
-    const settings = workspace.settings as Record<string, unknown>;
-    const entitlements = settings.entitlements as Record<string, unknown> | undefined;
-    if (entitlements?.spa === false) throw new AppError('SPA_PLAN_LIMIT', 'Smart Processes are unavailable for this Workspace.', 403);
-    return entitlements;
+    return spaEntitlements(tx, actor.workspaceId);
   }
 
   async create(actor: Principal, raw: unknown) {
@@ -38,6 +35,8 @@ export class SpaTypeService {
       if (await tx.spaEntityType.findFirst({ where: { workspaceId: actor.workspaceId, code: input.code } }))
         throw new AppError('SPA_TYPE_CODE_EXISTS', 'Type code already exists.', 409);
       const selected = new Map((input.capabilities ?? []).map(capability => [capability.key, capability]));
+      await assertSpaSchemaEntitlements(tx, actor.workspaceId, 0, capabilityKeys.map(key => ({ key,
+        enabled: selected.get(key)?.enabled ?? ['NUMBERING', 'RECYCLE_BIN', 'OBSERVERS', 'ACTIVITIES'].includes(key) })));
       if (selected.size !== input.capabilities?.length && input.capabilities)
         throw new AppError('INVALID_ARGUMENT', 'Capability keys must be unique.', 400);
       if (selected.get('KANBAN')?.enabled && !selected.get('PIPELINES')?.enabled)
@@ -57,24 +56,38 @@ export class SpaTypeService {
   }
 
   async list(actor: Principal, raw: unknown) {
-    requirePermission(actor, 'SPA.TYPE.READ');
+    const scope = requirePermission(actor, 'SPA.TYPE.READ');
     const input = parse(listTypes, raw);
     const where: Prisma.SpaEntityTypeWhereInput = { workspaceId: actor.workspaceId, deletedAt: null,
+      ...(scope === 'OWN' ? { createdByUserId: actor.userId } : {}),
       ...(input.status && { status: input.status }), ...(input.placement && { placement: input.placement }),
       ...(input.search && { name: { contains: input.search, mode: 'insensitive' } }) };
     const [data, total] = await this.db.$transaction([
       this.db.spaEntityType.findMany({ where, orderBy: [{ name: 'asc' }, { id: 'asc' }],
         skip: (input.page - 1) * input.limit, take: input.limit }), this.db.spaEntityType.count({ where }),
     ]);
-    return { data, meta: { page: input.page, limit: input.limit, total, totalPages: Math.ceil(total / input.limit) } };
+    return { data, meta: { page: input.page, limit: input.limit, total, totalPages: Math.ceil(total / input.limit),
+      permissions: [...actor.grants].filter(([key]) => key.startsWith('SPA.')).map(([key, scope]) => ({ key, scope })) } };
   }
 
   async get(actor: Principal, id: string) {
     requirePermission(actor, 'SPA.TYPE.READ');
     return this.db.$transaction(async tx => {
       const row = await this.type(tx, actor, id);
+      if (actor.grants.get('SPA.TYPE.READ') === 'OWN' && row.createdByUserId !== actor.userId)
+        throw new AppError('SPA_TYPE_NOT_FOUND', 'Smart Process Type was not found.', 404);
       const capabilities = await tx.spaCapability.findMany({ where: { workspaceId: actor.workspaceId, typeId: id }, orderBy: { key: 'asc' } });
-      return { ...row, capabilities, permissions: [...actor.grants.keys()].filter(key => key.startsWith('SPA.')) };
+      const rules = await tx.spaFieldPolicy.findMany({ where: { workspaceId: actor.workspaceId, typeId: id,
+        OR: [{ subjectType: 'ROLE', subjectId: actor.roleId }, { subjectType: 'USER', subjectId: actor.userId }] } });
+      const fields = await tx.spaFieldDefinition.findMany({ where: { workspaceId: actor.workspaceId, typeId: id } });
+      const denied = await tx.spaTypePolicy.findMany({ where: { workspaceId: actor.workspaceId, typeId: id, roleId: actor.roleId, scope: 'NONE' } });
+      const members = await tx.workspaceMembership.findMany({ where: { workspaceId: actor.workspaceId, status: 'ACTIVE', isDeleted: false,
+        user: { status: 'ACTIVE', isDeleted: false } }, orderBy: { userId: 'asc' }, take: 100,
+        select: { user: { select: { id: true, firstName: true, lastName: true } } } });
+      return { ...row, capabilities, permissions: [...actor.grants.keys()].filter(key => key.startsWith('SPA.') && !denied.some(p => p.action === key)),
+        people: members.map(m => m.user),
+        fieldPermissions: fields.filter(f => actor.grants.has('SPA.SCHEMA.READ') && rules.filter(r => r.fieldId === f.id).every(r => r.canView)).map(f => ({ code: f.code,
+          canView: true, canEdit: rules.filter(r => r.fieldId === f.id).every(r => r.canEdit && r.canView) })) };
     });
   }
 
@@ -102,10 +115,15 @@ export class SpaTypeService {
       const allowed = action === 'activate' ? ['DRAFT'] : action === 'restore' ? ['ARCHIVED'] : ['ACTIVE', 'DRAFT'];
       if (!allowed.includes(row.status)) throw new AppError('SPA_TYPE_INVALID_STATUS', 'Type cannot perform this transition.', 409);
       if (action !== 'archive') {
-        await this.entitlement(tx, actor);
+        const limits = await this.entitlement(tx, actor);
+        if (typeof limits.maxSpaTypes === 'number' && await tx.spaEntityType.count({ where: { workspaceId: actor.workspaceId, deletedAt: null } }) > limits.maxSpaTypes)
+          throw new AppError('SPA_PLAN_LIMIT', 'Smart Process Type limit reached.', 422);
         if (!row.schemaVersion || !await tx.spaSchemaVersion.findFirst({ where: { workspaceId: actor.workspaceId, typeId: id,
           versionNumber: row.schemaVersion } })) throw new AppError('SPA_SCHEMA_NOT_PUBLISHED', 'A published schema is required.', 422);
         const pipelines = await tx.spaCapability.findFirst({ where: { workspaceId: actor.workspaceId, typeId: id, key: 'PIPELINES', enabled: true } });
+        await assertSpaSchemaEntitlements(tx, actor.workspaceId,
+          await tx.spaFieldDefinition.count({ where: { workspaceId: actor.workspaceId, typeId: id, isActive: true } }),
+          await tx.spaCapability.findMany({ where: { workspaceId: actor.workspaceId, typeId: id } }));
         if (pipelines) {
           const pipeline = await tx.spaPipeline.findFirst({ where: { workspaceId: actor.workspaceId, typeId: id,
             isDefault: true, status: 'ACTIVE' } });
@@ -141,6 +159,8 @@ export class SpaTypeService {
       const staged = snapshot.capabilities ?? flags;
       const enabled = new Set(staged.filter(flag => flag.enabled).map(flag => flag.key));
       if (input.enabled) enabled.add(key); else enabled.delete(key);
+      await assertSpaSchemaEntitlements(tx, actor.workspaceId, snapshot.fields.filter(f => f.isActive).length,
+        [...enabled].map(key => ({ key, enabled: true })));
       if (enabled.has('KANBAN') && !enabled.has('PIPELINES'))
         throw new AppError('SPA_CAPABILITY_DEPENDENCY', 'KANBAN requires PIPELINES.', 422);
       if (!input.enabled && flags.some(flag => flag.key === key && flag.enabled) &&

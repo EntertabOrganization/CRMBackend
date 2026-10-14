@@ -23,18 +23,21 @@ export async function requireWorkspaceContext(request: NextRequest, rateLimit?: 
     const suppliedWorkspace = workspaceHeader(request);
     if (suppliedWorkspace && suppliedWorkspace !== credential.workspaceId) throw badRequest('WORKSPACE_CONTEXT_INVALID', 'Credential workspace cannot be overridden.');
     if (rateLimit) rateLimitUser(`api:${credential.id}`, rateLimit);
+    await context().spaResources?.prepare(context(), request, user.id, credential.workspaceId);
     return { user, workspaceId: credential.workspaceId, actor: context().access.actor(user, credential.workspaceId), credential };
   }
   const user = await requireUser(request, context().store);
   const workspaceId = workspaceHeader(request);
   if (!workspaceId) throw badRequest('WORKSPACE_REQUIRED', 'X-Workspace-Id is required.');
   if (rateLimit) rateLimitUser(user.id, rateLimit);
+  await context().spaResources?.prepare(context(), request, user.id, workspaceId);
   return { user, workspaceId, actor: context().access.actor(user, workspaceId), credential: null };
 }
 
 /** Coarse API scope; normal RBAC and record scope are still enforced by each service. */
 export function apiScopeForOperation(method: string, pathname: string) {
   const write = method.toUpperCase() !== 'GET';
+  if (/^\/api\/v1\/spa(?:\/|$)/.test(pathname)) return write ? 'spa.write' : 'spa.read';
   if (/^\/api\/v1\/crm\//.test(pathname)) return write ? 'crm.write' : 'crm.read';
   if (/^\/api\/v1\/data-quality(?:\/|$)/.test(pathname)) return write ? 'data_quality.write' : 'data_quality.read';
   if (/^\/api\/v1\/imports(?:\/|$)/.test(pathname)) return 'imports.manage';
@@ -58,6 +61,7 @@ export function idempotencyKeyOf(request: NextRequest) {
 }
 
 const ENTITY_ALIASES: Record<string, string> = {
+  spa_item: 'SPA_ITEM',
   lead: 'LEAD',
   leads: 'LEAD',
   contact: 'CONTACT',
@@ -78,6 +82,7 @@ export function entityTypeFromParam(raw: string) {
 /** Field-schema routes also cover Activities, which register with the field engine like any other entity. */
 export function fieldEntityTypeFromParam(raw: string) {
   const lower = raw.toLowerCase();
+  if (lower === 'spa_item') throw badRequest('ENTITY_TYPE_NOT_FIELD_CAPABLE', 'Use the owning Smart Process schema endpoints.');
   if (lower === 'activity' || lower === 'activities') return 'ACTIVITY';
   return entityTypeFromParam(raw);
 }

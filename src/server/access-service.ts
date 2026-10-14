@@ -18,6 +18,10 @@ export type ActorContext = {
  * and activity access can never be broader than the record access users already have in CRM.
  */
 export class AccessService {
+  private readonly recordOwners = new Map<string, { find(workspaceId: string, id: string): { responsibleUserId: string } | undefined;
+    allowed(actor: ActorContext, id: string, action: 'read' | 'update'): boolean }>();
+  registerRecordOwner(type: string, owner: { find(workspaceId: string, id: string): { responsibleUserId: string } | undefined;
+    allowed(actor: ActorContext, id: string, action: 'read' | 'update'): boolean }) { this.recordOwners.set(type, owner); }
   constructor(private readonly store: InMemoryStore) {}
 
   /** Resolves the actor inside the server-resolved workspace. Never trusts a client-supplied workspace claim. */
@@ -109,6 +113,7 @@ export class AccessService {
   // ---- CRM record access (mirrors CrmCoreService) ------------------------------------------------------------
 
   crmRecord(workspaceId: string, entityType: string, entityId: string) {
+    const owner = this.recordOwners.get(entityType); if (owner) return owner.find(workspaceId, entityId);
     const s = this.store.state;
     switch (entityType) {
       case 'LEAD':
@@ -129,6 +134,7 @@ export class AccessService {
   }
 
   canAccessCrmRecord(actor: ActorContext, entityType: string, entityId: string, action: 'read' | 'update'): boolean {
+    const owner = this.recordOwners.get(entityType); if (owner) return owner.allowed(actor, entityId, action);
     const record = this.crmRecord(actor.workspaceId, entityType, entityId);
     if (!record) return false;
     const scope = this.scopeFor(actor, this.crmPermissionKey(entityType as CrmRecordEntityType, action));

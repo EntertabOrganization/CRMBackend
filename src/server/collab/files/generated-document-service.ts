@@ -111,14 +111,14 @@ export class GeneratedDocumentService implements LeaseJobHandler<Ticket> {
     return this.safe(row);
   }
 
-  download(actor: ActorContext, id: string, query: URLSearchParams) {
+  async download(actor: ActorContext, id: string, query: URLSearchParams) {
     this.support.require(actor, 'document.read');
     const row = this.document(actor, id);
     if (row.status !== 'READY' || !row.fileId) throw new AppError('DOCUMENT_STATE_INVALID', 'Only ready documents can be downloaded.', 409);
     const file = this.state.driveFiles.find(item => item.id === row.fileId && item.workspaceId === row.workspaceId);
     // A later Version on the File is not this generated artifact; it stays available through File Version history.
     if (file && file.currentVersionId !== row.fileVersionId) throw new AppError('DOCUMENT_ARTIFACT_CHANGED', 'The File no longer holds this generated Version.', 409);
-    return { documentId: row.id, ...this.delivery.issue(actor, row.fileId, query) };
+    return { documentId: row.id, ...await this.delivery.issue(actor, row.fileId, query) };
   }
 
   // ---- worker ------------------------------------------------------------------------------------------------------------

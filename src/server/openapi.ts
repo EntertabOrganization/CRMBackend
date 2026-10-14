@@ -3,6 +3,7 @@ import { COMMERCIAL_TAGS, commercialPaths } from './openapi-commercial';
 import { INTELLIGENCE_TAGS, intelligencePaths } from './openapi-intelligence';
 import { processCommercePaths } from './openapi-process-commerce';
 import { workflowDiscussionPaths } from './openapi-workflow-discussion';
+import { spaPaths } from './spa/openapi';
 
 const baseDocument = {
   openapi: '3.1.0',
@@ -233,7 +234,7 @@ function mergePaths<T extends object>(base: T, extra: Record<string, Record<stri
 export const openApiDocument = {
   ...baseDocument,
   tags: [...baseDocument.tags, ...CRM_EXTENSION_TAGS, ...COMMERCIAL_TAGS, ...INTELLIGENCE_TAGS, { name: 'Commerce Checkout and Orders' },{ name: 'Workflow Discussions' }],
-  paths: mergePaths(mergePaths(mergePaths(mergePaths(mergePaths(baseDocument.paths, crmExtensionPaths()), commercialPaths()), intelligencePaths()), processCommercePaths()),workflowDiscussionPaths()),
+  paths: mergePaths(mergePaths(mergePaths(mergePaths(mergePaths(mergePaths(baseDocument.paths, crmExtensionPaths()), commercialPaths()), intelligencePaths()), processCommercePaths()),workflowDiscussionPaths()), spaPaths()),
 };
 
 function authPost(summary: string, schema: string) {

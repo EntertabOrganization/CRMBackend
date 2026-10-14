@@ -1,5 +1,7 @@
 # Logical Files and immutable Versions
 
+Managed SPA transfer objects have immutable `file_artifact_bindings` provenance. The installed owning-domain content authority runs before grant issuance and before/after byte I/O, using current membership, entitlement, job access and exported field/filter/Item scope. Expired exports and revoked authority invalidate cached grants; copied File/Version metadata does not remove the original object policy. Private reports/exports cannot use public File or folder delivery, editor sessions or document-template repurposing. Deploy the additive artifact-authority migration before enabling these paths. Standalone Files composition fails closed for artifact objects until an authority is installed.
+
 Files own mutable names, locations, lifecycle status and the current Version pointer. Versions own immutable object identity, checksum, size, MIME type, creator and creation time. Normal File and Version API responses never expose objectKey. Scan status changes are constrained separately; blocked content cannot be relabelled clean.
 
 File authority combines a platform action with the current storage/folder chain and direct FILE assignments. Every File remains inside its original Workspace and storage. Direct ACL overrides replace inherited authority. Mutations require EDIT (or the operation's stronger authority) and an optimistic resource version. Copy requires readable clean content and ADD at the destination; copied Files inherit destination ACLs and do not duplicate capabilities or business bindings.

@@ -9,8 +9,9 @@ import { createField, fieldDefinition, patchField, schemaSnapshot, uniqueDefinit
 import { SpaPolicyService } from './policy-service';
 import { valueHash } from './migration-service';
 import { storedValue, valueColumns } from './item-service';
+import { assertSpaSchemaEntitlements } from './entitlements';
 
-const draftChanges = z.strictObject({ expectedVersion: version, changes: z.array(z.discriminatedUnion('kind', [
+export const draftChanges = z.strictObject({ expectedVersion: version, changes: z.array(z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('ADD_FIELD'), field: createField }),
   z.strictObject({ kind: z.literal('UPDATE_FIELD'), fieldId: uuid, changes: patchField }),
   z.strictObject({ kind: z.literal('DEACTIVATE_FIELD'), fieldId: uuid }),
@@ -36,6 +37,7 @@ export class SpaSchemaService {
     return { type, draft, snapshot: parse(schemaSnapshot, draft.snapshot) };
   }
   private async save(tx: Tx, actor: Principal, typeId: string, id: string, snapshot: SchemaSnapshot) {
+    await assertSpaSchemaEntitlements(tx, actor.workspaceId, snapshot.fields.filter(f => f.isActive).length, snapshot.capabilities);
     for (const field of snapshot.fields) { validateDefinition(field, actor.workspaceId); normalizedFieldDefault(field, actor.workspaceId); }
     if (new Set(snapshot.fields.map(field => field.code)).size !== snapshot.fields.length)
       throw new AppError('SPA_FIELD_CODE_EXISTS', 'Field code already exists.', 409);
@@ -53,8 +55,13 @@ export class SpaSchemaService {
   }
   async fields(actor: Principal, typeId: string) {
     requirePermission(actor, 'SPA.SCHEMA.READ');
-    return this.db.$transaction(async tx => (await this.visibleSnapshot(tx, actor, typeId,
-      (await this.load(tx, actor, typeId)).snapshot)).fields);
+    return this.db.$transaction(async tx => {
+      const { type, snapshot } = await this.load(tx, actor, typeId);
+      const publication = actor.grants.get('SPA.SCHEMA.MANAGE') !== 'WORKSPACE' && type.schemaVersion
+        ? await tx.spaSchemaVersion.findUnique({ where: { workspaceId_typeId_versionNumber: {
+          workspaceId: actor.workspaceId, typeId, versionNumber: type.schemaVersion } } }) : null;
+      return (await this.visibleSnapshot(tx, actor, typeId, publication ? parse(schemaSnapshot, publication.snapshot) : snapshot)).fields;
+    });
   }
   async addField(actor: Principal, typeId: string, raw: unknown) {
     requirePermission(actor, 'SPA.SCHEMA.MANAGE', true);
@@ -194,6 +201,8 @@ export class SpaSchemaService {
     return this.db.$transaction(async tx => {
       await lock(tx, actor.workspaceId, 'spa:type:' + typeId);
       const { type, draft, snapshot } = await this.load(tx, actor, typeId, true);
+      await assertSpaSchemaEntitlements(tx, actor.workspaceId, snapshot.fields.filter(f => f.isActive).length,
+        snapshot.capabilities ?? await tx.spaCapability.findMany({ where: { workspaceId: actor.workspaceId, typeId } }));
       assertVersion(draft.version, input.expectedDraftVersion);
       const job = input.migrationPlanId ? await tx.spaSchemaMigrationJob.findFirst({ where: {
         workspaceId: actor.workspaceId, typeId, id: input.migrationPlanId, status: 'SUCCEEDED', appliedAt: null } }) : null;
@@ -290,3 +299,4 @@ export class SpaSchemaService {
     });
   }
 }
+

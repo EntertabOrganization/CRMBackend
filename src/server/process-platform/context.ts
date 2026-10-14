@@ -19,6 +19,10 @@ export type Tx = Prisma.TransactionClient;
 export async function authenticate(db: PrismaClient | Tx, request: NextRequest): Promise<Principal> {
   const authorization = request.headers.get('authorization') ?? '';
   if (!authorization.startsWith('Bearer ')) throw new AppError('UNAUTHENTICATED', 'Authentication is required.', 401);
+  if (authorization.startsWith('Bearer trm_api_') && /^\/api\/v1\/spa(?:\/|$)/.test(request.nextUrl.pathname)) {
+    const { authenticateDomainCredential } = await import('../intelligence/api-authority');
+    return authenticateDomainCredential(db, request, request.method === 'GET' ? 'spa.read' : 'spa.write');
+  }
   const userId = await verifyAccessToken(authorization.slice(7));
   const workspaceId = parse(uuid, request.headers.get('x-workspace-id'));
   return resolvePrincipal(db, workspaceId, userId);
@@ -40,7 +44,9 @@ export async function resolvePrincipal(db: PrismaClient | Tx, workspaceId: strin
   const configured = settings && typeof settings === 'object' && !Array.isArray(settings) ? settings.entitlements : undefined;
   const entitlements = configured && typeof configured === 'object' && !Array.isArray(configured)
     ? configured as Record<string, unknown> : undefined;
-  return { workspaceId, userId, roleId: membership.roleId, grants, entitlements };
+  const { spaEntitlements } = await import('../spa/entitlements');
+  const spa = await spaEntitlements(db, workspaceId, false);
+  return { workspaceId, userId, roleId: membership.roleId, grants, entitlements: { ...entitlements, ...spa } };
 }
 
 export function requirePermission(actor: Principal, permission: string, workspaceWide = false): string {

@@ -448,7 +448,8 @@ export class CalendarEventService {
   }
   bindings(actor: ActorContext, id: string) {
     this.eventOf(actor, id);
-    return this.state.calendarEventBindings.filter((row) => row.eventId === id && this.canBind(actor, row.entityType, row.entityId));
+    return this.state.calendarEventBindings.filter((row) => row.eventId === id && (this.bindingResolvers.get(row.entityType)?.canRead?.(actor, row.entityId)
+      ?? this.canBind(actor, row.entityType, row.entityId)));
   }
   addBinding(actor: ActorContext, id: string, body: Body) {
     const event = this.eventOf(actor, id); this.requireEdit(actor, event, 'event.update'); this.writable(event);

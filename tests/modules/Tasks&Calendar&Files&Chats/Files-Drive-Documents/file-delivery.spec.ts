@@ -17,7 +17,7 @@ async function fixture() {
   return { c, f, file, bytes, objects, issue, redeem };
 }
 it('signs opaque two-minute paths, verifies integrity, consumes once and omits secrets from evidence', async () => {
-  const x = await fixture(), grant = x.issue();
+  const x = await fixture(), grant = await x.issue();
   expect(grant.expiresAt.getTime() - Date.now()).toBeLessThanOrEqual(120000);
   await expectAppError(() => x.redeem(grant.deliveryPath.replace('signature=', 'signature=x')), 'FILE_DELIVERY_UNAVAILABLE', 410);
   expect((await x.redeem(grant.deliveryPath)).bytes).toEqual(x.bytes);
@@ -29,7 +29,7 @@ it('checks action, Workspace, live resource access, scan proof and expiry', asyn
   const x = await fixture(), denied = await x.c.memberActor('delivery-denied', perms('WORKSPACE', 'file.read')), foreign = await x.c.foreignActor();
   await expectAppError(() => x.f.delivery.issue(denied, x.file.id, new URLSearchParams()), 'PERMISSION_DENIED', 403);
   await expectAppError(() => x.f.delivery.issue(foreign, x.file.id, new URLSearchParams()), 'FILE_NOT_FOUND', 404);
-  const grant = x.issue();
+  const grant = await x.issue();
   x.c.state.driveFiles.find(row => row.id === x.file.id)!.status = 'QUARANTINED';
   await expectAppError(() => x.redeem(grant.deliveryPath), 'FILE_DELIVERY_UNAVAILABLE', 410);
   x.c.state.driveFiles.find(row => row.id === x.file.id)!.status = 'ACTIVE';
@@ -38,7 +38,7 @@ it('checks action, Workspace, live resource access, scan proof and expiry', asyn
   finally { jest.useRealTimers(); }
 });
 it('keeps failed content reads retryable and requires configured signing', async () => {
-  const x = await fixture(), grant = x.issue(), version = x.c.state.driveFileVersions[0];
+  const x = await fixture(), grant = await x.issue(), version = x.c.state.driveFileVersions[0];
   x.objects.set(version.objectKey, Buffer.from('corrupt'));
   await expectAppError(() => x.redeem(grant.deliveryPath), 'FILE_CONTENT_UNAVAILABLE', 503);
   expect(x.c.state.fileDeliveryGrants[0].consumedAt).toBeNull();

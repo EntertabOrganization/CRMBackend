@@ -93,8 +93,9 @@ export class SpaRelationService {
       return result;
     }, { timeout: 30000 });
   }
-  async unlink(actor: Principal, typeId: string, itemId: string, relationId: string) {
+  async unlink(actor: Principal, typeId: string, itemId: string, relationId: string, raw: unknown = {}) {
     requirePermission(actor, 'SPA.ITEM.UPDATE'); parse(uuid, relationId);
+    parse(z.strictObject({}), raw);
     return this.db.$transaction(async tx => {
       await lock(tx, actor.workspaceId, 'spa:type:' + typeId);
       const { type, snapshot } = await this.schema(tx, actor, typeId);
@@ -177,8 +178,10 @@ export class SpaRelationService {
           throw new AppError('SPA_FIELD_PERMISSION_DENIED', 'View field is unavailable.', 403);
       }
       const key = { workspaceId: actor.workspaceId, typeId, userId: actor.userId, viewType: input.viewType };
-      return tx.spaUserViewPreference.upsert({ where: { workspaceId_typeId_userId_viewType: key },
+      const result = await tx.spaUserViewPreference.upsert({ where: { workspaceId_typeId_userId_viewType: key },
         create: { ...key, preferences: input as Prisma.InputJsonObject }, update: { preferences: input as Prisma.InputJsonObject, version: { increment: 1 } } });
+      await evidence(tx, actor, 'SPA_USER_VIEW', result.id, 'SPA_VIEW_UPDATED', { typeId, userId: actor.userId, viewType: input.viewType, version: result.version });
+      return result;
     });
   }
 }

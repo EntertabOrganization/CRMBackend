@@ -14,11 +14,12 @@ const rolePolicy = z.strictObject({ roleId: uuid, action, scope });
 const stagePolicy = rolePolicy.extend({ pipelineId: uuid, stageId: uuid });
 const fieldPolicy = z.strictObject({ fieldId: uuid, subjectType: z.enum(['ROLE', 'USER']), subjectId: uuid,
   canView: z.boolean(), canEdit: z.boolean() }).refine(p => !p.canEdit || p.canView, 'Editable field must be visible');
-const replacement = z.strictObject({ expectedVersion: version, rolePolicies: z.array(rolePolicy).max(2000),
+export const replacement = z.strictObject({ expectedVersion: version, rolePolicies: z.array(rolePolicy).max(2000),
   stagePolicies: z.array(stagePolicy).max(10000), fieldPolicies: z.array(fieldPolicy).max(10000) });
 
 /** Database policy reads deliberately avoid a process cache so revocation applies to the next command. */
 export class SpaPolicyService {
+  get database() { return this.db; }
   constructor(private readonly db: PrismaClient) {}
   private async type(tx: Tx, actor: Principal, typeId: string) {
     parse(uuid, typeId);
@@ -116,7 +117,7 @@ export class SpaPolicyService {
     return departments.some(d => eligible.has(d.id) && d.members.some(m => m.userId === item.assignedUserId));
   }
   async allowed(tx: Tx, actor: Principal, item: SpaItem, permission: string): Promise<boolean> {
-    if (actor.entitlements?.spa === false) return false;
+    if (item.workspaceId !== actor.workspaceId || actor.entitlements?.spa === false) return false;
     const base = actor.grants.get(permission);
     if (!base) return false;
     const typePolicy = await tx.spaTypePolicy.findUnique({ where: { workspaceId_typeId_roleId_action: {
@@ -137,6 +138,57 @@ export class SpaPolicyService {
     if (item.workspaceId !== actor.workspaceId || !await this.allowed(tx, actor, item, permission))
       throw new AppError('PERMISSION_DENIED', 'Item permission is required.', 403);
   }
+  /** SQL eligibility is evaluated before pagination/counts, never after taking a page. */
+  async itemWhere(tx: Tx, actor: Principal, typeId: string, permission: string): Promise<Prisma.SpaItemWhereInput> {
+    const denied = { id: { in: [] as string[] } };
+    const base = actor.grants.get(permission);
+    if (!base || actor.entitlements?.spa === false) return denied;
+    const where = { workspaceId: actor.workspaceId, typeId };
+    const typePolicy = await tx.spaTypePolicy.findUnique({ where: { workspaceId_typeId_roleId_action: {
+      ...where, roleId: actor.roleId, action: permission } } });
+    if (typePolicy?.scope === 'NONE') return denied;
+    const cache = new Map<string, Prisma.SpaItemWhereInput>();
+    const scoped = async (scope: string): Promise<Prisma.SpaItemWhereInput> => {
+      const cached = cache.get(scope); if (cached) return cached;
+      let result: Prisma.SpaItemWhereInput = denied;
+      if (scope === 'WORKSPACE' || scope === 'ALL') result = { workspaceId: actor.workspaceId };
+      else if (scope === 'OWN') result = { OR: [{ createdByUserId: actor.userId }, { assignedUserId: actor.userId }] };
+      else if (scope === 'DEPARTMENT' || scope === 'DEPARTMENT_TREE') {
+        const departments = await tx.department.findMany({ where: { workspaceId: actor.workspaceId, isDeleted: false },
+          include: { members: { where: { isDeleted: false } } } });
+        const eligible = new Set(departments.filter(d => d.members.some(m => m.userId === actor.userId)).map(d => d.id));
+        if (scope === 'DEPARTMENT_TREE') {
+          let changed = true;
+          while (changed) { changed = false; for (const d of departments)
+            if (d.parentDepartmentId && eligible.has(d.parentDepartmentId) && !eligible.has(d.id)) { eligible.add(d.id); changed = true; } }
+        }
+        result = { assignedUserId: { in: [...new Set(departments.filter(d => eligible.has(d.id)).flatMap(d => d.members.map(m => m.userId)))] } };
+      } else if (scope === 'TEAM') {
+        const type = await tx.spaEntityType.findFirst({ where: { workspaceId: actor.workspaceId, id: typeId, deletedAt: null } });
+        const publication = type?.schemaVersion ? await tx.spaSchemaVersion.findUnique({ where: { workspaceId_typeId_versionNumber: {
+          ...where, versionNumber: type.schemaVersion } } }) : null;
+        const definitions = publication ? schemaSnapshot.parse(publication.snapshot).relations.filter(r => r.targetType === 'PROJECT') : [];
+        if (definitions.length) {
+          const projects = await tx.project.findMany({ where: { workspaceId: actor.workspaceId, isDeleted: false, status: { not: 'ARCHIVED' },
+            OR: [{ ownerUserId: actor.userId }, { members: { some: { workspaceId: actor.workspaceId, userId: actor.userId, status: 'ACTIVE' } } }] }, select: { id: true } });
+          const bindings = await tx.spaItemRelation.findMany({ where: { ...where, definitionId: { in: definitions.map(d => d.id) },
+            targetType: 'PROJECT', targetId: { in: projects.map(p => p.id) } }, select: { sourceItemId: true } });
+          result = { id: { in: [...new Set(bindings.map(b => b.sourceItemId))] } };
+        }
+      }
+      cache.set(scope, result); return result;
+    };
+    let eligible: Prisma.SpaItemWhereInput = { AND: [await scoped(base), ...(typePolicy ? [await scoped(typePolicy.scope)] : [])] };
+    if (permission === 'SPA.ITEM.READ' && base !== 'TEAM' && typePolicy?.scope !== 'TEAM') {
+      const observers = await tx.spaItemObserver.findMany({ where: { workspaceId: actor.workspaceId, userId: actor.userId }, select: { itemId: true } });
+      eligible = { OR: [eligible, { id: { in: observers.map(o => o.itemId) } }] };
+    }
+    const stagePolicies = await tx.spaStagePolicy.findMany({ where: { ...where, roleId: actor.roleId, action: permission } });
+    const stages: Prisma.SpaItemWhereInput[] = [];
+    for (const policy of stagePolicies) stages.push({ OR: [{ stageId: null }, { stageId: { not: policy.stageId } },
+      { AND: [{ stageId: policy.stageId }, await scoped(policy.scope)] }] });
+    return { ...where, AND: [eligible, ...stages] };
+  }
   async fieldAccess(tx: Tx, actor: Principal, typeId: string, fieldId: string) {
     const rules = await tx.spaFieldPolicy.findMany({ where: { workspaceId: actor.workspaceId, typeId, fieldId,
       OR: [{ subjectType: 'ROLE', subjectId: actor.roleId }, { subjectType: 'USER', subjectId: actor.userId }] } });
@@ -155,3 +207,4 @@ export class SpaPolicyService {
     });
   }
 }
+

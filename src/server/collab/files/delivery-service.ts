@@ -5,6 +5,7 @@ import { Body, type CollabSupport } from '../support';
 import type { ProjectDriveService } from './project-drive-service';
 import type { ObjectStorage } from './object-storage';
 import type { PublicLinkService } from './public-link-service';
+import { defaultContentAuthority, type FileContentAuthority, type FileContentPurpose } from './content-authority';
 export type FileDeliveryGrant = {
   id: string; workspaceId: string; fileId: string; versionId: string; userId: string; tokenHash: string;
   resourceShareVersion: number; expiresAt: Date; consumedAt: Date | null; createdAt: Date;
@@ -12,8 +13,8 @@ export type FileDeliveryGrant = {
 };
 export class FileDeliveryService {
   constructor(private readonly support: CollabSupport, private readonly storages: ProjectDriveService,
-    private readonly objects: () => ObjectStorage, private readonly bindings: (actor: ActorContext, fileId: string) => void,
-    private readonly publicLinks: PublicLinkService) {}
+    private readonly objects: () => ObjectStorage, private readonly bindings: (actor: ActorContext, fileId: string) => void | Promise<void>,
+    private readonly publicLinks: PublicLinkService, private readonly authorizeContent: FileContentAuthority = defaultContentAuthority) {}
   private get state() { return this.support.state; }
   private unavailable(): never { throw new AppError('FILE_DELIVERY_UNAVAILABLE', 'This delivery path is unavailable.', 410); }
   private signature(id: string, nonce: string) {
@@ -21,12 +22,13 @@ export class FileDeliveryService {
     if (!secret || Buffer.byteLength(secret) < 32) throw new AppError('FILE_DELIVERY_UNCONFIGURED', 'Configure a shared File delivery signing secret.', 503);
     return createHmac('sha256', secret).update(`file-delivery-v1:${id}:${nonce}`).digest('base64url');
   }
-  private content(actor: ActorContext, fileId: string) {
+  private async content(actor: ActorContext, fileId: string, purpose: FileContentPurpose = 'DOWNLOAD') {
     const file = this.storages.fileAuthority(actor, fileId, 'file.download', 1);
-    this.bindings(actor, fileId);
+    await this.bindings(actor, fileId);
     const version = this.state.driveFileVersions.find(row => row.workspaceId === actor.workspaceId && row.fileId === fileId && row.id === file.currentVersionId);
     if (file.status === 'BLOCKED' || version?.scanStatus === 'BLOCKED') throw new AppError('FILE_BLOCKED', 'Blocked content cannot be delivered.', 409);
     if (file.status !== 'ACTIVE' || version?.scanStatus !== 'CLEAN' || !version.processedAt) throw new AppError('FILE_QUARANTINED', 'Only clean processed content can be delivered.', 409);
+    await this.authorizeContent(actor, version.objectKey, purpose);
     return { file, version };
   }
   issue(actor: ActorContext, fileId: string, query: URLSearchParams) {
@@ -37,10 +39,13 @@ export class FileDeliveryService {
   async readForProcessing(actor: ActorContext, fileId: string, maxBytes: number) {
     if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > 50_000_000)
       throw new AppError('FILE_TOO_LARGE', 'Invalid processing content limit.', 413);
-    const { file, version } = this.content(actor, fileId);
+    const { file, version } = await this.content(actor, fileId, 'PROCESS');
     if (version.sizeBytes > maxBytes) throw new AppError('FILE_TOO_LARGE', 'Source File exceeds the processing limit.', 413);
     const content = await this.objects().read(version.objectKey);
     if (content.byteLength > maxBytes) throw new AppError('FILE_TOO_LARGE', 'Source File exceeds the processing limit.', 413);
+    if (content.length !== version.sizeBytes || createHash('sha256').update(content).digest('hex') !== version.checksum)
+      throw new AppError('FILE_CONTENT_UNAVAILABLE', 'File content failed integrity verification.', 503);
+    await this.authorizeContent(actor, version.objectKey, 'PROCESS');
     return { fileId: file.id, versionId: version.id, content, mimeType: version.mimeType, checksum: version.checksum };
   }
   async issuePublic(token: string, type: 'FILE' | 'FOLDER', query: URLSearchParams, password: string | null, clientKey = 'unknown') {
@@ -48,8 +53,8 @@ export class FileDeliveryService {
     const { row, actor, fileId } = await this.publicLinks.authorizeDownload(token, type, password, query.get('fileId') ?? undefined);
     return this.grant(actor, fileId, row, clientKey);
   }
-  private grant(actor: ActorContext, fileId: string, link?: { id: string; version: number; expiresAt: Date }, clientKey?: string) {
-    const { file, version } = this.content(actor, fileId), id = this.support.id(), nonce = randomBytes(32).toString('base64url');
+  private async grant(actor: ActorContext, fileId: string, link?: { id: string; version: number; expiresAt: Date }, clientKey?: string) {
+    const { file, version } = await this.content(actor, fileId, link ? 'PUBLIC' : 'DOWNLOAD'), id = this.support.id(), nonce = randomBytes(32).toString('base64url');
     const signature = this.signature(id, nonce), now = this.support.now(), expiresAt = new Date(Math.min(now.getTime() + 120_000, link?.expiresAt.getTime() ?? Infinity));
     if (expiresAt <= now) this.unavailable();
     this.state.fileDeliveryGrants.push({ id, workspaceId: actor.workspaceId, fileId, versionId: version.id, userId: actor.user.id,
@@ -74,7 +79,8 @@ export class FileDeliveryService {
     let publicLink;
     if (grant.publicLinkId) publicLink = (await this.publicLinks.validateDelivery(grant.publicLinkId, grant.publicLinkVersion!, grant.workspaceId, grant.fileId)).row;
     let content;
-    try { content = this.content(this.support.access.actor(user, grant.workspaceId), grant.fileId); }
+    const actor = this.support.access.actor(user, grant.workspaceId);
+    try { content = await this.content(actor, grant.fileId, grant.publicLinkId ? 'PUBLIC' : 'DOWNLOAD'); }
     catch { this.unavailable(); }
     const { file, version } = content;
     if (version.id !== grant.versionId || file.publicShareVersion !== grant.resourceShareVersion) this.unavailable();
@@ -84,6 +90,8 @@ export class FileDeliveryService {
     if (bytes.length !== version.sizeBytes || createHash('sha256').update(bytes).digest('hex') !== version.checksum)
       throw new AppError('FILE_CONTENT_UNAVAILABLE', 'File content failed integrity verification.', 503);
     if (grant.expiresAt <= this.support.now()) this.unavailable();
+    try { await this.authorizeContent(actor, version.objectKey, grant.publicLinkId ? 'PUBLIC' : 'DOWNLOAD'); }
+    catch { this.unavailable(); }
     if (publicLink) this.publicLinks.consumeDownload(publicLink, clientKey);
     grant.consumedAt = this.support.now();
     const changes = { grantId: grant.id, versionId: version.id, sizeBytes: bytes.length, publicLinkId: grant.publicLinkId };

@@ -11,6 +11,7 @@ export interface AttachmentTarget {
   entityType: string;
   exists?(workspaceId: string, id: string): boolean;
   authorize(actor: ActorContext, id: string, write: boolean): void;
+  authorizeContent?(actor: ActorContext, id: string): Promise<void>;
 }
 
 /** Owning modules supply their live read/mutation policies; bindings never confer authority. */
@@ -40,6 +41,14 @@ export class AttachmentService implements FilePort {
     for (const row of this.legacyTargets(actor.workspaceId, fileId)) this.authorizeEntity(actor, row.entityType, row.entityId);
     for (const row of this.state.fileAttachments.filter(row => row.workspaceId === actor.workspaceId && row.fileId === fileId))
       this.authorizeEntity(actor, row.entityType, row.entityId);
+  }
+  async authorizeContentBindings(actor: ActorContext, fileId: string) {
+    const rows = [...this.legacyTargets(actor.workspaceId, fileId), ...this.state.fileAttachments.filter(row => row.workspaceId === actor.workspaceId && row.fileId === fileId)];
+    for (const row of rows) {
+      const target = this.targets.get(row.entityType);
+      if (target?.authorizeContent) await target.authorizeContent(actor, row.entityId);
+      else this.authorizeEntity(actor, row.entityType, row.entityId);
+    }
   }
   private file(actor: ActorContext, id: string, write = false) {
     try {

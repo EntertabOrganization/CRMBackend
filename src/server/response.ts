@@ -183,6 +183,7 @@ async function withState<T>(handler: () => Promise<T>): Promise<{ result?: T; er
     return { error: translateDatabaseError(error) };
   }
   context().store.state = structuredClone(snapshot);
+  context().spaResources?.clear();
   context().realtime.discard();
   let committed = false;
   let outcome: { result?: T; error?: unknown };
@@ -220,6 +221,7 @@ async function withState<T>(handler: () => Promise<T>): Promise<{ result?: T; er
     // happened before validation/provider failure, and do not leave them in the
     // shared working state for the next request.
     context().store.state = structuredClone(snapshot);
+    context().spaResources?.clear();
   }
   // Advisory hints are released only after the commit, and only for successful requests.
   if (committed) context().realtime.flush();

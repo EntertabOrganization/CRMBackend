@@ -10,7 +10,9 @@ Imports commit each row through the owning Item service and keep durable row out
 
 Generated immutable artifacts use the supported `<workspace>/objects/artifacts/<id>` storage namespace. Production processing uses the existing `FILE_PROCESSOR_URL` and `FILE_PROCESSOR_TOKEN` configuration. Tests use a deterministic scanner at that external boundary and real private storage/database effects.
 
-Export workers create private Files artifacts using current Item and field permissions. The export-status API withholds the download identity after job expiry. The full review of download authorization/expiry and remaining transfer contracts is tracked in the root implementation record; this checkpoint does not declare the entire SPA module complete.
+Export workers create private Files artifacts using current Item and field permissions and retain the exact exported Item identities. Both status and byte delivery recheck the current field, filter and Item scope. Expiry, revoked grants, disabled Workspace SPA entitlement, inactive membership and later Item access changes invalidate cached download paths. Legacy artifacts conservatively recheck their entire original scope.
+
+Files retains immutable object-to-job provenance independently of File metadata. File/folder copies reuse that protected object, so removing the original File cannot remove its authority or expiry. Direct public links, folder public delivery, editor access and template repurposing reject private transfer artifacts. Import reports require current IMPORT authority plus own-job or Workspace-wide job access. Byte reads recheck owning authority after storage I/O; failed delivery leaves the grant unconsumed. The additive `202610140002_spa_file_artifact_authority` migration backfills retained transfer objects and enforces immutable provenance and same-Workspace owners. It must be deployed before using these paths; implementation tests apply it only to disposable databases.
 
 Focused verification lives in:
 

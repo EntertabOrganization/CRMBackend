@@ -25,7 +25,8 @@ export class FileArtifactService {
     await this.objects.putImmutable(objectKey, content);
     return { workspaceId, objectKey, checksum: createHash('sha256').update(content).digest('hex'), size: content.length, mimeType };
   }
-  async publish(tx: Tx, principal: Principal, prepared: PreparedFileArtifact, name: string) {
+  async publish(tx: Tx, principal: Principal, prepared: PreparedFileArtifact, name: string,
+    owner?: { entityType: 'SPA_EXPORT_JOB' | 'SPA_IMPORT_JOB'; entityId: string }) {
     if (prepared.workspaceId !== principal.workspaceId) throw new AppError('PERMISSION_DENIED', 'Artifact Workspace does not match.', 403);
     await lock(tx, principal.workspaceId, 'files:artifact-publication');
     const store = new InMemoryStore(await hydrateState(tx));
@@ -50,6 +51,8 @@ export class FileArtifactService {
     await tx.driveFile.create({ data: { ...file, currentVersionId: null } });
     await tx.driveFileVersion.create({ data: version });
     await tx.driveFile.update({ where: { id: file.id }, data: { currentVersionId: version.id } });
+    if (owner) await tx.fileArtifactBinding.create({ data: { workspaceId: principal.workspaceId,
+      objectKey: prepared.objectKey, ...owner } });
     await evidence(tx, principal, 'FILE', file.id, 'FILE_CREATED', { folderId: file.folderId, currentVersionId: version.id, status: file.status });
     return file.id;
   }

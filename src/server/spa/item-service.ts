@@ -7,19 +7,21 @@ import { canonical, name, pageQuery, parse, uuid, version } from '../process-pla
 import { normalizedFieldDefault, parseFieldValue, schemaSnapshot, uniqueValueKey, type SchemaSnapshot, type FieldDefinition } from './field-metadata';
 import { SpaPolicyService } from './policy-service';
 import { SpaNumberingService } from './numbering-service';
-import { spaReferenceContext } from './reference-adapter';
+import { spaReferenceContext, spaValueReferenceContext } from './reference-adapter';
 import { evaluateConditionTree, validateConditionTree, type OperandDescriptor } from '../automation/conditions';
 import type { ConditionNode } from '../automation/types';
+import { spaEntitlements } from './entitlements';
 
 const values = z.record(z.string().max(64), z.json());
 const editable = z.strictObject({ title: name, assignedUserId: uuid, companyId: uuid.nullable().optional(),
   contacts: z.array(uuid).max(100).optional(), fieldValues: values.default({}) });
 const createItem = editable.extend({ pipelineId: uuid.optional(), stageId: uuid.optional(), expectedSchemaVersion: version.optional() });
 export const spaCreateItemDto = createItem;
-const patchItem = editable.partial().extend({ expectedVersion: version });
-const replaceItem = editable.extend({ expectedVersion: version });
+export const patchItem = editable.partial().extend({ expectedVersion: version });
+export const replaceItem = editable.extend({ expectedVersion: version });
 const filters = z.array(z.strictObject({ fieldCode: z.string().max(64), operator: z.enum(['EQ','NEQ','CONTAINS']), value: z.json() })).max(30);
-const itemQuery = pageQuery.extend({ sortBy: z.enum(['title','createdAt','updatedAt','itemNumber']).default('createdAt'),
+export const itemQuery = pageQuery.extend({ sortBy: z.enum(['title','createdAt','updatedAt','itemNumber']).default('createdAt'),
+  pipelineId: uuid.optional(), stageId: uuid.optional(),
   sortOrder: z.enum(['asc','desc']).default('desc'), filters: z.string().max(10000).optional(), status: z.enum(['ACTIVE','COMPLETED','TRASHED']).optional() });
 const empty = (value: unknown) => value === undefined || value === null || value === '' || Array.isArray(value) && value.length === 0;
 
@@ -52,9 +54,7 @@ export class SpaItemService {
     const publication = await tx.spaSchemaVersion.findUnique({ where: { workspaceId_typeId_versionNumber: {
       workspaceId: actor.workspaceId, typeId, versionNumber: type.schemaVersion } } });
     if (!publication) throw new AppError('SPA_SCHEMA_NOT_PUBLISHED', 'Published schema is required.', 422);
-    const workspace = await tx.workspace.findUniqueOrThrow({ where: { id: actor.workspaceId } });
-    const settings = workspace.settings as { entitlements?: { spa?: boolean } };
-    if (settings.entitlements?.spa === false) throw new AppError('SPA_PLAN_LIMIT', 'Smart Processes are unavailable.', 403);
+    await spaEntitlements(tx, actor.workspaceId);
     return { type, snapshot: parse(schemaSnapshot, publication.snapshot) };
   }
   async load(tx: Tx, actor: Principal, typeId: string, itemId: string, permission: string) {
@@ -84,7 +84,7 @@ export class SpaItemService {
     return stage;
   }
   private async validateValues(tx: Tx, actor: Principal, typeId: string, snapshot: SchemaSnapshot,
-    supplied: Record<string, unknown>, current: Map<string, unknown>, replace = false) {
+    supplied: Record<string, unknown>, current: Map<string, unknown>, replace = false, legacyRelationships = false) {
     const byCode = new Map(snapshot.fields.map(f => [f.code, f]));
     for (const key of Object.keys(supplied)) if (!byCode.has(key))
       throw new AppError('SPA_ITEM_VALIDATION_FAILED', 'Unknown field.', 422);
@@ -93,10 +93,20 @@ export class SpaItemService {
     for (const f of snapshot.fields.filter(f => f.fieldType === 'SPA_REF')) {
       const raw = supplied[f.code] ?? current.get(f.code) ?? f.defaultValue;
       for (const id of Array.isArray(raw) ? raw : [raw]) if (typeof id === 'string' && uuid.safeParse(id).success) {
+        if (targets.has(id) && targets.get(id) !== f.referenceTypeId)
+          throw new AppError('SPA_ITEM_VALIDATION_FAILED', 'SPA reference subtype does not match its field.', 422);
         referenceIds.push(id); targets.set(id, f.referenceTypeId!);
       }
     }
-    const references = await spaReferenceContext(tx, actor, this.policies, referenceIds, targets);
+    const userIds: string[] = [];
+    for (const f of snapshot.fields.filter(f => f.fieldType === 'USER')) {
+      const raw = supplied[f.code] ?? current.get(f.code) ?? f.defaultValue;
+      for (const id of Array.isArray(raw) ? raw : [raw]) if (typeof id === 'string' && uuid.safeParse(id).success) userIds.push(id);
+    }
+    const legacy = legacyRelationships || snapshot.fields.some(f => ['CRM_REF', 'FILE'].includes(f.fieldType) &&
+      !empty(supplied[f.code] ?? current.get(f.code) ?? f.defaultValue));
+    const references = legacy ? await spaReferenceContext(tx, actor, this.policies, referenceIds, targets)
+      : await spaValueReferenceContext(tx, actor, this.policies, [...new Set(userIds)], referenceIds, targets);
     const result = new Map<string, unknown>(current);
     for (const field of snapshot.fields) {
       const access = await this.policies.fieldAccess(tx, actor, typeId, field.id);
@@ -153,13 +163,45 @@ export class SpaItemService {
     }));
   }
   private async projection(tx: Tx, actor: Principal, item: SpaItem, snapshot: SchemaSnapshot) {
-    const current = await this.currentValues(tx, actor, item.id, snapshot);
-    const fieldValues: Record<string, unknown> = {};
-    for (const field of snapshot.fields) if ((await this.policies.fieldAccess(tx, actor, item.typeId, field.id)).canView && current.has(field.code))
-      fieldValues[field.code] = current.get(field.code);
-    const contacts = await tx.spaItemContact.findMany({ where: { workspaceId: actor.workspaceId, itemId: item.id } });
-    const observers = await tx.spaItemObserver.findMany({ where: { workspaceId: actor.workspaceId, itemId: item.id } });
-    return { ...item, fieldValues, contacts: contacts.map(c => c.contactId), observers: observers.map(o => o.userId) };
+    return (await this.projections(tx, actor, [item], snapshot))[0];
+  }
+  private async projections(tx: Tx, actor: Principal, items: SpaItem[], snapshot: SchemaSnapshot) {
+    if (!items.length) return [];
+    const where = { workspaceId: actor.workspaceId, itemId: { in: items.map(i => i.id) } };
+    const [values, contacts, observers, rules] = await Promise.all([
+      tx.spaItemValue.findMany({ where }), tx.spaItemContact.findMany({ where }), tx.spaItemObserver.findMany({ where }),
+      tx.spaFieldPolicy.findMany({ where: { workspaceId: actor.workspaceId, typeId: items[0].typeId,
+        OR: [{ subjectType: 'ROLE', subjectId: actor.roleId }, { subjectType: 'USER', subjectId: actor.userId }] } }),
+    ]);
+    const fields = new Map(snapshot.fields.filter(f => rules.filter(r => r.fieldId === f.id).every(r => r.canView)).map(f => [f.id, f]));
+    const grouped = new Map<string, Record<string, unknown>>();
+    for (const value of values) {
+      const field = fields.get(value.fieldId); if (!field) continue;
+      const values = grouped.get(value.itemId) ?? {}; values[field.code] = storedValue(value, field); grouped.set(value.itemId, values);
+    }
+    const referenceFields = [...fields.values()].filter(f => ['SPA_REF', 'CRM_REF', 'FILE'].includes(f.fieldType));
+    const spaIds: string[] = [], targets = new Map<string, string>();
+    for (const field of referenceFields.filter(f => f.fieldType === 'SPA_REF')) for (const current of grouped.values()) {
+      const raw = current[field.code]; for (const id of Array.isArray(raw) ? raw : [raw]) if (typeof id === 'string') { spaIds.push(id); targets.set(id, field.referenceTypeId!); }
+    }
+    const legacy = items.some(i => i.companyId) || contacts.length > 0 || referenceFields.some(f => f.fieldType !== 'SPA_REF' &&
+      [...grouped.values()].some(v => !empty(v[f.code])));
+    const references = legacy ? await spaReferenceContext(tx, actor, this.policies, spaIds, targets)
+      : spaIds.length ? await spaValueReferenceContext(tx, actor, this.policies, [], spaIds, targets) : null;
+    return items.map(item => {
+      const fieldValues = grouped.get(item.id) ?? {};
+      if (references) for (const field of referenceFields) {
+        const raw = fieldValues[field.code]; if (empty(raw)) continue;
+        const accessible = (value: any) => field.fieldType === 'FILE' ? references.checkFile(value) === 'OK'
+          : field.fieldType === 'SPA_REF' ? references.checkCrmReference('SPA_ITEM', value) === 'OK'
+          : references.checkCrmReference(value.entityType, value.entityId) === 'OK';
+        if (Array.isArray(raw)) fieldValues[field.code] = raw.filter(accessible);
+        else if (!accessible(raw)) delete fieldValues[field.code];
+      }
+      return { ...item, companyId: item.companyId && references?.checkCrmReference('COMPANY', item.companyId) !== 'OK' ? null : item.companyId,
+        fieldValues, contacts: contacts.filter(c => c.itemId === item.id && references?.checkCrmReference('CONTACT', c.contactId) === 'OK').map(c => c.contactId),
+        observers: observers.filter(o => o.itemId === item.id).map(o => o.userId) };
+    });
   }
   private async history(tx: Tx, actor: Principal, item: SpaItem, action: string, changes: Prisma.InputJsonObject) {
     await tx.spaHistory.create({ data: { workspaceId: actor.workspaceId, typeId: item.typeId, itemId: item.id,
@@ -175,7 +217,7 @@ export class SpaItemService {
     if (input.assignedUserId !== actor.userId) requirePermission(actor, 'SPA.ITEM.ASSIGN');
     const stage = await this.stage(tx, actor, typeId, input.pipelineId, input.stageId);
     if (stage?.semantic !== 'PROGRESS' && stage) throw new AppError('SPA_INVALID_TRANSITION', 'Template initial Stage must be a progress Stage.', 422);
-    const prepared = await this.validateValues(tx, actor, typeId, snapshot, input.fieldValues, new Map());
+    const prepared = await this.validateValues(tx, actor, typeId, snapshot, input.fieldValues, new Map(), false, !!input.companyId || !!input.contacts?.length);
     if (input.companyId && prepared.references.checkCrmReference('COMPANY', input.companyId) !== 'OK' ||
       input.contacts?.some(id => prepared.references.checkCrmReference('CONTACT', id) !== 'OK'))
       throw new AppError('SPA_ITEM_VALIDATION_FAILED', 'CRM relationship is inaccessible.', 422);
@@ -195,7 +237,7 @@ export class SpaItemService {
         if (input.assignedUserId !== actor.userId) requirePermission(actor, 'SPA.ITEM.ASSIGN');
         const stage = await this.stage(tx, actor, typeId, input.pipelineId, input.stageId);
         if (stage && stage.semantic !== 'PROGRESS') throw new AppError('SPA_INVALID_TRANSITION', 'Create at a progress Stage, then transition.', 422);
-        const prepared = await this.validateValues(tx, actor, typeId, snapshot, input.fieldValues, new Map());
+        const prepared = await this.validateValues(tx, actor, typeId, snapshot, input.fieldValues, new Map(), false, !!input.companyId || !!input.contacts?.length);
         if (input.companyId && prepared.references.checkCrmReference('COMPANY', input.companyId) !== 'OK' ||
           input.contacts?.some(id => prepared.references.checkCrmReference('CONTACT', id) !== 'OK'))
           throw new AppError('SPA_ITEM_VALIDATION_FAILED', 'CRM relationship is inaccessible.', 422);
@@ -236,7 +278,7 @@ export class SpaItemService {
         await this.policies.assertItem(tx, actor, item, 'SPA.ITEM.ASSIGN'); await this.assignment(tx, actor, input.assignedUserId);
       }
       const current = await this.currentValues(tx, actor, itemId, snapshot);
-      const prepared = await this.validateValues(tx, actor, typeId, snapshot, input.fieldValues ?? {}, current, replace);
+      const prepared = await this.validateValues(tx, actor, typeId, snapshot, input.fieldValues ?? {}, current, replace, !!input.companyId || !!input.contacts?.length);
       if (input.companyId && prepared.references.checkCrmReference('COMPANY', input.companyId) !== 'OK' ||
         input.contacts?.some(id => prepared.references.checkCrmReference('CONTACT', id) !== 'OK'))
         throw new AppError('SPA_ITEM_VALIDATION_FAILED', 'CRM relationship is inaccessible.', 422);
@@ -253,6 +295,9 @@ export class SpaItemService {
       return this.projection(tx, actor, result, snapshot);
   }
   async list(actor: Principal, typeId: string, raw: unknown) {
+    return this.db.$transaction(tx => this.listInTransaction(tx, actor, typeId, raw), { timeout: 30000 });
+  }
+  private async listInTransaction(tx: Tx, actor: Principal, typeId: string, raw: unknown) {
     requirePermission(actor, 'SPA.ITEM.READ');
     const query = parse(itemQuery, raw);
     let selectedFilters: z.infer<typeof filters> = [];
@@ -261,35 +306,48 @@ export class SpaItemService {
       try { decoded = JSON.parse(query.filters); } catch { throw new AppError('INVALID_ARGUMENT', 'Filters must be valid JSON.', 400); }
       selectedFilters = parse(filters, decoded);
     }
-    return this.db.$transaction(async tx => {
+    return (async () => {
       const { snapshot } = await this.type(tx, actor, typeId);
       for (const filter of selectedFilters) {
-        const field = snapshot.fields.find(f => f.code === filter.fieldCode && f.isSearchable);
+        const field = snapshot.fields.find(f => f.code === filter.fieldCode && f.isActive && f.isSearchable);
         if (!field || !(await this.policies.fieldAccess(tx, actor, typeId, field.id)).canView)
           throw new AppError('SPA_FIELD_PERMISSION_DENIED', 'Filter field is unavailable.', 403);
       }
-      const rows = await tx.spaItem.findMany({ where: { workspaceId: actor.workspaceId, typeId,
-        status: query.status ?? { not: 'TRASHED' }, ...(query.search ? { title: { contains: query.search, mode: 'insensitive' } } : {}) },
-        orderBy: [{ [query.sortBy]: query.sortOrder }, { id: 'asc' }] });
-      const eligible: SpaItem[] = [];
-      for (const item of rows) {
-        if (!await this.policies.allowed(tx, actor, item, 'SPA.ITEM.READ')) continue;
-        if (selectedFilters.length) {
-          const current = await this.currentValues(tx, actor, item.id, snapshot);
+      const where: Prisma.SpaItemWhereInput = { AND: [await this.policies.itemWhere(tx, actor, typeId, 'SPA.ITEM.READ')], workspaceId: actor.workspaceId, typeId,
+        ...(query.pipelineId ? { pipelineId: query.pipelineId } : {}), ...(query.stageId ? { stageId: query.stageId } : {}),
+        status: query.status ?? { not: 'TRASHED' }, ...(query.search ? { title: { contains: query.search, mode: 'insensitive' } } : {}) };
+      if (!selectedFilters.length) {
+        const rows = await tx.spaItem.findMany({ where, orderBy: [{ [query.sortBy]: query.sortOrder }, { id: 'asc' }],
+          skip: (query.page - 1) * query.limit, take: query.limit });
+        const total = await tx.spaItem.count({ where });
+        return { data: await this.projections(tx, actor, rows, snapshot),
+          meta: { page: query.page, limit: query.limit, total, totalPages: Math.ceil(total / query.limit) } };
+      }
+      // Typed JSON filters scan bounded chunks; only the requested page is retained in memory.
+      const page: SpaItem[] = [];
+      let total = 0;
+      for (let offset = 0; ; offset += 250) {
+        const rows = await tx.spaItem.findMany({ where, orderBy: [{ [query.sortBy]: query.sortOrder }, { id: 'asc' }], skip: offset, take: 250 });
+        const values = await tx.spaItemValue.findMany({ where: { workspaceId: actor.workspaceId,
+          itemId: { in: rows.map(i => i.id) }, fieldId: { in: snapshot.fields.filter(f => selectedFilters.some(s => s.fieldCode === f.code)).map(f => f.id) } } });
+        for (const item of rows) {
+          const current = new Map(values.filter(v => v.itemId === item.id).map(v => {
+            const field = snapshot.fields.find(f => f.id === v.fieldId)!;
+            return [field.code, storedValue(v, field)];
+          }));
           if (!selectedFilters.every(filter => {
             const value = current.get(filter.fieldCode) ?? null;
             const same = canonical(value) === canonical(filter.value);
             return filter.operator === 'EQ' ? same : filter.operator === 'NEQ' ? !same
               : typeof value === 'string' && typeof filter.value === 'string' && value.toLowerCase().includes(filter.value.toLowerCase());
           })) continue;
+          if (total >= (query.page - 1) * query.limit && page.length < query.limit) page.push(item);
+          total++;
         }
-        eligible.push(item);
+        if (rows.length < 250) break;
       }
-      const data = [];
-      for (const item of eligible.slice((query.page - 1) * query.limit, query.page * query.limit))
-        data.push(await this.projection(tx, actor, item, snapshot));
-      return { data, meta: { page: query.page, limit: query.limit, total: eligible.length, totalPages: Math.ceil(eligible.length / query.limit) } };
-    }, { timeout: 30000 });
+      return { data: await this.projections(tx, actor, page, snapshot), meta: { page: query.page, limit: query.limit, total, totalPages: Math.ceil(total / query.limit) } };
+    })();
   }
   async assign(actor: Principal, typeId: string, itemId: string, raw: unknown) {
     requirePermission(actor, 'SPA.ITEM.ASSIGN');
@@ -329,6 +387,11 @@ export class SpaItemService {
       }
       return { userId, observing: !remove };
     });
+  }
+  async removeObserver(actor: Principal, typeId: string, itemId: string, userId: string, raw: unknown) {
+    requirePermission(actor, 'SPA.ITEM.MANAGE_OBSERVERS');
+    parse(z.strictObject({}), raw);
+    return this.observer(actor, typeId, itemId, { userId }, true);
   }
   async lifecycle(actor: Principal, typeId: string, itemId: string, raw: unknown, restore = false) {
     const permission = restore ? 'SPA.ITEM.RESTORE' : 'SPA.ITEM.DELETE';
@@ -380,11 +443,19 @@ export class SpaItemService {
   async permissionsMe(actor: Principal, typeId: string, itemId: string) {
     requirePermission(actor, 'SPA.ITEM.READ');
     return this.db.$transaction(async tx => {
-      const { snapshot } = await this.type(tx, actor, typeId);
+      const { type, snapshot } = await this.type(tx, actor, typeId);
       const item = await this.load(tx, actor, typeId, itemId, 'SPA.ITEM.READ');
       const actions: string[] = [];
       for (const action of actor.grants.keys()) if (action.startsWith('SPA.ITEM.') && await this.policies.allowed(tx, actor, item, action))
         actions.push(action);
+      if (type.status !== 'ACTIVE') actions.splice(0, actions.length, ...actions.filter(a => ['SPA.ITEM.READ', 'SPA.ITEM.EXPORT'].includes(a)));
+      const transitions = [];
+      if (actions.includes('SPA.ITEM.STAGE_CHANGE')) {
+        const pipelines = await tx.spaPipeline.findMany({ where: { workspaceId: actor.workspaceId, typeId, status: 'ACTIVE' }, select: { id: true } });
+        const stages = await tx.spaStage.findMany({ where: { workspaceId: actor.workspaceId, pipelineId: { in: pipelines.map(p => p.id) }, status: 'ACTIVE' } });
+        for (const stage of stages) if (await this.policies.allowed(tx, actor, { ...item, pipelineId: stage.pipelineId, stageId: stage.id }, 'SPA.ITEM.STAGE_CHANGE'))
+          transitions.push({ pipelineId: stage.pipelineId, stageId: stage.id });
+      }
       const visibleFields: string[] = [], editableFields: string[] = [];
       for (const field of snapshot.fields) {
         const access = await this.policies.fieldAccess(tx, actor, typeId, field.id);
@@ -392,7 +463,7 @@ export class SpaItemService {
         if (access.canEdit && field.isActive && item.status !== 'TRASHED' && actions.includes('SPA.ITEM.UPDATE')) editableFields.push(field.code);
       }
       return { actions: item.status === 'TRASHED' ? actions.filter(a => ['SPA.ITEM.READ','SPA.ITEM.RESTORE'].includes(a)) : actions,
-        visibleFields, editableFields };
+        visibleFields, editableFields, transitions: item.status === 'TRASHED' ? [] : transitions };
     });
   }
   async transition(actor: Principal, typeId: string, itemId: string, raw: unknown) {
@@ -452,7 +523,8 @@ export class SpaItemService {
   }
   async kanban(actor: Principal, typeId: string, raw: unknown) {
     requirePermission(actor, 'SPA.ITEM.READ');
-    const query = parse(z.strictObject({ pipelineId: uuid }), raw);
+    const query = parse(z.strictObject({ pipelineId: uuid, page: z.coerce.number().int().min(1).default(1),
+      limit: z.coerce.number().int().min(1).max(100).default(20), search: z.string().max(160).optional(), filters: z.string().max(10000).optional() }), raw);
     return this.db.$transaction(async tx => {
       const { snapshot } = await this.type(tx, actor, typeId);
       if (!await tx.spaCapability.findFirst({ where: { workspaceId: actor.workspaceId, typeId, key: 'KANBAN', enabled: true } }))
@@ -461,19 +533,16 @@ export class SpaItemService {
         throw new AppError('SPA_PIPELINE_NOT_FOUND', 'Pipeline was not found.', 404);
       const stages = await tx.spaStage.findMany({ where: { workspaceId: actor.workspaceId, pipelineId: query.pipelineId, status: 'ACTIVE' },
         orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] });
-      const items = await tx.spaItem.findMany({ where: { workspaceId: actor.workspaceId, typeId, pipelineId: query.pipelineId, status: { not: 'TRASHED' } },
-        orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }] });
       const columns = [];
       for (const stage of stages) {
         const stagePolicy = await tx.spaStagePolicy.findFirst({ where: { workspaceId: actor.workspaceId, typeId,
           stageId: stage.id, roleId: actor.roleId, action: 'SPA.ITEM.READ' } });
         if (stagePolicy?.scope === 'NONE') continue;
-        const data = [];
-        for (const item of items.filter(i => i.stageId === stage.id)) if (await this.policies.allowed(tx, actor, item, 'SPA.ITEM.READ'))
-          data.push(await this.projection(tx, actor, item, snapshot));
-        columns.push({ stage, items: data, count: data.length });
+        const page = await this.listInTransaction(tx, actor, typeId, { ...query, stageId: stage.id, sortBy: 'updatedAt' });
+        columns.push({ stage, items: page.data, count: page.meta.total, meta: page.meta });
       }
       return { pipelineId: query.pipelineId, columns };
     }, { timeout: 30000 });
   }
 }
+
