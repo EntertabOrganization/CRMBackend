@@ -26,22 +26,26 @@ export class NotificationService implements NotificationPort {
     const channel = input.channel ?? 'IN_APP', notificationType = input.notificationType ?? 'GENERAL';
     // A disabled channel is suppressed; an enabled unconfigured provider remains retryable.
     if (channel !== 'IN_APP') throw new AdapterUnavailableError(`${channel} notification delivery is not configured.`);
-    return this.db.$transaction(async (tx) => {
-      const ids: string[] = [];
-      for (const recipientUserId of [...new Set(input.recipientUserIds)].sort()) {
-        if (input.signal?.aborted) throw new AdapterUnavailableError('Notification delivery aborted.');
-        // Serialize preference changes and membership revocation with the final delivery check.
-        await tx.$queryRaw`SELECT id FROM workspace_memberships WHERE workspace_id = CAST(${input.workspaceId} AS uuid)
-          AND user_id = CAST(${recipientUserId} AS uuid) FOR UPDATE`;
-        if (!await this.allowed(tx, { workspaceId: input.workspaceId, recipientUserId, channel, notificationType })) continue;
-        const row = await tx.userNotification.upsert({ where: { workspaceId_recipientUserId_idempotencyKey: {
-          workspaceId: input.workspaceId, recipientUserId, idempotencyKey: input.idempotencyKey } }, update: {},
-          create: { workspaceId: input.workspaceId, recipientUserId, notificationType, title: input.title,
-            message: input.message, link: input.link ?? null, idempotencyKey: input.idempotencyKey } });
-        ids.push(row.id);
-      }
-      return { reference: ids.join(',') || null };
-    });
+    return this.db.$transaction(tx => this.deliverInTransaction(tx, { ...input, channel, notificationType }));
+  }
+  /** In-app delivery inside the caller's domain transaction, so the inbox item commits or rolls back with its business effect. */
+  async deliverInTransaction(tx: Prisma.TransactionClient, input: NotificationInput) {
+    const channel = input.channel ?? 'IN_APP', notificationType = input.notificationType ?? 'GENERAL';
+    if (channel !== 'IN_APP') throw new AdapterUnavailableError(`${channel} notification delivery is not configured.`);
+    const ids: string[] = [];
+    for (const recipientUserId of [...new Set(input.recipientUserIds)].sort()) {
+      if (input.signal?.aborted) throw new AdapterUnavailableError('Notification delivery aborted.');
+      // Serialize preference changes and membership revocation with the final delivery check.
+      await tx.$queryRaw`SELECT id FROM workspace_memberships WHERE workspace_id = CAST(${input.workspaceId} AS uuid)
+        AND user_id = CAST(${recipientUserId} AS uuid) FOR UPDATE`;
+      if (!await this.allowed(tx, { workspaceId: input.workspaceId, recipientUserId, channel, notificationType })) continue;
+      const row = await tx.userNotification.upsert({ where: { workspaceId_recipientUserId_idempotencyKey: {
+        workspaceId: input.workspaceId, recipientUserId, idempotencyKey: input.idempotencyKey } }, update: {},
+        create: { workspaceId: input.workspaceId, recipientUserId, notificationType, title: input.title,
+          message: input.message, link: input.link ?? null, idempotencyKey: input.idempotencyKey } });
+      ids.push(row.id);
+    }
+    return { reference: ids.join(',') || null };
   }
   async list(actor: ActorContext, query: URLSearchParams) {
     const body = new Body(Object.fromEntries(query)); body.only(['page', 'limit']);

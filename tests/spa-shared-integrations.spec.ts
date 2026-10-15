@@ -103,5 +103,39 @@ describe('SPA shared owner registrations and current authority', () => {
     expect((await f.items.kanban(m.actor, f.type.id, { pipelineId: p.p.id, limit: 1 })).columns.flatMap(c => c.items)).toEqual([]);
     expect(await database().spaItem.findUnique({ where: { id: own.id } })).toBeDefined();
   });
+  it('reassignment notifies the new assignee atomically, once, without field values and honoring preferences', async () => {
+    const db = database(), f = await contractFixture(db), item = await f.create('Private value'), m = await f.member(), n = await f.member();
+    const assigned = await f.items.assign(f.actor, f.type.id, item.id, { expectedVersion: item.version, responsibleUserId: m.user.id });
+    const inbox = await db.userNotification.findMany({ where: { workspaceId: f.workspace.id, recipientUserId: m.user.id } });
+    expect(inbox).toHaveLength(1);
+    expect(inbox[0]).toMatchObject({ notificationType: 'SPA_ITEM_ASSIGNED', link: '/spa/types/' + f.type.id + '/items/' + item.id });
+    expect(JSON.stringify(inbox[0])).not.toContain('Private value');
+    await expect(f.items.assign(f.actor, f.type.id, item.id, { expectedVersion: item.version, responsibleUserId: n.user.id })).rejects.toMatchObject({ status: 409 });
+    expect(await db.userNotification.count({ where: { workspaceId: f.workspace.id, recipientUserId: n.user.id } })).toBe(0);
+    await db.notificationPreference.create({ data: { workspaceId: f.workspace.id, userId: n.user.id, notificationType: 'SPA_ITEM_ASSIGNED', channel: 'IN_APP', enabled: false } });
+    const patched = await f.items.update(f.actor, f.type.id, item.id, { expectedVersion: assigned.version, assignedUserId: n.user.id });
+    expect(patched.assignedUserId).toBe(n.user.id);
+    expect(await db.userNotification.count({ where: { workspaceId: f.workspace.id, recipientUserId: n.user.id } })).toBe(0);
+    expect(await db.spaHistory.count({ where: { itemId: item.id, action: 'SPA_ITEM_ASSIGNED' } })).toBe(2);
+    expect(await db.outboxEvent.count({ where: { entityId: item.id, eventType: 'SPA_ITEM_ASSIGNED' } })).toBe(2);
+    await f.items.assign(f.actor, f.type.id, item.id, { expectedVersion: patched.version, responsibleUserId: f.user.id });
+    expect(await db.userNotification.count({ where: { workspaceId: f.workspace.id, recipientUserId: f.user.id } })).toBe(0);
+  });
+  it('plan-disabled SPA or capability denies only SPA-bound shared resources without failing the request', async () => {
+    const f = await sharedFixture();
+    expect(f.registry.allowed(f.actor, f.item.id, true, 'TASKS')).toBe(true);
+    const grant = (capability: string, enabled: boolean) => f.db.commercialPackRecord.create({ data: { id: randomUUID(), workspaceId: f.workspace.id,
+      collection: 'entitlementGrants', data: { workspaceId: f.workspace.id, capability, enabled, limit: null } } });
+    await grant('spa.capability.TASKS', false);
+    await f.registry.prepare(f.context, f.request, f.user.id, f.workspace.id);
+    expect(f.registry.allowed(f.actor, f.item.id, true, 'TASKS')).toBe(false);
+    expect(f.registry.allowed(f.actor, f.item.id, true, 'CALENDAR')).toBe(true);
+    await grant('spa.enabled', false);
+    await expect(f.registry.prepare(f.context, f.request, f.user.id, f.workspace.id)).resolves.toBeUndefined();
+    expect(f.registry.find(f.workspace.id, f.item.id)).toBeDefined();
+    expect(f.registry.allowed(f.actor, f.item.id)).toBe(false);
+    expect(() => f.context.collab.attachments.authorizeEntity(f.actor, 'SPA_ITEM', f.item.id)).toThrow();
+    expect(f.context.access.canAccessCrmRecord(f.actor, 'SPA_ITEM', f.item.id, 'read')).toBe(false);
+  });
 });
 

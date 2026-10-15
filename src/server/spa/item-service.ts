@@ -11,6 +11,7 @@ import { spaReferenceContext, spaValueReferenceContext } from './reference-adapt
 import { evaluateConditionTree, validateConditionTree, type OperandDescriptor } from '../automation/conditions';
 import type { ConditionNode } from '../automation/types';
 import { spaEntitlements } from './entitlements';
+import { NotificationService } from '../notifications/service';
 
 const values = z.record(z.string().max(64), z.json());
 const editable = z.strictObject({ title: name, assignedUserId: uuid, companyId: uuid.nullable().optional(),
@@ -208,6 +209,15 @@ export class SpaItemService {
       actorUserId: actor.userId, action, changes } });
     await evidence(tx, actor, 'SPA_ITEM', item.id, action, changes);
   }
+  /** Assignment evidence and the assignee's in-app notification commit with the reassignment. Field values are never copied. */
+  private async assigned(tx: Tx, actor: Principal, previousUserId: string, item: SpaItem) {
+    await this.history(tx, actor, item, 'SPA_ITEM_ASSIGNED', { previousUserId, assignedUserId: item.assignedUserId, version: item.version });
+    if (item.assignedUserId === actor.userId) return;
+    await new NotificationService(this.db).deliverInTransaction(tx, { workspaceId: actor.workspaceId, actorUserId: actor.userId,
+      recipientUserIds: [item.assignedUserId], notificationType: 'SPA_ITEM_ASSIGNED', title: 'Smart Process Item assigned',
+      message: 'You are now responsible for Item ' + item.itemNumber + '.', link: '/spa/types/' + item.typeId + '/items/' + item.id,
+      idempotencyKey: 'spa-item-assigned:' + item.id + ':' + item.version });
+  }
   async validateTemplate(tx: Tx, actor: Principal, typeId: string, raw: unknown) {
     requirePermission(actor, 'SPA.ITEM.CREATE');
     const input = parse(createItem, raw);
@@ -292,6 +302,7 @@ export class SpaItemService {
       }
       await this.history(tx, actor, result, 'SPA_ITEM_UPDATED', { version: result.version,
         changedFieldIds: snapshot.fields.filter(f => Object.keys(input.fieldValues ?? {}).includes(f.code)).map(f => f.id) });
+      if (result.assignedUserId !== item.assignedUserId) await this.assigned(tx, actor, item.assignedUserId, result);
       return this.projection(tx, actor, result, snapshot);
   }
   async list(actor: Principal, typeId: string, raw: unknown) {
@@ -361,8 +372,7 @@ export class SpaItemService {
       await this.assignment(tx, actor, input.responsibleUserId);
       const result = await tx.spaItem.update({ where: { id: item.id }, data: { assignedUserId: input.responsibleUserId,
         version: { increment: 1 }, updatedByUserId: actor.userId } });
-      await this.history(tx, actor, result, 'SPA_ITEM_ASSIGNED', { previousUserId: item.assignedUserId, assignedUserId: result.assignedUserId,
-        version: result.version });
+      await this.assigned(tx, actor, item.assignedUserId, result);
       return this.projection(tx, actor, result, snapshot);
     });
   }

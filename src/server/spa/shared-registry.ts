@@ -10,6 +10,7 @@ import { AppError } from '../errors';
 import { resolvePrincipal } from '../process-platform/context';
 import { SpaItemService } from './item-service';
 import type { TemplateValue } from '../collab/files/document-render';
+import { spaEntitlements } from './entitlements';
 type SharedOwners = { access: AccessService; collab: CollaborationModule; timeline: TimelineService; catalog: CatalogModule; store: InMemoryStore };
 
 /** Request-local authority over SQL-owned Items, used by the existing synchronous shared owners. */
@@ -80,16 +81,24 @@ export class SpaSharedRegistry {
     for (const row of context.store.state.calendarEventBindings) if (row.workspaceId === workspaceId && row.entityType === 'SPA_ITEM') ids.add(row.entityId);
     if (!ids.size) return;
     await this.db.$transaction(async tx => {
-      const actor = await resolvePrincipal(tx, workspaceId, userId), owner = new SpaItemService(this.db);
+      // A disabled plan denies only SPA-bound shared resources; it must not fail unrelated CRM requests.
+      const limits = await spaEntitlements(tx, workspaceId, false);
       const rows = await tx.spaItem.findMany({ where: { workspaceId, id: { in: [...ids] } } });
-      const flags = await tx.spaCapability.findMany({ where: { workspaceId, typeId: { in: [...new Set(rows.map(r => r.typeId))] }, enabled: true } });
-      for (const flag of flags) { const set = this.capabilities.get(flag.typeId) ?? new Set<string>(); set.add(flag.key); this.capabilities.set(flag.typeId, set); }
+      for (const item of rows) this.records.set(item.id, item);
+      if (limits.spa === false || !rows.length) return;
+      const actor = await resolvePrincipal(tx, workspaceId, userId), owner = new SpaItemService(this.db);
+      const typeIds = [...new Set(rows.map(r => r.typeId))];
+      const flags = await tx.spaCapability.findMany({ where: { workspaceId, typeId: { in: typeIds }, enabled: true } });
+      for (const flag of flags) {
+        if (limits['capability.' + flag.key] === false) continue;
+        const set = this.capabilities.get(flag.typeId) ?? new Set<string>(); set.add(flag.key); this.capabilities.set(flag.typeId, set);
+      }
+      const active = new Set((await tx.spaEntityType.findMany({ where: { workspaceId, id: { in: typeIds }, status: 'ACTIVE', deletedAt: null },
+        select: { id: true } })).map(t => t.id));
       for (const item of rows) {
-        this.records.set(item.id, item);
         if (item.status === 'TRASHED' || !await owner.policies.allowed(tx, actor, item, 'SPA.ITEM.READ')) continue;
         this.readable.set(item.id, await owner.readInTransaction(tx, actor, item.typeId, item.id));
-        if (item.status !== 'TRASHED' && await owner.policies.allowed(tx, actor, item, 'SPA.ITEM.UPDATE') &&
-          await tx.spaEntityType.count({ where: { workspaceId, id: item.typeId, status: 'ACTIVE', deletedAt: null } })) this.editable.add(item.id);
+        if (active.has(item.typeId) && await owner.policies.allowed(tx, actor, item, 'SPA.ITEM.UPDATE')) this.editable.add(item.id);
       }
     }, { timeout: 30000 });
   }
