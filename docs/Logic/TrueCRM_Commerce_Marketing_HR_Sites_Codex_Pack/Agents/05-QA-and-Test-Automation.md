@@ -1,0 +1,3 @@
+# QA Agent — contract verification
+
+Read `../Agent.md`, `Testing/README.md`, `Testing/_harness/*`, module specs and acceptance criteria. Wire every fail-closed TypeScript contract to actual repository services with seeded 2-workspace data and genuine state/outbox/audit verification. Do not alter a spec assertion to match a bug. Test negative privileges, customer realm separation, payments after reservation expiry, duplicate provider event, consent at send time, double leave booking, timezone/DST, immutable published revisions and graceful missing dependency. Enforce test results by exact commands and green builds; run full regression. Flag external provider manual smoke separately.

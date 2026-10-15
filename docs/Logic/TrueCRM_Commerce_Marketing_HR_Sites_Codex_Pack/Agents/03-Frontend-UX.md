@@ -1,0 +1,3 @@
+# Frontend Agent — Next.js
+
+Read `../Agent.md`, target module specs and `Shared-Contracts/09-ui-accessibility-and-frontend.md`. Inspect current routing, component system, session/workspace switching and frontend data layer. Implement admin and public/customer screens, permission-aware affordances but no frontend-only security, field/server validation feedback, optimistic rollback, data fetching and safe cache segmentation by workspace/customer. Public site render uses published release only. Mobile guest checkout and localized/RTL sites must be responsive. Accessible keyboard form controls, loading, empty, unauthorized, delayed and failure states. No merchant secrets or HR private data in SSR/HTML payloads.

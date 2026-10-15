@@ -1,0 +1,717 @@
+{
+  "name": "TrueCRM_Commerce_Marketing_HR_Sites_Codex_Pack",
+  "formatVersion": "1.0",
+  "entrypoint": "Agent.md",
+  "status": "APPROVED_SPECIFICATION_NOT_APPLICATION",
+  "approvedDecisions": 76,
+  "functionalModules": [
+    {
+      "name": "OnlineStore-Commerce",
+      "specificationFiles": [
+        "OnlineStore-Commerce/01-store-administration.md",
+        "OnlineStore-Commerce/02-product-publication-and-pricing.md",
+        "OnlineStore-Commerce/03-customer-identities-and-portal.md",
+        "OnlineStore-Commerce/04-carts-and-checkout.md",
+        "OnlineStore-Commerce/05-orders-and-amendments.md",
+        "OnlineStore-Commerce/06-payments-and-reconciliation.md",
+        "OnlineStore-Commerce/07-inventory-reservations.md",
+        "OnlineStore-Commerce/08-shipping-and-fulfillment.md",
+        "OnlineStore-Commerce/09-returns-and-refunds.md",
+        "OnlineStore-Commerce/10-promotions-taxes-and-delivery.md",
+        "OnlineStore-Commerce/11-crm-sales-links.md",
+        "OnlineStore-Commerce/12-commerce-reports-and-lifecycle.md",
+        "OnlineStore-Commerce/13-digital-goods-and-service-fulfillment.md"
+      ],
+      "readme": "OnlineStore-Commerce/README.md"
+    },
+    {
+      "name": "Marketing-Campaigns",
+      "specificationFiles": [
+        "Marketing-Campaigns/01-segments-and-audiences.md",
+        "Marketing-Campaigns/02-audience-imports.md",
+        "Marketing-Campaigns/03-consent-and-suppression.md",
+        "Marketing-Campaigns/04-sender-and-provider-config.md",
+        "Marketing-Campaigns/05-templates-and-content.md",
+        "Marketing-Campaigns/06-campaigns-and-approvals.md",
+        "Marketing-Campaigns/07-delivery-jobs-and-retries.md",
+        "Marketing-Campaigns/08-engagement-and-conversions.md",
+        "Marketing-Campaigns/09-experiments-and-journeys.md",
+        "Marketing-Campaigns/10-ad-platforms-and-repeat-sales.md"
+      ],
+      "readme": "Marketing-Campaigns/README.md"
+    },
+    {
+      "name": "HR-TimeTracking",
+      "specificationFiles": [
+        "HR-TimeTracking/01-employee-profiles.md",
+        "HR-TimeTracking/02-work-schedules-and-shifts.md",
+        "HR-TimeTracking/03-clock-and-breaks.md",
+        "HR-TimeTracking/04-attendance-and-corrections.md",
+        "HR-TimeTracking/05-timesheets.md",
+        "HR-TimeTracking/06-overtime-policy.md",
+        "HR-TimeTracking/07-leave-types-balances.md",
+        "HR-TimeTracking/08-leave-requests-and-approvals.md",
+        "HR-TimeTracking/09-work-reports.md",
+        "HR-TimeTracking/10-onboarding-offboarding-and-docs.md",
+        "HR-TimeTracking/11-hr-security-retention-and-analytics.md"
+      ],
+      "readme": "HR-TimeTracking/README.md"
+    },
+    {
+      "name": "Sites-LandingPages",
+      "specificationFiles": [
+        "Sites-LandingPages/01-sites-hosting-and-domains.md",
+        "Sites-LandingPages/02-pages-navigation-and-cms.md",
+        "Sites-LandingPages/03-editor-blocks-and-themes.md",
+        "Sites-LandingPages/04-drafts-preview-and-publication.md",
+        "Sites-LandingPages/05-localization-and-rtl.md",
+        "Sites-LandingPages/06-seo-search-and-performance.md",
+        "Sites-LandingPages/07-form-commerce-and-widget-blocks.md",
+        "Sites-LandingPages/08-cookies-scripts-and-security.md",
+        "Sites-LandingPages/09-ab-experiments.md",
+        "Sites-LandingPages/10-ai-generation-and-templates.md",
+        "Sites-LandingPages/11-recovery-exports-and-entitlements.md"
+      ],
+      "readme": "Sites-LandingPages/README.md"
+    }
+  ],
+  "testStrategy": "fail-closed executable TypeScript/Jest contract suites requiring repository adapter",
+  "fileCountExcludingManifest": 127,
+  "files": [
+    {
+      "path": "Agent.md",
+      "bytes": 9341,
+      "sha256": "bfbfd72096a0a957b58b41cef29584aff489ada38b31fd1471583142bc3dbe04"
+    },
+    {
+      "path": "Agents/01-Orchestrator.md",
+      "bytes": 757,
+      "sha256": "0a69c9b48b95ada7a56c51a80ba4a4a21ea73d48e48e449661fb382bb19bc045"
+    },
+    {
+      "path": "Agents/02-Backend-Domain.md",
+      "bytes": 753,
+      "sha256": "5a2ab95b06094268d891d4b60c22bee0a2ed293921f53b8e633a1b271d881262"
+    },
+    {
+      "path": "Agents/03-Frontend-UX.md",
+      "bytes": 719,
+      "sha256": "b91e19922ba1816bd0dd9e0f8c411d24b913c1af1494eba77b1a41d3d03e25c8"
+    },
+    {
+      "path": "Agents/04-Integration-Providers.md",
+      "bytes": 768,
+      "sha256": "89f77414bef9acc2c4dd47daace9d8b94a0a43fa200005f64803fc622a1b39ac"
+    },
+    {
+      "path": "Agents/05-QA-and-Test-Automation.md",
+      "bytes": 693,
+      "sha256": "92883047e769793a8337632f0c3a7e94833e418f3e4cf1226f5d6dda40664951"
+    },
+    {
+      "path": "Agents/06-Security-Privacy.md",
+      "bytes": 664,
+      "sha256": "078b99339e151fdb4f58f7910917317130c23d9327d74a65ca6a5057e64a8f28"
+    },
+    {
+      "path": "Agents/07-Release-and-DevOps.md",
+      "bytes": 745,
+      "sha256": "c4f38e438fa3b8bdfe933cc93ff41a2cbb7e213139f2de9d9efde925229b0538"
+    },
+    {
+      "path": "Decision-Traceability.md",
+      "bytes": 10520,
+      "sha256": "bbb8552dcf6718c7c68d82c802abaf730ce02cb0d3e7b9b5aae66478f366c700"
+    },
+    {
+      "path": "HR-TimeTracking/01-employee-profiles.md",
+      "bytes": 8160,
+      "sha256": "07ccdb1e19d2290244023b28d68e3de41e1d7f032aa266f30a4b23e363c44c68"
+    },
+    {
+      "path": "HR-TimeTracking/02-work-schedules-and-shifts.md",
+      "bytes": 8166,
+      "sha256": "74ae4e7fb5db78e821c5f0c04a5e4e1dea6acb5db470817abf43c4a777eb5cef"
+    },
+    {
+      "path": "HR-TimeTracking/03-clock-and-breaks.md",
+      "bytes": 8123,
+      "sha256": "f260a9ec0a60f5f8c4b510ca6b66b307c7ce74d55e7fe0649cb8adb768ee8da7"
+    },
+    {
+      "path": "HR-TimeTracking/04-attendance-and-corrections.md",
+      "bytes": 8088,
+      "sha256": "69a3076147d79857fa508566d01ee7e7f36307414c5305df999f0a06e3a43d1f"
+    },
+    {
+      "path": "HR-TimeTracking/05-timesheets.md",
+      "bytes": 8017,
+      "sha256": "725d9e91c0ccad85cd0fad596e9f25bc2939ead5989fca29fa7ff502ccc63ab7"
+    },
+    {
+      "path": "HR-TimeTracking/06-overtime-policy.md",
+      "bytes": 7695,
+      "sha256": "0198f4d6345a1497ea96e58d5e2da5016caa5d370845c10aeebbb05981f3b30f"
+    },
+    {
+      "path": "HR-TimeTracking/07-leave-types-balances.md",
+      "bytes": 8044,
+      "sha256": "e2023fee3b685ef7866c6f4af81612fdbcf4ecf8942cc741aa6b2b89f28f2cbb"
+    },
+    {
+      "path": "HR-TimeTracking/08-leave-requests-and-approvals.md",
+      "bytes": 8108,
+      "sha256": "f7e48c557bdd092e4b3a21894e3d38d797b6fa63e480c6bcb414078f544344d2"
+    },
+    {
+      "path": "HR-TimeTracking/09-work-reports.md",
+      "bytes": 7659,
+      "sha256": "f2e31bd29b97ba37e8abc07b3ecacaad61ec50c2343efb7c1404acfa84a098a2"
+    },
+    {
+      "path": "HR-TimeTracking/10-onboarding-offboarding-and-docs.md",
+      "bytes": 8074,
+      "sha256": "a66626e4588909b86e1f902fa7f9df6ddf0779b732dded6d0c2486e28b82f555"
+    },
+    {
+      "path": "HR-TimeTracking/11-hr-security-retention-and-analytics.md",
+      "bytes": 8057,
+      "sha256": "393e223469ddbff6d9bc7158851b2238ce20a7e020284fa94d8c8dbbccca852e"
+    },
+    {
+      "path": "HR-TimeTracking/README.md",
+      "bytes": 3129,
+      "sha256": "237a48d295b4b92e26ee68d2ca4e09e8152d6d7b6a4cbcef3f3078f37bf32154"
+    },
+    {
+      "path": "Marketing-Campaigns/01-segments-and-audiences.md",
+      "bytes": 8030,
+      "sha256": "9a9b974f3abc527604df85132c3a407182ada6ce971133e093f996ef16735617"
+    },
+    {
+      "path": "Marketing-Campaigns/02-audience-imports.md",
+      "bytes": 7928,
+      "sha256": "d6c717a2da10128a3eb8aac2f9713c8f65d782d25d5675bd4819d74d24c781c5"
+    },
+    {
+      "path": "Marketing-Campaigns/03-consent-and-suppression.md",
+      "bytes": 8248,
+      "sha256": "ca2da3a99386ade959a4b564e04d126dc083a656d400fd1ee504af3a3ce6ed93"
+    },
+    {
+      "path": "Marketing-Campaigns/04-sender-and-provider-config.md",
+      "bytes": 8035,
+      "sha256": "3c2eeb4cabbed690711ac0fc368c5df458f0299f76d2717bbbf2771e5b02ba18"
+    },
+    {
+      "path": "Marketing-Campaigns/05-templates-and-content.md",
+      "bytes": 8030,
+      "sha256": "b0aa811438917bbdc5e90a4693dcb903296b4a10d903c6d993bdca1a1aa12d58"
+    },
+    {
+      "path": "Marketing-Campaigns/06-campaigns-and-approvals.md",
+      "bytes": 8346,
+      "sha256": "29a2858ba36d49b2f8831609bfb2ee0128bea1bd13b8210cd644db2fa293904d"
+    },
+    {
+      "path": "Marketing-Campaigns/07-delivery-jobs-and-retries.md",
+      "bytes": 8213,
+      "sha256": "fb50dae8d0f3f912de60312364e880aec8bccee760a32fd23972f6fd1ed57859"
+    },
+    {
+      "path": "Marketing-Campaigns/08-engagement-and-conversions.md",
+      "bytes": 8029,
+      "sha256": "4fb6e4bb5969c4066249ff11c29ae7918cd40c71ade7ed5abbe0c4da7b6fe9a2"
+    },
+    {
+      "path": "Marketing-Campaigns/09-experiments-and-journeys.md",
+      "bytes": 8084,
+      "sha256": "04e95a37765eb671f02bf9cc13d84591fc6728ff50549e210ea958bee5b8d730"
+    },
+    {
+      "path": "Marketing-Campaigns/10-ad-platforms-and-repeat-sales.md",
+      "bytes": 8159,
+      "sha256": "bc5accaa387003d70e7cc9ee80b25e47afb093d3755ad735819b968cfd019cd5"
+    },
+    {
+      "path": "Marketing-Campaigns/README.md",
+      "bytes": 3051,
+      "sha256": "c59620572286c4e99f35e92510f679f78cb050e3a9010631c72eae96bb42a295"
+    },
+    {
+      "path": "OnlineStore-Commerce/01-store-administration.md",
+      "bytes": 8509,
+      "sha256": "4bd8c0aa601cab2d023a61f87bf6f74f5368d38f1338c2a48afa06fe646a6b4b"
+    },
+    {
+      "path": "OnlineStore-Commerce/02-product-publication-and-pricing.md",
+      "bytes": 8236,
+      "sha256": "f4765ecd914d853803bf908def268ae8b9a73db5bfe0dc4ed0f6ebf71bf21925"
+    },
+    {
+      "path": "OnlineStore-Commerce/03-customer-identities-and-portal.md",
+      "bytes": 8325,
+      "sha256": "846bc01c7d88c70dc0dd9693b19864a99c4a472120c722a03752b017454aa549"
+    },
+    {
+      "path": "OnlineStore-Commerce/04-carts-and-checkout.md",
+      "bytes": 8565,
+      "sha256": "6231e213fa99bc3acf90444c2a80dab99ea64fb49bb0c2f49488dd435d8cc8da"
+    },
+    {
+      "path": "OnlineStore-Commerce/05-orders-and-amendments.md",
+      "bytes": 8828,
+      "sha256": "c2ff5a9fc85f4d31481687b568b7f65922035091dfa91088db08eac5efd1544c"
+    },
+    {
+      "path": "OnlineStore-Commerce/06-payments-and-reconciliation.md",
+      "bytes": 8527,
+      "sha256": "f1d5b4e0cf821d969c2f69ad48e0088c3eaa4d8a867ce5a93c0f0238f0957242"
+    },
+    {
+      "path": "OnlineStore-Commerce/07-inventory-reservations.md",
+      "bytes": 8093,
+      "sha256": "bae60bf00953541c4059a62b858323b951c0ae66d4c41f851acd313f4972b5c2"
+    },
+    {
+      "path": "OnlineStore-Commerce/08-shipping-and-fulfillment.md",
+      "bytes": 8332,
+      "sha256": "884087f59da6614699c816b78aa522d73bd811ba22d9b48053314d94d24a15a4"
+    },
+    {
+      "path": "OnlineStore-Commerce/09-returns-and-refunds.md",
+      "bytes": 8191,
+      "sha256": "a0ba8ce274c15cf237bde311e7da89fb800fd529e48a5cf47bd50e0a1d7165ed"
+    },
+    {
+      "path": "OnlineStore-Commerce/10-promotions-taxes-and-delivery.md",
+      "bytes": 8278,
+      "sha256": "0570fe7516667c0f04172b8a8da40522c19ee19d2c18b3299ef76faa93a934c4"
+    },
+    {
+      "path": "OnlineStore-Commerce/11-crm-sales-links.md",
+      "bytes": 7982,
+      "sha256": "e04f9b9b99dad7531be1f06aec2eaf5391af9e7f456df8fe58b66d2285303202"
+    },
+    {
+      "path": "OnlineStore-Commerce/12-commerce-reports-and-lifecycle.md",
+      "bytes": 8006,
+      "sha256": "75ca79f824422d7679652e2b740f45fbab11f76471bad01cda638f76567500c6"
+    },
+    {
+      "path": "OnlineStore-Commerce/13-digital-goods-and-service-fulfillment.md",
+      "bytes": 8484,
+      "sha256": "71d5c54186508619c94ff1d3748e22769946aad87cc214dcc96096496eae2907"
+    },
+    {
+      "path": "OnlineStore-Commerce/README.md",
+      "bytes": 3712,
+      "sha256": "51d1f335eddac12d9c47c364a4087162e7684c6cd760d27edb47e9e9dc4c53bf"
+    },
+    {
+      "path": "README.md",
+      "bytes": 4241,
+      "sha256": "423e81f4428325fae646868543d42d01dc42b407443b6214b16a0cd06dd89206"
+    },
+    {
+      "path": "Shared-Contracts/01-api-and-query-conventions.md",
+      "bytes": 5028,
+      "sha256": "95233e8fd0640c34cf99995a505512c96608424e967054160c52f6b612afca91"
+    },
+    {
+      "path": "Shared-Contracts/02-authz-and-tenancy.md",
+      "bytes": 3618,
+      "sha256": "0c991a4c348360edbea248878a959da72be841d450cf7f81b806beb5b2bc1441"
+    },
+    {
+      "path": "Shared-Contracts/03-data-model-and-retention.md",
+      "bytes": 3297,
+      "sha256": "2abc5e0fa798e62a34383310e884e4aeec657c528ce40b3574642dd312c485fe"
+    },
+    {
+      "path": "Shared-Contracts/04-domain-workflows-and-states.md",
+      "bytes": 3058,
+      "sha256": "5633b37e73f76510b33bcb5e3d19f377efa5c222eb446ad858e5cdd917c34b55"
+    },
+    {
+      "path": "Shared-Contracts/05-transactions-and-events.md",
+      "bytes": 2142,
+      "sha256": "3e1213958b8db81c2d80a4ced5d6c8f756e45fff3d73fe22834922c87fd469a0"
+    },
+    {
+      "path": "Shared-Contracts/06-provider-interfaces.md",
+      "bytes": 3827,
+      "sha256": "8b37577d1aee8f9d485d1877494e65425216175ff20c20c24d9cd1d60f398925"
+    },
+    {
+      "path": "Shared-Contracts/07-security-and-privacy.md",
+      "bytes": 2717,
+      "sha256": "fbb2c466a8956b526df8ec5f6b92a7133c2960ca554047534a7c779c439d49c2"
+    },
+    {
+      "path": "Shared-Contracts/08-errors-and-observability.md",
+      "bytes": 2452,
+      "sha256": "f2ce6eafd6324dae6d6cc74417fe7c997636054e528a68159209e5495c8d3ed2"
+    },
+    {
+      "path": "Shared-Contracts/09-ui-accessibility-and-frontend.md",
+      "bytes": 2372,
+      "sha256": "f0c85c1a274f13d57adff0f2bc298498f9febbccd2a687d9e4203534119361b5"
+    },
+    {
+      "path": "Shared-Contracts/10-verification-test-matrix.md",
+      "bytes": 1677,
+      "sha256": "c2c23caa87f77f0e647df1e48965428c01a063db638265ca37d2c044ff52616f"
+    },
+    {
+      "path": "Shared-Contracts/11-release-phases-and-dependencies.md",
+      "bytes": 3203,
+      "sha256": "2d861a22a44bfc4c641580416d5486fe115974799d9abbbbc7461e9043a46b28"
+    },
+    {
+      "path": "Shared-Contracts/12-compatibility-and-decisions.md",
+      "bytes": 2103,
+      "sha256": "ac99660b447cc09657d2c957d8f49c08e94eba8ae666afff8b154312995be6fd"
+    },
+    {
+      "path": "Shared-Contracts/13-interfaces-and-event-matrix.md",
+      "bytes": 4328,
+      "sha256": "2633d50fef690a349b9c3680cf6e1992f8417a96fd08b3d7735e85cc1fd307ca"
+    },
+    {
+      "path": "Shared-Contracts/14-operation-dtos-and-transaction-assertions.md",
+      "bytes": 9538,
+      "sha256": "171ace41e01f3fb05092e739d544cfb8326fcaa2ef082ffe1fbd2625f9a60d12"
+    },
+    {
+      "path": "Sites-LandingPages/01-sites-hosting-and-domains.md",
+      "bytes": 8044,
+      "sha256": "6d441de9563d0e08dba37a2394a11e2cbe172633012c92cff94d4a4db2061bed"
+    },
+    {
+      "path": "Sites-LandingPages/02-pages-navigation-and-cms.md",
+      "bytes": 8069,
+      "sha256": "154c9fa08c04724a3f4fc7796f2c3e02ccf57671dd9ce5e6550153b0a2278d38"
+    },
+    {
+      "path": "Sites-LandingPages/03-editor-blocks-and-themes.md",
+      "bytes": 8103,
+      "sha256": "395dd6e151d5efd8f98868571a48a583dd43cbdc4723ab03db391bb1769c3e70"
+    },
+    {
+      "path": "Sites-LandingPages/04-drafts-preview-and-publication.md",
+      "bytes": 8323,
+      "sha256": "27eb9dda1c907fcd7fa45c3cd777225615f4c6fdb5fc617cdb1d3e7549ff4936"
+    },
+    {
+      "path": "Sites-LandingPages/05-localization-and-rtl.md",
+      "bytes": 7856,
+      "sha256": "462aef73361d7599f4ba3ed69fb2a4de13cf1c3a57ceb6cdfba1f1a85df17970"
+    },
+    {
+      "path": "Sites-LandingPages/06-seo-search-and-performance.md",
+      "bytes": 7779,
+      "sha256": "849d2f99fb3b9e7ff1e9b6ca118436b4d3eb2053c54f1811677d646d56760377"
+    },
+    {
+      "path": "Sites-LandingPages/07-form-commerce-and-widget-blocks.md",
+      "bytes": 7982,
+      "sha256": "15440f17d9f9d3b74f1a6c7aee8cf5e3da9609530f891005dab8194edd41bb4b"
+    },
+    {
+      "path": "Sites-LandingPages/08-cookies-scripts-and-security.md",
+      "bytes": 8140,
+      "sha256": "e8330bfb22fb7911bc19bf1a81b3672d6ac8cb7c3c45aa74499337493bb0a624"
+    },
+    {
+      "path": "Sites-LandingPages/09-ab-experiments.md",
+      "bytes": 7922,
+      "sha256": "b6297774fbba475a4400f828831f0379afb8b3ca820ca6c70c59b9a1a072e05f"
+    },
+    {
+      "path": "Sites-LandingPages/10-ai-generation-and-templates.md",
+      "bytes": 7799,
+      "sha256": "2ac934d2205ee7fea438f6732a9d5e722eb25548c0625ecc7aa12a58a4bfabad"
+    },
+    {
+      "path": "Sites-LandingPages/11-recovery-exports-and-entitlements.md",
+      "bytes": 8120,
+      "sha256": "d0aaa7b43675a1637d9d27aa7ae3afce1b608de78b1d03c6ca34dd437afbcfc3"
+    },
+    {
+      "path": "Sites-LandingPages/README.md",
+      "bytes": 3210,
+      "sha256": "0da86497281ca603d8e9f96ee9a1ba358a211fc6cb2a00d97fe6692a39e260e8"
+    },
+    {
+      "path": "Sources/README.md",
+      "bytes": 2582,
+      "sha256": "3764645abb54072e5c5236231bdbe734c71fe370befa482aaed889db9427aa84"
+    },
+    {
+      "path": "Testing/CrossModule/cross-module.e2e-spec.ts",
+      "bytes": 1898,
+      "sha256": "10228cbb8188ac8e8bdbd64b327df8dce89ed39743c6869239abb6a95e25ca3f"
+    },
+    {
+      "path": "Testing/HR-TimeTracking/01-employee-profiles.spec.ts",
+      "bytes": 1816,
+      "sha256": "6d6cb7975096baf4217ca4d372b1e1969bc8a7206d0a60b293d1f72c3e23ae5d"
+    },
+    {
+      "path": "Testing/HR-TimeTracking/02-work-schedules-and-shifts.spec.ts",
+      "bytes": 1936,
+      "sha256": "3e329229f05b7d43a1314d92c7941e8b1a78761a6f0986d082eb442c1b69123f"
+    },
+    {
+      "path": "Testing/HR-TimeTracking/03-clock-and-breaks.spec.ts",
+      "bytes": 1872,
+      "sha256": "1b3e05e732333af0dc3e56bc1cb49f0641c6219530e17536d348e397f956f1d4"
+    },
+    {
+      "path": "Testing/HR-TimeTracking/04-attendance-and-corrections.spec.ts",
+      "bytes": 1880,
+      "sha256": "1e3c8482e966d33d3bb040bbae5f2d1c4580eef070cbe7d8a5f4ed2bedc78a97"
+    },
+    {
+      "path": "Testing/HR-TimeTracking/05-timesheets.spec.ts",
+      "bytes": 1706,
+      "sha256": "753cc9b242f27a1ffbdbf6e95dbf8f0d3c9f78c364246293c68c93abe2e0687e"
+    },
+    {
+      "path": "Testing/HR-TimeTracking/06-overtime-policy.spec.ts",
+      "bytes": 1671,
+      "sha256": "26e17240986525be0c8b82934381aa74cfcda59be1132065680c6604bdcd7f15"
+    },
+    {
+      "path": "Testing/HR-TimeTracking/07-leave-types-balances.spec.ts",
+      "bytes": 1756,
+      "sha256": "e15b1013f6423de8ffbb59ede33c0c6ff1e02c2572fbba92e83d7191f00af74d"
+    },
+    {
+      "path": "Testing/HR-TimeTracking/08-leave-requests-and-approvals.spec.ts",
+      "bytes": 1972,
+      "sha256": "9aedeb7b3e91950c99144221d2093b28ef3c266ae0fad1735b8202555e5a2a6d"
+    },
+    {
+      "path": "Testing/HR-TimeTracking/09-work-reports.spec.ts",
+      "bytes": 1691,
+      "sha256": "7f2c6ffcf59c22196d8522512fa60ab13623f326ad1bbc1ab0fa14d366c7ba31"
+    },
+    {
+      "path": "Testing/HR-TimeTracking/10-onboarding-offboarding-and-docs.spec.ts",
+      "bytes": 1888,
+      "sha256": "af319009d854a5f826ae8a91dd33fabe0df5e3ab6aa1a1719466ff89f23efeea"
+    },
+    {
+      "path": "Testing/HR-TimeTracking/11-hr-security-retention-and-analytics.spec.ts",
+      "bytes": 1907,
+      "sha256": "abe5d7fe0e97cdd7e41797a713619e86b88edc8a4c52891a9bab234832b984d2"
+    },
+    {
+      "path": "Testing/HR-TimeTracking/HR-TimeTracking.e2e-spec.ts",
+      "bytes": 2740,
+      "sha256": "af7c7b843451e25224fa18fe7632f00a2db7001e54a84e4942698f3c0f7e7672"
+    },
+    {
+      "path": "Testing/Marketing-Campaigns/01-segments-and-audiences.spec.ts",
+      "bytes": 1821,
+      "sha256": "63adb20bb1ba42c420c6586134c41316896b8187a4d3254aa578003c64e891dc"
+    },
+    {
+      "path": "Testing/Marketing-Campaigns/02-audience-imports.spec.ts",
+      "bytes": 1776,
+      "sha256": "f29e21119f86ddc0e1ecc9db7e773e0664cbbfbd4ccc4a62db3e83aebee370e5"
+    },
+    {
+      "path": "Testing/Marketing-Campaigns/03-consent-and-suppression.spec.ts",
+      "bytes": 1825,
+      "sha256": "bda503684856c2156e2325969870d44ef6d58d4850c93f04562e5f7ccb4086b0"
+    },
+    {
+      "path": "Testing/Marketing-Campaigns/04-sender-and-provider-config.spec.ts",
+      "bytes": 1843,
+      "sha256": "759eed73ef61997523ea93160ac835c6042803db092667aae22e5e5f5297a083"
+    },
+    {
+      "path": "Testing/Marketing-Campaigns/05-templates-and-content.spec.ts",
+      "bytes": 1846,
+      "sha256": "e4a6b78648f872ade63e1fdf6ef083a5dc0fd570de8de6cceb19cd2932d2fc91"
+    },
+    {
+      "path": "Testing/Marketing-Campaigns/06-campaigns-and-approvals.spec.ts",
+      "bytes": 1816,
+      "sha256": "0a0edf848a655997dc5ea5b656f4d0bfd7b536d4d35c273befb838223ec9c9cb"
+    },
+    {
+      "path": "Testing/Marketing-Campaigns/07-delivery-jobs-and-retries.spec.ts",
+      "bytes": 1883,
+      "sha256": "9006e4c278788e066f7e18c29c018e0a3725ac1696de6f2e54eab9d71f5f6431"
+    },
+    {
+      "path": "Testing/Marketing-Campaigns/08-engagement-and-conversions.spec.ts",
+      "bytes": 1861,
+      "sha256": "e5fea03f480e6ebf28ce2ebdadd6236391be23ac1ad3e33af2d4c07fdef7306d"
+    },
+    {
+      "path": "Testing/Marketing-Campaigns/09-experiments-and-journeys.spec.ts",
+      "bytes": 1789,
+      "sha256": "6c1a6cf4b6f60adfa2698ec6d3c6681ad0bf764a17ce760dbffc2f19d8bbf240"
+    },
+    {
+      "path": "Testing/Marketing-Campaigns/10-ad-platforms-and-repeat-sales.spec.ts",
+      "bytes": 1890,
+      "sha256": "848f04a01572ceee039e1901a295dcd2479abc7e4876e75d8611be3c17fe3f56"
+    },
+    {
+      "path": "Testing/Marketing-Campaigns/Marketing-Campaigns.e2e-spec.ts",
+      "bytes": 3193,
+      "sha256": "f264c0e916167ca9c5dc3bca47ef44737dfb7e8e652ad756598b850c77c3fd1c"
+    },
+    {
+      "path": "Testing/OnlineStore-Commerce/01-store-administration.spec.ts",
+      "bytes": 2020,
+      "sha256": "721699843513e16bc4a6261e14c1fab9888bfec5baba1e6472316296f9a6a4fa"
+    },
+    {
+      "path": "Testing/OnlineStore-Commerce/02-product-publication-and-pricing.spec.ts",
+      "bytes": 1955,
+      "sha256": "1e35bcac0d04caec82eab189af80177084bc427c7b41e6d66de99e4127b678b7"
+    },
+    {
+      "path": "Testing/OnlineStore-Commerce/03-customer-identities-and-portal.spec.ts",
+      "bytes": 1933,
+      "sha256": "965e4209b38392a20cf8c9bb61e5c25dfbf6be8ad53e9183cbd8368115c366f1"
+    },
+    {
+      "path": "Testing/OnlineStore-Commerce/04-carts-and-checkout.spec.ts",
+      "bytes": 1985,
+      "sha256": "5d3b4ee033e44062f51d4c6e67907ef42165b3aaa61e7fee060c97bbb4c79a47"
+    },
+    {
+      "path": "Testing/OnlineStore-Commerce/05-orders-and-amendments.spec.ts",
+      "bytes": 1976,
+      "sha256": "0626782a6f64fb7902849612c5c271bc5354025411860a2811e0f09316381654"
+    },
+    {
+      "path": "Testing/OnlineStore-Commerce/06-payments-and-reconciliation.spec.ts",
+      "bytes": 2096,
+      "sha256": "7829afd9017abecefc60c751a87364d951290c47190a8bbafdc824da4e90c9ad"
+    },
+    {
+      "path": "Testing/OnlineStore-Commerce/07-inventory-reservations.spec.ts",
+      "bytes": 1849,
+      "sha256": "622eaf6f6e53d82370f4fbc4d77235b9a85668402e7e2da8238c316c99bd48e1"
+    },
+    {
+      "path": "Testing/OnlineStore-Commerce/08-shipping-and-fulfillment.spec.ts",
+      "bytes": 1850,
+      "sha256": "84728e245497cd3b6a48e99c76c5b50bfa0682ecf47e4a42959b49d652cb66ed"
+    },
+    {
+      "path": "Testing/OnlineStore-Commerce/09-returns-and-refunds.spec.ts",
+      "bytes": 1822,
+      "sha256": "2798731ebef4cc5115ed9605b18f197d2eb8284e8eb5f64e1ca134c42ca8cec1"
+    },
+    {
+      "path": "Testing/OnlineStore-Commerce/10-promotions-taxes-and-delivery.spec.ts",
+      "bytes": 1877,
+      "sha256": "bf9f95a3c821ba2f75df3ae36267059ab618810110526abcb872c4cf2c5d6111"
+    },
+    {
+      "path": "Testing/OnlineStore-Commerce/11-crm-sales-links.spec.ts",
+      "bytes": 1795,
+      "sha256": "7e828d19780786705094030da060cf2a4fffe8f88d6563696ee8c6e79d506b8e"
+    },
+    {
+      "path": "Testing/OnlineStore-Commerce/12-commerce-reports-and-lifecycle.spec.ts",
+      "bytes": 1926,
+      "sha256": "048bd4ed89fbb603a929bb5402343d0d538bc22498f9f22642482066f1dd038a"
+    },
+    {
+      "path": "Testing/OnlineStore-Commerce/13-digital-goods-and-service-fulfillment.spec.ts",
+      "bytes": 1973,
+      "sha256": "0bab52f5fed591ae7f0c42405e4fe01bb7c28ef5a8977bb4534bedf202a74485"
+    },
+    {
+      "path": "Testing/OnlineStore-Commerce/OnlineStore-Commerce.e2e-spec.ts",
+      "bytes": 3846,
+      "sha256": "d1b29868028d86b8d7164eef63843beeefd21f0ecc605110c3fb502147ba6555"
+    },
+    {
+      "path": "Testing/README.md",
+      "bytes": 2663,
+      "sha256": "1fa9956860347072787dfeb91e0dbd8516018db2166f0e1ae89343ab49c810ed"
+    },
+    {
+      "path": "Testing/Sites-LandingPages/01-sites-hosting-and-domains.spec.ts",
+      "bytes": 1803,
+      "sha256": "2ac7646ca96df9b8aca3ec65561c21f2436c39813e94d34dfa7072b11509fe45"
+    },
+    {
+      "path": "Testing/Sites-LandingPages/02-pages-navigation-and-cms.spec.ts",
+      "bytes": 1764,
+      "sha256": "d10fb6c1b00c0ea429e7f0d5273c708d0553d2ca8caac6efa677eaaa155791a6"
+    },
+    {
+      "path": "Testing/Sites-LandingPages/03-editor-blocks-and-themes.spec.ts",
+      "bytes": 1795,
+      "sha256": "18d06b631918255a06f8602ac0977ebedea79d5fe6f5489021208cc44b127d64"
+    },
+    {
+      "path": "Testing/Sites-LandingPages/04-drafts-preview-and-publication.spec.ts",
+      "bytes": 1888,
+      "sha256": "b3beb76d79b94380082e7506a409319ea3aa6fe3874dc6ca8cc8f930573e3a8e"
+    },
+    {
+      "path": "Testing/Sites-LandingPages/05-localization-and-rtl.spec.ts",
+      "bytes": 1778,
+      "sha256": "8e85e047ec4ab346805a4fe4cb700d0e198c4582288daa3b551af12cdea65660"
+    },
+    {
+      "path": "Testing/Sites-LandingPages/06-seo-search-and-performance.spec.ts",
+      "bytes": 1805,
+      "sha256": "e597c3fd9779cd8e30f8faef0255eb38621712bef711ed78d6d91293361fd34c"
+    },
+    {
+      "path": "Testing/Sites-LandingPages/07-form-commerce-and-widget-blocks.spec.ts",
+      "bytes": 1900,
+      "sha256": "42c98b41ad3c04405a4c557258fe3cb1683622189aa7c8db8ce6eae10aad6f1f"
+    },
+    {
+      "path": "Testing/Sites-LandingPages/08-cookies-scripts-and-security.spec.ts",
+      "bytes": 1888,
+      "sha256": "9f3c5e66cb1bc62cc933ccb512c362d25c6ed95a0cd352c83ddbe16dc44be744"
+    },
+    {
+      "path": "Testing/Sites-LandingPages/09-ab-experiments.spec.ts",
+      "bytes": 1705,
+      "sha256": "bb2d3bf7a3c02b4c52b221e1fa5cb98c4ed470f20516dd917d8de0700de85be8"
+    },
+    {
+      "path": "Testing/Sites-LandingPages/10-ai-generation-and-templates.spec.ts",
+      "bytes": 1840,
+      "sha256": "c35986a75c01410e225e60a3a028427a21227fd1d09f643d09ebea10c7f703c9"
+    },
+    {
+      "path": "Testing/Sites-LandingPages/11-recovery-exports-and-entitlements.spec.ts",
+      "bytes": 1977,
+      "sha256": "fff4aa99343a404b0dec2bb39becbc5c86555ea0a261597340057d9367e050cd"
+    },
+    {
+      "path": "Testing/Sites-LandingPages/Sites-LandingPages.e2e-spec.ts",
+      "bytes": 2757,
+      "sha256": "a6b9b4673640065af5e99c84841f4a606f87627aa7691656f7d6befc6b9c3701"
+    },
+    {
+      "path": "Testing/_harness/adapter.ts",
+      "bytes": 3757,
+      "sha256": "f0d64fb1e1c9014be42afeaaf5623774771b1bb971af5ef0445422f4955e8d85"
+    },
+    {
+      "path": "Testing/_harness/fixtures.md",
+      "bytes": 2766,
+      "sha256": "f546e9135d2c32fe222d649925500b2ff44d80972d9388bcd3b902fd56f85290"
+    }
+  ]
+}

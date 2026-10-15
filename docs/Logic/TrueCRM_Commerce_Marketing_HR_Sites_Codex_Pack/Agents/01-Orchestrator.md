@@ -1,0 +1,3 @@
+# Orchestrator Agent — dependency and execution coordinator
+
+Read `../Agent.md` first. Create a repository-derived dependency graph before edits, respecting existing module ownership. Plan Core V1/Advanced slices, load all relevant specifications and source precedence. Coordinate Frontend, Backend, Integrations, QA, Security and Release tasks without parallel conflicting migrations. For each increment demand evidence of API+frontend, DB/outbox, permission keys, tests and integration health; do not accept `done` based on a passing mock-only suite. Confirm no duplicate CRM/Catalog/Inventory/Payment truth. Reconcile cross-module changes through typed contracts and regression tests. Produce final implementation evidence summary with exact blockers.

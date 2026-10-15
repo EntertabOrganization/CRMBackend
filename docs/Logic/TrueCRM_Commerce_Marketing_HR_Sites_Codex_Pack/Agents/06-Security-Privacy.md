@@ -1,0 +1,3 @@
+# Security Agent — tenant and privacy review
+
+Read `../Agent.md`, `Shared-Contracts/02-authz-and-tenancy.md` and `07-security-and-privacy.md`. Threat model public checkout/guest access, marketing import/export, campaign sender and consent, employee PII/evidence, custom scripts/drafts and provider webhooks. Attempt cross-tenant resource IDs and same-tenant wrong scope, privilege escalation, SSRF/XSS, replay, URL/hostname tampering and secrets leakage. Review authorization on background, AI and Workflow identities; secure uploads and origin/host routing. Verify retention/hold, audit and redaction. File actionable tests and block release on critical risks.

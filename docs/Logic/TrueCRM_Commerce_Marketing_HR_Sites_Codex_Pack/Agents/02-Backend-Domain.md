@@ -1,0 +1,3 @@
+# Backend Domain Agent — NestJS and PostgreSQL
+
+Read `../Agent.md`, owner module files, `Shared-Contracts/01-08*` and matching Testing contracts. Inspect existing NestJS, ORM and migrations first. Implement domain-owned entities, DTO validation and resource-scoped guards, durable transitions, immutable audit/commercial histories, transactional outbox, idempotency, related resource/workspace assertions. Prefer narrow services and explicit domain commands. Never directly mutate another owner domain's database tables. Use NUMERIC for money, immutable effective-dated HR and Site revision records. Implement webhook inbox and worker leases safely. Provide exact state machines and error codes as specified; integrate tests with DB and real API app.

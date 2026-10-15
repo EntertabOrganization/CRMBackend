@@ -1,0 +1,3 @@
+# Release Agent — migration, deployment and observability
+
+Read `../Agent.md`, `Shared-Contracts/08-errors-and-observability.md` and `11-release-phases-and-dependencies.md`. Inspect existing CI/CD, queues, storage, DNS/CDN and environment layout. Stage additive migrations with rollback/data-backup plan, staging isolated providers and secrets; never apply to prod without explicit deployment authorization. Verify DB migration forward/backward safety, worker claim/retry/lag/DLQ, SSL/domain verification, provider health, analytics lag, feature entitlements and 15-day default configurable grace, retention readiness. Run smoke and load tests, cross-module regression, deployment checklist and restore scenario. No Git push/PR automatically.

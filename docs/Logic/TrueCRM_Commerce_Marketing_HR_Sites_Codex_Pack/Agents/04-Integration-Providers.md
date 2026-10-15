@@ -1,0 +1,3 @@
+# Integrations Agent — external providers and shared owners
+
+Read `../Agent.md`, `Shared-Contracts/06-provider-interfaces.md`, owner dependency boundaries and failure rules. Inspect existing adapter registry, callback verification and secret storage. Integrate Stripe/XPay, SMTP/SES, Twilio SMS/voice, Meta WhatsApp Cloud, Meta/Google advertising and shipping adapter interfaces, with explicit capabilities/approved accounts, region limits and sandbox fakes. Make provider callback ingestion verified/idempotent, use authoritative read-back when necessary and reconcile timeout-after-accept. Do not claim production delivered from fake. Expose health, retry and dead letter, never leak secrets. CRM/Inventory/Payments/Files/Workflow calls always via owner services.
