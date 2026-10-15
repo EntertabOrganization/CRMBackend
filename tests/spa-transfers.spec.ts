@@ -237,7 +237,9 @@ describe('SPA transfers through owning private Files artifacts', () => {
     await db.$executeRawUnsafe('DROP TABLE file_artifact_bindings');
     await db.$executeRawUnsafe('DROP FUNCTION file_artifact_binding_immutable()');
     await db.$executeRawUnsafe('DROP FUNCTION file_artifact_binding_owner_guard()');
-    const psql = path.join(process.env.POSTGRES_BIN ?? path.join(process.env.LOCALAPPDATA!, 'TrueCRM-ProcessPack', 'Postgres', 'runtime', 'pgsql', 'bin'), 'psql.exe');
+    const psqlName = process.platform === 'win32' ? 'psql.exe' : 'psql';
+    const psqlBin = process.env.POSTGRES_BIN ?? (process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'TrueCRM-ProcessPack', 'Postgres', 'runtime', 'pgsql', 'bin') : undefined);
+    const psql = psqlBin ? path.join(psqlBin, psqlName) : psqlName;
     execFileSync(psql, ['-X', '-v', 'ON_ERROR_STOP=1', '-1', '-h', url.hostname, '-p', url.port, '-U', decodeURIComponent(url.username), '-d', name,
       '-f', path.resolve('prisma/migrations/202610140002_spa_file_artifact_authority/migration.sql')],
       { env: { ...process.env, PGPASSWORD: decodeURIComponent(url.password) }, stdio: 'pipe' });
