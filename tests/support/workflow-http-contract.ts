@@ -15,26 +15,35 @@ export type HttpScenario = {
   effects?: boolean;
   verify: (data: any, json: any) => Promise<void>;
 };
-export type ScenarioBuilder = (f: WorkflowFixture, db: PrismaClient) => Promise<HttpScenario>;
-export type PublicScenario = { public: true; run: (call: (path: string, body: unknown, headers?: Record<string, string>) => Promise<{ status: number; json: any }>, f: WorkflowFixture, db: PrismaClient) => Promise<void> };
+type BaseFixture = { user: { id: string }; workspace: { id: string }; role: { id: string } };
+export type ScenarioBuilder<F = WorkflowFixture> = (f: F, db: PrismaClient) => Promise<HttpScenario>;
+export type PublicScenario<F = WorkflowFixture> = { public: true; run: (call: (path: string, body: unknown, headers?: Record<string, string>) => Promise<{ status: number; json: any }>, f: F, db: PrismaClient) => Promise<void> };
+type PackRouterLike = { entries: Array<{ method: string; path: string; status: number }>; dispatch(request: Request): Promise<Response> };
 
 /** Real protected HTTP contracts for the Workflow router through both the Nest adapter and Next dispatch. */
 export function workflowHttpContract(database: string, scenarios: Record<string, ScenarioBuilder | PublicScenario>) {
+  return packHttpContract<WorkflowFixture>(database, async () => (await import('../../src/server/workflows/routes')).workflowRouter,
+    async () => (await import('./workflow-contract')).workflowFixture, scenarios);
+}
+
+/** Real protected HTTP contracts for one module router (loaded after the owned database is prepared) over Nest and Next. */
+export function packHttpContract<F extends BaseFixture>(database: string, loadRouter: () => Promise<PackRouterLike>, loadFixture: () => Promise<(db: PrismaClient) => Promise<F>>,
+  scenarios: Record<string, ScenarioBuilder<F> | PublicScenario<F>>) {
   let db: PrismaClient, app: INestApplication, base: string;
-  let router: typeof import('../../src/server/workflows/routes').workflowRouter;
+  let router: PackRouterLike;
   let NextRequest: typeof import('next/server').NextRequest;
   let sign: typeof import('../../src/server/security').signAccessToken;
-  let fixture: typeof import('./workflow-contract').workflowFixture;
+  let fixture: (db: PrismaClient) => Promise<F>;
   beforeAll(async () => {
     const url = await prepareProcessPlatformDatabase(database);
-    fixture = (await import('./workflow-contract')).workflowFixture;
-    router = (await import('../../src/server/workflows/routes')).workflowRouter;
+    fixture = await loadFixture();
+    router = await loadRouter();
     NextRequest = (await import('next/server')).NextRequest;
     sign = (await import('../../src/server/security')).signAccessToken;
     const { Module } = await import('@nestjs/common'), { NestFactory } = await import('@nestjs/core');
     const { nestControllers, configurePackBodyParsing } = await import('../../src/server/process-platform/nest-adapter');
     class WorkflowContractHttpModule {}
-    Module({ controllers: nestControllers(router) })(WorkflowContractHttpModule);
+    Module({ controllers: nestControllers(router as never) })(WorkflowContractHttpModule);
     app = await NestFactory.create(WorkflowContractHttpModule, { logger: false, bodyParser: false });
     configurePackBodyParsing(app as never); await app.listen(0, '127.0.0.1'); base = await app.getUrl();
     const { prisma } = await import('../../src/server/prisma-client');
@@ -55,7 +64,7 @@ export function workflowHttpContract(database: string, scenarios: Record<string,
       resetRateLimits();
       const f = await fixture(db);
       const send = async (path: string, init: { method: string; headers: Record<string, string>; body?: string }) => {
-        const result = transport === 'Nest' ? await fetch(base + path, init) : await router.dispatch(new NextRequest('http://test.local' + path, init));
+        const result = transport === 'Nest' ? await fetch(base + path, init) : await router.dispatch(new NextRequest('http://test.local' + path, init) as never);
         return { status: result.status, json: await result.json() };
       };
       if ('public' in scenario) {
