@@ -44,8 +44,8 @@ SPA verification batch: completed. All SPA contract scenarios run against real m
 
 ## Inventory and Warehouses
 
-- [ ] Complete negative-stock costing and financial integration safeguards.
-- [ ] Complete serial/batch selection during posting and Catalog tracking-policy integration.
+- [x] Complete negative-stock costing and financial integration safeguards. (Verified: inventory-policies-automation.spec.ts 8/8, costing.spec.ts 7/7.)
+- [x] Complete serial/batch selection during posting and Catalog tracking-policy integration. (Verified: serial-batch-barcode.spec.ts 7/7, stocktakes.spec.ts 7/7.)
 - [ ] Complete source unit conversions and remaining reversal eligibility rules.
 - [x] Install the shared Address authority adapter, including owning permission/lifecycle checks and tenant-safe database binding guards (7 focused checks passed).
 - [ ] Complete report Files artifacts and durable balance snapshots.
