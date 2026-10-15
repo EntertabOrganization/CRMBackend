@@ -24,8 +24,8 @@ import { toScaled } from './money';
 
 const CREATE_TYPES: ProductType[] = ['SIMPLE_PRODUCT', 'PRODUCT_WITH_VARIANTS', 'SERVICE'];
 const SHARED_KEYS = ['name', 'description', 'shortDescription', 'primaryUnitId', 'taxable', 'taxRate', 'taxIncluded', 'taxCode', 'weight', 'length', 'width', 'height', 'barcode', 'customFields'] as const;
-const PRODUCT_CREATE_KEYS = [...SHARED_KEYS, 'type', 'catalogId', 'sku', 'categoryIds', 'primaryCategoryId', 'prices', 'variantAxes', 'state', 'idempotencyKey'] as const;
-const PRODUCT_UPDATE_KEYS = [...SHARED_KEYS, 'type', 'version', 'sku', 'categoryIds', 'primaryCategoryId', 'variantAxes', 'state'] as const;
+const PRODUCT_CREATE_KEYS = [...SHARED_KEYS, 'type', 'catalogId', 'sku', 'categoryIds', 'primaryCategoryId', 'prices', 'variantAxes', 'state', 'idempotencyKey', 'inventoryTracking', 'enforceBatchExpiry'] as const;
+const PRODUCT_UPDATE_KEYS = [...SHARED_KEYS, 'type', 'version', 'sku', 'categoryIds', 'primaryCategoryId', 'variantAxes', 'state', 'inventoryTracking', 'enforceBatchExpiry'] as const;
 const VARIANT_CREATE_KEYS = [...SHARED_KEYS, 'sku', 'axisValues', 'prices', 'state', 'idempotencyKey'] as const;
 const VARIANT_UPDATE_KEYS = [...SHARED_KEYS, 'version', 'sku', 'axisValues', 'inherit', 'state'] as const;
 const SORTABLE = ['name', 'sku', 'createdAt', 'updatedAt', 'type', 'state'] as const;
@@ -222,6 +222,8 @@ export class ProductService {
       description: values.description,
       shortDescription: values.shortDescription,
       barcode: product.barcode,
+      inventoryTracking: (product.type === 'VARIANT' ? this.effective(product).parent?.inventoryTracking : product.inventoryTracking) ?? 'NONE',
+      enforceBatchExpiry: (product.type === 'VARIANT' ? this.effective(product).parent?.enforceBatchExpiry : product.enforceBatchExpiry) ?? false,
       dimensions: { weight: values.weight, length: values.length, width: values.width, height: values.height },
       ownName: product.name,
       inherited: product.type === 'VARIANT' ? values.inherited : undefined,
@@ -500,6 +502,8 @@ export class ProductService {
         width: null,
         height: null,
         barcode: optionalText(input.barcode, 'barcode', 100),
+        inventoryTracking: 'NONE',
+        enforceBatchExpiry: false,
         variantAxes: [],
         axisKey: null,
         axisValues: null,
@@ -511,6 +515,7 @@ export class ProductService {
         updatedAt: now,
       };
       this.applyTaxAndDimensions(product, input);
+      this.applyInventoryTracking(product, input);
       if (type === 'PRODUCT_WITH_VARIANTS') product.variantAxes = this.readAxes(workspaceId, input.variantAxes);
       else if (input.variantAxes !== undefined && !(Array.isArray(input.variantAxes) && input.variantAxes.length === 0)) {
         throw badRequest('PRODUCT_TYPE_INVALID', 'Only a product with variants can define variant axes.', { field: 'variantAxes' });
@@ -580,6 +585,7 @@ export class ProductService {
         product.state = input.state as ProductState;
       }
       this.applyTaxAndDimensions(product, input);
+      this.applyInventoryTracking(product, input);
       if (input.variantAxes !== undefined) {
         if (product.type !== 'PRODUCT_WITH_VARIANTS') throw badRequest('PRODUCT_TYPE_INVALID', 'Only a product with variants can define variant axes.', { field: 'variantAxes' });
         const axes = this.readAxes(workspaceId, input.variantAxes);
@@ -1198,6 +1204,17 @@ export class ProductService {
     const unit = this.support.unit(workspaceId, value);
     if (!unit.isActive) throw conflict('UNIT_INACTIVE', 'An inactive unit cannot be selected.', { unitId: unit.id });
     return unit.id;
+  }
+
+  /** Optional SKU serial/batch policy (Q29). Services are never stock-tracked; expiry enforcement applies to batches only. */
+  private applyInventoryTracking(product: Product, input: Json) {
+    if (input.inventoryTracking !== undefined) {
+      if (!['NONE', 'SERIAL', 'BATCH'].includes(input.inventoryTracking as string)) throw badRequest('VALIDATION_ERROR', 'inventoryTracking must be NONE, SERIAL or BATCH.', { field: 'inventoryTracking' });
+      if (product.type === 'SERVICE' && input.inventoryTracking !== 'NONE') throw badRequest('PRODUCT_TYPE_INVALID', 'A service is not stock-tracked.', { field: 'inventoryTracking' });
+      product.inventoryTracking = input.inventoryTracking as 'NONE' | 'SERIAL' | 'BATCH';
+    }
+    if (input.enforceBatchExpiry !== undefined) product.enforceBatchExpiry = optionalBoolean(input.enforceBatchExpiry, 'enforceBatchExpiry')!;
+    if (product.enforceBatchExpiry && product.inventoryTracking !== 'BATCH') throw badRequest('VALIDATION_ERROR', 'Expiry enforcement requires batch tracking.', { field: 'enforceBatchExpiry' });
   }
 
   private applyTaxAndDimensions(product: Product, input: Json) {

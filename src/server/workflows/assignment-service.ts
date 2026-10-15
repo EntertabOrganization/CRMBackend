@@ -4,7 +4,7 @@ import { AppError } from '../errors';
 import { command, evidence, lock, requirePermission, resolvePrincipal, type Principal, type Tx } from '../process-platform/context';
 import { pageQuery, parse, uuid } from '../process-platform/dto';
 import { graph, parameterDefinition } from './dto';
-import { typedRecord } from './typed-values';
+import { typedRecord, persistable } from './typed-values';
 import { WorkflowRuntime } from './runtime';
 
 const decisionInput = z.strictObject({ decision: z.enum(['APPROVE','REJECT','REQUEST_CHANGES']),comment: z.string().max(2000).optional(),fields: z.record(z.string(),z.json()).optional() });
@@ -75,7 +75,7 @@ export class WorkflowAssignmentService {
         const decision = information ? 'SUBMIT_INFORMATION' : (input as z.infer<typeof decisionInput>).decision;
         await tx.workflowApprovalVote.create({ data: { workspaceId: actor.workspaceId,assignmentId: id,participantId: participant.id,
           assigneeUserId: actor.userId,actedByUserId: actor.userId,decision,comment: !information ? (input as z.infer<typeof decisionInput>).comment : undefined,
-          fields: JSON.parse(JSON.stringify(fields)) as Prisma.InputJsonValue } });
+          fields: JSON.parse(JSON.stringify(persistable(schema,fields))) as Prisma.InputJsonValue } });
         const participants = await tx.workflowAssignmentParticipant.findMany({ where: { workspaceId: actor.workspaceId,assignmentId: id,isActive: true } });
         const votes = await tx.workflowApprovalVote.findMany({ where: { workspaceId: actor.workspaceId,assignmentId: id } });
         const approved = votes.filter(v => ['APPROVE','SUBMIT_INFORMATION'].includes(v.decision)).length, rejected = votes.filter(v => ['REJECT','REQUEST_CHANGES'].includes(v.decision)).length;
@@ -85,7 +85,7 @@ export class WorkflowAssignmentService {
         let outcome: string | null = null;
         if (rejectedOutcome) outcome = 'REJECT'; else if (acceptedOutcome) outcome = information ? 'NEXT' : 'APPROVE';
         if (outcome) {
-          const result = information ? { values: fields,decision: 'SUBMIT_INFORMATION' } : { decision: outcome,approved,rejected };
+          const result = information ? { values: persistable(schema,fields),decision: 'SUBMIT_INFORMATION' } : { decision: outcome,approved,rejected };
           if (!await this.runtime.resumeWait(tx,actor.workspaceId,row.executionId,row.nodeRunId,result,outcome)) throw new AppError('WORKFLOW_ASSIGNMENT_CLOSED','Assignment checkpoint is unavailable.',409);
           await tx.workflowHumanAssignment.update({ where: { id },data: { status: 'COMPLETED',result: result as Prisma.InputJsonValue,version: { increment: 1 } } });
         } else await tx.workflowHumanAssignment.update({ where: { id },data: { version: { increment: 1 } } });

@@ -58,7 +58,9 @@ export async function inventoryCatalogPort(tx: Tx,actor: Principal) {
       const sellable = catalog.products.sellable(actor.workspaceId,product.id,{ allowArchived: !active });
       if (active && (!sellable || parent.state!=='ACTIVE' || product.state!=='ACTIVE')) throw new AppError('INVENTORY_LINE_INVALID','SKU is not active.',422);
       return { productId: parent.id,variantId: variantId ?? null,inventoryKey: product.id,name: sellable?.name ?? product.name,sku: product.sku,
-        unitPrecision: sellable?.unit?.precision ?? 6 };
+        unitPrecision: sellable?.unit?.precision ?? 6,
+        // Catalog owns the tracking policy; Variants inherit their parent's policy.
+        tracking: (parent.inventoryTracking ?? 'NONE') as 'NONE' | 'SERIAL' | 'BATCH',enforceBatchExpiry: Boolean(parent.enforceBatchExpiry) };
     },
   };
 }

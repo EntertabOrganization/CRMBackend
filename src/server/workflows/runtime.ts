@@ -6,7 +6,7 @@ import { canonical, parse } from '../process-platform/dto';
 import { evidence, lock, requirePermission, resolvePrincipal, type Principal, type Tx } from '../process-platform/context';
 import { graph, configs, actionConfig, httpConfig, type Graph, type Node } from './dto';
 import { compileExpression, evaluateExpression } from './expression';
-import { typedValue, typedRecord } from './typed-values';
+import { typedValue, typedRecord, persistable } from './typed-values';
 import { WorkflowExecutionService, activeExecutionStatuses } from './execution-service';
 import { workflowBusinessTime } from './business-time';
 import { WorkflowCallbackService } from './callback-service';
@@ -174,8 +174,9 @@ export class WorkflowRuntime {
         const definition = snapshot.variables.find(v => v.code === config.variable);
         if (!definition) throw new AppError('WORKFLOW_NODE_INVALID','Variable is not declared.',422);
         output = typedValue(definition,this.expression(config.expression,context));
-        const variables = { ...(execution.variables as Record<string,unknown>),[definition.code]: output };
         await this.executions.entities.validateReferences(tx,actor,{ [definition.code]: output });
+        output = persistable(snapshot.variables,{ [definition.code]: output })[definition.code];
+        const variables = { ...(execution.variables as Record<string,unknown>),[definition.code]: output };
         if (definition.datatype === 'USER' && output) await resolvePrincipal(tx,actor.workspaceId,String(output));
         await tx.workflowExecution.update({ where: { id: execution.id },data: { variables: json(variables) } });
         context.variables = variables;
@@ -193,7 +194,7 @@ export class WorkflowRuntime {
             state.item = collection[index]; state.index = index;
             const variable = snapshot.variables.find(v => v.code === config.itemVariable);
             if (!variable) throw new AppError('WORKFLOW_NODE_INVALID','Loop item variable is not declared.',422);
-            const variables = { ...(execution.variables as Record<string,unknown>),[variable.code]: typedValue(variable,collection[index]) };
+            const variables = { ...(execution.variables as Record<string,unknown>),...persistable(snapshot.variables,{ [variable.code]: typedValue(variable,collection[index]) }) };
             await tx.workflowExecution.update({ where: { id: execution.id },data: { variables: json(variables) } }); context.variables = variables;
           }
         } else {
@@ -363,7 +364,14 @@ export class WorkflowRuntime {
     await this.complete(tx,actor,execution,run,token,snapshot,node,context,output,edgeType); return true;
   }
   private async provider(work: ProviderWork) {
-    const output = await this.executions.definitions.connections.sendPrepared(work.prepared,work.config.method,work.input,work.config.timeoutMs,work.effectKey);
+    let output: Awaited<ReturnType<WorkflowRuntime['executions']['definitions']['connections']['sendPrepared']>>;
+    try { output = await this.executions.definitions.connections.sendPrepared(work.prepared,work.config.method,work.input,work.config.timeoutMs,work.effectKey); }
+    catch (error) {
+      // A definitive rejection (4xx or blocked destination) is a certain outcome; timeouts/5xx stay uncertain until reconciled.
+      if (isAppError(error) && error.status < 500) await this.db.workflowActionInvocation.updateMany({ where: { workspaceId: work.claim.workspaceId,
+        nodeRunId: work.claim.nodeRunId,idempotencyKey: work.effectKey,status: 'RUNNING' },data: { status: 'FAILED',errorCode: error.code } });
+      throw error;
+    }
     return this.db.$transaction(async tx => {
       const checkpoint = await this.checkpoint(tx,work.claim);
       if (!checkpoint) {

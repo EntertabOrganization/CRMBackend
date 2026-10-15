@@ -52,6 +52,7 @@ export async function validateGraph(snapshot: Graph, ports: ValidationPorts, pub
     for (const definition of definitions) try {
       assertNoSecrets(definition);
       if (definition.defaultValue !== undefined) typedValue(definition,definition.defaultValue);
+      if (definition.classification === 'SECRET' && definition.defaultValue !== undefined) problem('WORKFLOW_GRAPH_INVALID','SECRET values cannot be stored in a graph; use an Integration connection.');
       if (snapshot.constants.includes(definition) && definition.defaultValue === undefined) problem('WORKFLOW_GRAPH_INVALID','Constants require a typed value.');
       if (definition.datatype === 'JSON_TYPED' && !definition.validation.schema) problem('WORKFLOW_GRAPH_INVALID','JSON_TYPED requires a bounded JSON schema.');
     } catch { problem('WORKFLOW_GRAPH_INVALID','Typed definition or default is invalid.'); }

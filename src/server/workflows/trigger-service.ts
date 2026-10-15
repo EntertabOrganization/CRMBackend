@@ -90,8 +90,12 @@ export class WorkflowTriggerService {
     requirePermission(actor,'WORKFLOW.RUNTIME_MANAGE',true); const input = parse(limits,raw);
     return this.db.$transaction(async tx => {
       await lock(tx,actor.workspaceId,'workflow:runtime-policy'); actor = await resolvePrincipal(tx,actor.workspaceId,actor.userId); requirePermission(actor,'WORKFLOW.RUNTIME_MANAGE',true);
+      const prior = await tx.workflowRuntimePolicy.findUnique({ where: { workspaceId: actor.workspaceId } });
       const row = await tx.workflowRuntimePolicy.upsert({ where: { workspaceId: actor.workspaceId },create: { workspaceId: actor.workspaceId,...input },update: { ...input,version: { increment: 1 } } });
-      await evidence(tx,actor,'WORKFLOW_RUNTIME_POLICY',row.id,'WORKFLOW_RUNTIME_POLICY_CHANGED',{ ...input,version: row.version }); return row;
+      await evidence(tx,actor,'WORKFLOW_RUNTIME_POLICY',row.id,'WORKFLOW_RUNTIME_POLICY_CHANGED',{ ...input,version: row.version });
+      if (input.retentionDays !== undefined && input.retentionDays !== (prior?.retentionDays ?? 365))
+        await evidence(tx,actor,'WORKFLOW_RUNTIME_POLICY',row.id,'WORKFLOW_RETENTION_CHANGED',{ retentionDays: row.retentionDays,previousRetentionDays: prior?.retentionDays ?? 365 });
+      return row;
     });
   }
 }

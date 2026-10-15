@@ -45,6 +45,36 @@ export class WorkflowGovernanceService {
       });
     },{ timeout: 60000 });
   }
+  /** Debug detail retention: purges logs and node payloads of terminal executions past the Workspace policy.
+   * Legal hold, execution outcome, history rows and global Audit are never removed here. */
+  async purgeRetention(limit = 50,now = new Date()) {
+    const candidates = await this.db.$queryRaw<Array<{ id: string; workspace_id: string }>>`
+      SELECT e.id,e.workspace_id FROM workflow_executions e
+      LEFT JOIN workflow_runtime_policies p ON p.workspace_id=e.workspace_id
+      WHERE e.status IN ('COMPLETED','FAILED','CANCELLED','TERMINATED','TIMED_OUT') AND NOT e.legal_hold AND e.completed_at IS NOT NULL
+        AND e.completed_at < ${now}::timestamptz - make_interval(days => COALESCE(p.retention_days,365))
+        AND (EXISTS (SELECT 1 FROM workflow_execution_logs l WHERE l.workspace_id=e.workspace_id AND l.execution_id=e.id)
+          OR EXISTS (SELECT 1 FROM workflow_node_executions n WHERE n.workspace_id=e.workspace_id AND n.execution_id=e.id AND (n.input_json<>'{}'::jsonb OR n.output_json IS NOT NULL)))
+      ORDER BY e.completed_at,e.id LIMIT ${limit}`;
+    let purged = 0,deletedLogs = 0;
+    for (const candidate of candidates) {
+      const done = await this.db.$transaction(async tx => {
+        await lock(tx,candidate.workspace_id,'workflow:execution:' + candidate.id);
+        const execution = await tx.workflowExecution.findFirst({ where: { workspaceId: candidate.workspace_id,id: candidate.id,status: { in: terminalExecutionStatuses },legalHold: false } });
+        if (!execution?.completedAt) return 0;
+        const policy = await tx.workflowRuntimePolicy.findUnique({ where: { workspaceId: execution.workspaceId } });
+        if (execution.completedAt.getTime() >= now.getTime() - (policy?.retentionDays ?? 365)*86400000) return 0;
+        const where = { workspaceId: execution.workspaceId,executionId: execution.id };
+        const logs = await tx.workflowExecutionLog.deleteMany({ where });
+        await tx.workflowNodeExecution.updateMany({ where,data: { input: {},output: Prisma.DbNull } });
+        const actor: Principal = { workspaceId: execution.workspaceId,userId: execution.startedByUserId,roleId: '00000000-0000-0000-0000-000000000000',grants: new Map() };
+        await evidence(tx,actor,'WORKFLOW_EXECUTION',execution.id,'WORKFLOW_LOGS_PURGED',{ deletedLogs: logs.count,retentionDays: policy?.retentionDays ?? 365 },false);
+        return logs.count+1;
+      },{ timeout: 60000 });
+      if (done) { purged++; deletedLogs += done-1; }
+    }
+    return { candidates: candidates.length,purged,deletedLogs };
+  }
   /** Recovery checks and checkpoints commit with the job. No owning adapter/provider is invoked here. */
   async tick(limit = 10) {
     const jobs = await this.db.workflowReconciliationJob.findMany({ where: { status: 'QUEUED' },orderBy: { createdAt: 'asc' },take: limit });

@@ -84,20 +84,33 @@ export class InventoryStocktakeService implements StocktakePostingPort {
     },{ timeout: 60000 });
   }
   async count(actor: Principal,id: string,lineId: string,raw: unknown) {
-    parse(uuid,lineId); const input = parse(z.strictObject({ quantity,expectedVersion: inventoryVersion }),raw);
+    parse(uuid,lineId);
+    const input = parse(z.union([z.strictObject({ quantity,expectedVersion: inventoryVersion }),
+      z.strictObject({ skip: z.literal(true),reason: z.string().trim().min(1).max(2000),expectedVersion: inventoryVersion })]),raw);
     return this.db.$transaction(async tx => {
       const current = await this.locked(tx,actor,id,'INVENTORY.STOCKTAKE_COUNT'); actor = current.actor; const row = current.row;
+      // Skipping is an approval, not a count: it requires the separate stocktake management authority.
+      if ('skip' in input) await this.session(tx,actor,id,'INVENTORY.STOCKTAKE_MANAGE');
       if (!['COUNTING','RECONCILING'].includes(row.status)) throw new AppError('STOCKTAKE_INVALID_STATUS','Session is not open for counting.',409);
       const line = await tx.inventoryStocktakeLine.findFirst({ where: { workspaceId: actor.workspaceId,sessionId: id,id: lineId } });
       if (!line) throw new AppError('STOCKTAKE_NOT_FOUND','Count line was not found.',404); assertInventoryVersion(line.version,input.expectedVersion);
       if (await tx.inventoryStocktakeLine.count({ where: { workspaceId: actor.workspaceId,sessionId: id,adjustmentDocumentLineId: { not: null } } }))
         throw new AppError('STOCKTAKE_APPROVAL_REQUIRED','An adjustment proposal already exists for this session.',409);
+      const now = new Date();
+      if ('skip' in input) {
+        if (line.countedQuantity!==null) throw new AppError('STOCKTAKE_INVALID_STATUS','A counted line cannot be skipped.',409);
+        const skipped = await tx.inventoryStocktakeLine.update({ where: { id: lineId },data: { skipApprovedByUserId: actor.userId,skipReason: input.reason,skippedAt: now,
+          varianceQuantity: null,reconciledBalanceVersion: null,reconciliationQuantity: null,version: { increment: 1 } } });
+        const session = await tx.inventoryStocktake.update({ where: { id },data: { status: 'COUNTING',version: { increment: 1 } } });
+        await evidence(tx,actor,'INVENTORY_STOCKTAKE',id,'STOCKTAKE_LINE_SKIP_APPROVED',{ lineId,reason: input.reason,lineVersion: skipped.version.toString() });
+        return { line: skipped,sessionVersion: session.version.toString() };
+      }
       const sku = (await inventoryCatalogPort(tx,actor)).sku(line.productId,line.variantId ?? undefined,false);
       if (exact(input.quantity).decimalPlaces()>sku.unitPrecision) throw new AppError('INVENTORY_LINE_INVALID','Count exceeds Catalog unit precision.',422);
-      const now = new Date();
       const watermark = await tx.inventoryMovement.aggregate({ where: { workspaceId: actor.workspaceId,warehouseId: row.warehouseId },_max: { ledgerSequence: true } });
       const updated = await tx.inventoryStocktakeLine.update({ where: { id: lineId },data: { countedQuantity: input.quantity,countedByUserId: actor.userId,countedAt: now,
-        countedLedgerSequence: watermark._max.ledgerSequence ?? 0n,varianceQuantity: null,reconciledBalanceVersion: null,reconciliationQuantity: null,version: { increment: 1 } } });
+        countedLedgerSequence: watermark._max.ledgerSequence ?? 0n,varianceQuantity: null,reconciledBalanceVersion: null,reconciliationQuantity: null,
+        skipApprovedByUserId: null,skipReason: null,skippedAt: null,version: { increment: 1 } } });
       await tx.inventoryStocktakeCountHistory.create({ data: { workspaceId: actor.workspaceId,sessionId: id,lineId,actorUserId: actor.userId,quantity: input.quantity,occurredAt: now } });
       const session = await tx.inventoryStocktake.update({ where: { id },data: { status: 'COUNTING',version: { increment: 1 } } });
       await evidence(tx,actor,'INVENTORY_STOCKTAKE',id,'STOCKTAKE_COUNT_RECORDED',{ lineId,quantity: input.quantity,lineVersion: updated.version.toString() },false);
@@ -110,7 +123,8 @@ export class InventoryStocktakeService implements StocktakePostingPort {
       const current = await this.locked(tx,actor,id,'INVENTORY.STOCKTAKE_RECONCILE'); actor = current.actor; const row = current.row; assertInventoryVersion(row.version,input.expectedVersion);
       if (!['COUNTING','RECONCILING'].includes(row.status)) throw new AppError('STOCKTAKE_INVALID_STATUS','Session is not open for reconciliation.',409);
       const lines = await tx.inventoryStocktakeLine.findMany({ where: { workspaceId: actor.workspaceId,sessionId: id } });
-      if (!lines.length || lines.some(line => line.countedQuantity===null || line.countedAt===null)) throw new AppError('STOCKTAKE_UNCOUNTED_LINES','Count every snapshot line before reconciliation.',409);
+      if (!lines.length || lines.some(line => (line.countedQuantity===null || line.countedAt===null) && !line.skippedAt))
+        throw new AppError('STOCKTAKE_UNCOUNTED_LINES','Count every snapshot line (or approve an explicit skip) before reconciliation.',409);
       const scope = parse(scopeDto,row.scope);
       const balances = await tx.inventoryBalance.findMany({ where: { workspaceId: actor.workspaceId,warehouseId: row.warehouseId,
         ...(row.locationId ? { locationId: row.locationId } : {}),...(scope.mode==='SELECTED_SKUS' ? { inventoryKey: { in: scope.inventoryKeys } } : {}) } });
@@ -123,8 +137,9 @@ export class InventoryStocktakeService implements StocktakePostingPort {
         const ledger = await tx.inventoryMovement.findMany({ where: { workspaceId: actor.workspaceId,warehouseId: row.warehouseId,inventoryKey: line.inventoryKey,locationId: line.locationId,ledgerSequence: { gt: row.baselineLedgerSequence } },select: { quantityDelta: true,ledgerSequence: true } });
         const expectedNow = exact(line.expectedQuantity).plus(ledger.reduce((sum,movement) => sum.plus(movement.quantityDelta),exact('0')));
         if (!expectedNow.eq(balance?.onHand ?? '0')) throw new AppError('STOCKTAKE_CONCURRENT_MOVEMENTS','Balance does not match the snapshot and interim ledger.',409);
-        const expectedAtCount = exact(line.expectedQuantity).plus(ledger.filter(movement => movement.ledgerSequence<=line.countedLedgerSequence!).reduce((sum,movement) => sum.plus(movement.quantityDelta),exact('0')));
-        const variance = exact(line.countedQuantity!).minus(expectedAtCount);
+        const expectedAtCount = exact(line.expectedQuantity).plus(ledger.filter(movement => movement.ledgerSequence<=(line.countedLedgerSequence ?? 0n)).reduce((sum,movement) => sum.plus(movement.quantityDelta),exact('0')));
+        // An approved skip carries no count and therefore no variance.
+        const variance = line.skippedAt ? exact('0') : exact(line.countedQuantity!).minus(expectedAtCount);
         await tx.inventoryStocktakeLine.update({ where: { id: line.id },data: { varianceQuantity: numeric24(variance),reconciledBalanceVersion: balance?.version ?? 0n,
           reconciliationQuantity: numeric24(expectedNow.plus(variance)),version: { increment: 1 } } });
       }
@@ -145,7 +160,7 @@ export class InventoryStocktakeService implements StocktakePostingPort {
   private async ready(tx: Tx,actor: Principal,row: InventoryStocktake) {
     if (row.status!=='RECONCILING') throw new AppError('STOCKTAKE_INVALID_STATUS','Reconcile the session before posting.',409);
     const lines = await tx.inventoryStocktakeLine.findMany({ where: { workspaceId: actor.workspaceId,sessionId: row.id },orderBy: [{ inventoryKey: 'asc' },{ locationKey: 'asc' }] });
-    if (!lines.length || lines.some(line => line.countedQuantity===null || line.varianceQuantity===null || line.reconciledBalanceVersion===null))
+    if (!lines.length || lines.some(line => line.countedQuantity===null && !line.skippedAt || line.varianceQuantity===null || line.reconciledBalanceVersion===null))
       throw new AppError('STOCKTAKE_UNCOUNTED_LINES','Every count must have a reconciled variance.',409);
     for (const line of lines) {
       await lock(tx,actor.workspaceId,'inventory:stock:' + row.warehouseId + ':' + line.inventoryKey);
@@ -219,7 +234,7 @@ export class InventoryStocktakeService implements StocktakePostingPort {
             const cost = settings.costingMethod==='AVERAGE' && average ? average.averageCost : last?.unitCost;
             const proposal = await this.documents.addLineInTransaction(tx,actor,document.id,{ productId: line.productId,variantId: line.variantId ?? undefined,
               quantity: numeric24(exact(line.varianceQuantity!).abs()),unitCost: cost?.toFixed(6) ?? '0',locationId: line.locationId ?? undefined,
-              adjustmentDirection: exact(line.varianceQuantity!).gt(0) ? 'IN' : 'OUT' });
+              adjustmentDirection: exact(line.varianceQuantity!).gt(0) ? 'IN' : 'OUT' },{ trackingExempt: true });
             await tx.inventoryStocktakeLine.update({ where: { id: line.id },data: { adjustmentDocumentLineId: proposal.id,version: { increment: 1 } } });
           }
           document = await tx.inventoryDocument.findFirstOrThrow({ where: { workspaceId: actor.workspaceId,id: document.id } });

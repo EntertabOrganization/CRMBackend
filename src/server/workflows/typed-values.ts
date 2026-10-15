@@ -72,6 +72,13 @@ export function typedValue(definition: Parameter, input: unknown): unknown {
   }
 }
 
+/** SECRET values are validated, then irreversibly redacted before any persistence. */
+export const secretRedaction = '[REDACTED]';
+export function persistable(definitions: Parameter[], values: Record<string,unknown>): Record<string,unknown> {
+  return Object.fromEntries(Object.entries(values).map(([code,value]) =>
+    [code,value !== null && value !== undefined && definitions.find(d => d.code === code)?.classification === 'SECRET' ? secretRedaction : value]));
+}
+
 export function typedRecord(definitions: Parameter[], input: Record<string,unknown>): Record<string,unknown> {
   if (Object.keys(input).some(key => !definitions.some(definition => definition.code === key))) throw invalid();
   return Object.fromEntries(definitions.map(definition => [definition.code,typedValue(definition,input[definition.code])]));

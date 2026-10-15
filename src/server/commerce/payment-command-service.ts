@@ -44,8 +44,13 @@ export class CommercePaymentCommandService {
     },{timeout:60000});
   }
   async change(actor:Principal,paymentId:string,kind:'CAPTURE'|'VOID',raw:unknown,key:string|null){
+    parse(uuid,paymentId);kind==='CAPTURE'?parse(captureDto,raw):parse(voidDto,raw);
+    return this.db.$transaction(tx=>this.changeInTransaction(tx,actor,paymentId,kind,raw,key),{timeout:60000});
+  }
+  /** Owning command entry point for callers (e.g. Workflow adapters) that already hold a transaction. */
+  async changeInTransaction(tx:Tx,actor:Principal,paymentId:string,kind:'CAPTURE'|'VOID',raw:unknown,key:string|null){
     parse(uuid,paymentId);const input=kind==='CAPTURE'?parse(captureDto,raw):parse(voidDto,raw),identity=this.shared.identity(kind+':'+paymentId,key,input);
-    return this.db.$transaction(async tx=>{
+    {
       await lock(tx,actor.workspaceId,'commerce:configuration');
       const binding=await tx.commerceOrderPaymentBinding.findFirst({where:{workspaceId:actor.workspaceId,paymentId}});
       if(!binding)throw new AppError('PAYMENT_NOT_FOUND','Payment was not found.',404);
@@ -57,7 +62,7 @@ export class CommercePaymentCommandService {
       const config=await this.method(tx,actor,order.storeId,payment.methodId,commercePermission(kind));
       if(config.connectionId!==payment.connectionId||config.merchantId!==payment.merchantId||config.method.provider!==payment.providerKey||!config.adapter.capabilities()[kind==='CAPTURE'?'capture':'void'])throw new AppError('PAYMENT_PROVIDER_NOT_CONFIGURED','Payment method binding changed or lacks this capability.',409);
       return paymentCommandAck(await this.shared.change(tx,actor,payment,kind,input,identity,{methodId:payment.methodId,connectionId:config.connectionId,providerKey:payment.providerKey,merchantId:payment.merchantId},Boolean(config.adapter.capabilities().multicapture)));
-    },{timeout:60000});
+    }
   }
   private async authorize(tx:Tx,row:SharedPaymentCommand){
     await lock(tx,row.workspaceId,'commerce:configuration');

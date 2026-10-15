@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
+import { Prisma,type PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { AppError } from '../errors';
 import { evidence,lock,requirePermission,resolvePrincipal,type Principal } from '../process-platform/context';
@@ -31,8 +31,18 @@ export class InventoryCostingService {
       const rows = await tx.inventoryMovement.groupBy({ by: ['warehouseId','inventoryKey','productId','variantId','currency'],
         where: { workspaceId: actor.workspaceId,warehouseId: { in: ids },productId: query.productId,...(query.asOf ? { occurredAt: { lte: new Date(query.asOf) } } : {}) },
         _sum: { quantityDelta: true,totalCost: true },orderBy: [{ warehouseId: 'asc' },{ inventoryKey: 'asc' },{ currency: 'asc' }] });
+      // Settled negative-stock deficits move their cost variance out of on-hand valuation (into cost of goods).
+      const settlements = await tx.inventoryCostDeficitSettlement.findMany({ where: { workspaceId: actor.workspaceId,...(query.asOf ? { occurredAt: { lte: new Date(query.asOf) } } : {}) } });
+      const deficits = settlements.length ? await tx.inventoryCostDeficit.findMany({ where: { workspaceId: actor.workspaceId,id: { in: [...new Set(settlements.map(s => s.deficitId))] },warehouseId: { in: ids } } }) : [];
+      const variance = new Map<string,Prisma.Decimal>();
+      for (const settlement of settlements) {
+        const deficit = deficits.find(d => d.id===settlement.deficitId); if (!deficit) continue;
+        const key = deficit.warehouseId+':'+deficit.inventoryKey+':'+deficit.currency;
+        variance.set(key,(variance.get(key) ?? new Prisma.Decimal(0)).plus(settlement.varianceValue));
+      }
       return { asOf: query.asOf ?? new Date().toISOString(),valuations: rows.map(row => ({ warehouseId: row.warehouseId,inventoryKey: row.inventoryKey,
-        productId: row.productId,variantId: row.variantId,currency: row.currency,onHand: row._sum.quantityDelta?.toFixed(6) ?? '0.000000',totalValue: row._sum.totalCost?.toFixed(6) ?? '0.000000' })) };
+        productId: row.productId,variantId: row.variantId,currency: row.currency,onHand: row._sum.quantityDelta?.toFixed(6) ?? '0.000000',
+        totalValue: new Prisma.Decimal(row._sum.totalCost ?? 0).minus(variance.get(row.warehouseId+':'+row.inventoryKey+':'+row.currency) ?? 0).toFixed(6) })) };
     });
   }
 }

@@ -92,6 +92,9 @@ export type Product = {
   width: string | null;
   height: string | null;
   barcode: string | null;
+  /** Inventory tracking policy owned by Catalog; Variants inherit their parent's policy. */
+  inventoryTracking?: 'NONE' | 'SERIAL' | 'BATCH';
+  enforceBatchExpiry?: boolean;
   variantAxes: string[];
   axisKey: string | null;
   axisValues: AxisValue[] | null;

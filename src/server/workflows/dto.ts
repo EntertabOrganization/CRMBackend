@@ -8,7 +8,7 @@ export const createDefinition = z.strictObject({ name, code, type: z.enum(['SEQU
   boundEntityTypeId: uuid.optional(), concurrencyMode: concurrency.default('ONE_PER_DEFINITION_PER_ENTITY'), runAs: executionIdentity.default('STARTER') });
 export const parameterDefinition = z.strictObject({ code, datatype: z.enum(['TEXT','NUMBER','MONEY','BOOLEAN','DATE','DATETIME','USER','ENTITY_REF','JSON_TYPED']),
   required: z.boolean().default(false), validation: z.record(z.string(), z.json()).default({}), defaultValue: z.json().optional(),
-  classification: z.enum(['PUBLIC','BUSINESS','SENSITIVE']).default('BUSINESS') });
+  classification: z.enum(['PUBLIC','BUSINESS','SENSITIVE','SECRET']).default('BUSINESS') });
 export const startCondition = z.strictObject({ eventType: z.string().regex(/^[A-Z][A-Z0-9_.]{1,100}$/), condition: z.string().max(4000).optional(),
   enabled: z.boolean().default(true), priority: z.number().int().min(0).max(1000).default(0) });
 export const patchDefinition = z.strictObject({ expectedVersion: version, name: name.optional(), concurrencyMode: concurrency.optional(),
@@ -61,4 +61,4 @@ export type Graph = z.infer<typeof graph>;
 export type Node = z.infer<typeof node>;
 export type Parameter = z.infer<typeof parameterDefinition>;
 export const limits = z.strictObject({ maxLoopIterations: boundedCount, maxNodeRuns: z.number().int().min(1).max(10000),
-  maxDepth: z.number().int().min(1).max(10), maxLifetimeDays: z.number().int().min(1).max(365) });
+  maxDepth: z.number().int().min(1).max(10), maxLifetimeDays: z.number().int().min(1).max(365), retentionDays: z.number().int().min(1).max(3650).optional() });

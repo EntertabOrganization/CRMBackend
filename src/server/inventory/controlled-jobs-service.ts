@@ -133,8 +133,14 @@ export class InventoryControlledJobsService {
     const watermark = await tx.inventoryMovement.aggregate({ where: { workspaceId: actor.workspaceId,warehouseId: { in: warehouseIds } },_max: { ledgerSequence: true },_count: { id: true } });
     const valuations = await tx.inventoryMovement.groupBy({ by: ['warehouseId','inventoryKey','currency'],where: { workspaceId: actor.workspaceId,warehouseId: { in: warehouseIds } },_sum: { quantityDelta: true,totalCost: true },orderBy: [{ warehouseId: 'asc' },{ inventoryKey: 'asc' },{ currency: 'asc' }] });
     const values: ScopeValue[] = [],blocked: { code: string;warehouseId?: string;inventoryKey?: string }[] = [];
+    // Settled negative-stock deficits moved their cost variance out of on-hand valuation; open deficits block controlled operations.
+    const deficits = await tx.inventoryCostDeficit.findMany({ where: { workspaceId: actor.workspaceId,warehouseId: { in: warehouseIds } } });
+    const settlements = deficits.length ? await tx.inventoryCostDeficitSettlement.findMany({ where: { workspaceId: actor.workspaceId,deficitId: { in: deficits.map(d => d.id) } } }) : [];
+    for (const deficit of deficits.filter(d => exact(d.remainingQuantity).gt(0))) blocked.push({ code: 'STOCK_RECONCILIATION_CONFLICT',warehouseId: deficit.warehouseId,inventoryKey: deficit.inventoryKey });
     for (const row of valuations) {
-      const qty = exact(row._sum.quantityDelta ?? '0'),value = exact(row._sum.totalCost ?? '0');
+      const variance = settlements.filter(s => deficits.some(d => d.id===s.deficitId && d.warehouseId===row.warehouseId && d.inventoryKey===row.inventoryKey && d.currency===row.currency))
+        .reduce((sum,s) => sum.plus(s.varianceValue),exact('0'));
+      const qty = exact(row._sum.quantityDelta ?? '0'),value = exact(row._sum.totalCost ?? '0').minus(variance);
       if (qty.eq(0) && value.eq(0)) continue;
       const balanceQty = balances.filter(balance => balance.warehouseId===row.warehouseId && balance.inventoryKey===row.inventoryKey).reduce((sum,balance) => sum.plus(balance.onHand),exact('0'));
       if (qty.lt(0) || value.lt(0) || qty.eq(0) && !value.eq(0) || !qty.eq(balanceQty)) blocked.push({ code: 'STOCK_RECONCILIATION_CONFLICT',warehouseId: row.warehouseId,inventoryKey: row.inventoryKey });
@@ -197,7 +203,7 @@ export class InventoryControlledJobsService {
     if (!existingDocumentIds.length) for (const [key,balances] of groups) {
       const denomination = key.slice(-3),warehouseId = balances[0].warehouseId;
       const document = await this.documents.createControlledAdjustmentInTransaction(tx,actor,{ documentType: 'STOCK_ADJUSTMENT',warehouseIds: { source: warehouseId },currency: denomination },job.id);
-      for (const balance of balances) await this.documents.addLineInTransaction(tx,actor,document.id,{ productId: balance.productId,variantId: balance.variantId ?? undefined,quantity: balance.onHand.toFixed(6),unitCost: '0',adjustmentDirection: 'OUT',locationId: balance.locationId ?? undefined });
+      for (const balance of balances) await this.documents.addLineInTransaction(tx,actor,document.id,{ productId: balance.productId,variantId: balance.variantId ?? undefined,quantity: balance.onHand.toFixed(6),unitCost: '0',adjustmentDirection: 'OUT',locationId: balance.locationId ?? undefined },{ trackingExempt: true });
       const current = await tx.inventoryDocument.findFirstOrThrow({ where: { workspaceId: actor.workspaceId,id: document.id } });
       await this.documents.approvalInTransaction(tx,actor,document.id,{ expectedVersion: current.version.toString() },true);
       documentIds.push(document.id);

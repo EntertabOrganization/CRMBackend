@@ -6,7 +6,7 @@ import { assertVersion, command, evidence, lock, requirePermission, resolvePrinc
 import { ownerVisible } from '../process-platform/owner-scope';
 import { canonical, pageQuery, parse, uuid, version } from '../process-platform/dto';
 import { entityType, graph, type Graph } from './dto';
-import { typedRecord } from './typed-values';
+import { typedRecord, persistable } from './typed-values';
 import { WorkflowDefinitionService } from './definition-service';
 import { WorkflowEntityAuthority } from './entity-authority';
 import { workflowBusinessTime } from './business-time';
@@ -108,7 +108,7 @@ export class WorkflowExecutionService {
       if (!startNode) throw new AppError('WORKFLOW_GRAPH_INVALID','Publication START is missing.',409);
       const row = await tx.workflowExecution.create({ data: { workspaceId: actor.workspaceId,definitionId: workflowId,versionId: publication.id,
         snapshot: json(snapshot),entityType: input.entityType,entityId: input.entityId,runAs: definition.runAs,executionUserId: effective.userId,
-        startedByUserId: actor.userId,startedByType: origin?.type ?? (parent ? 'WORKFLOW' : 'USER'),parameters: json(parameters),variables: json(typedRecord(snapshot.variables,{})),
+        startedByUserId: actor.userId,startedByType: origin?.type ?? (parent ? 'WORKFLOW' : 'USER'),parameters: json(persistable(snapshot.parameters,parameters)),variables: json(typedRecord(snapshot.variables,{})),
         concurrencyMode: definition.concurrencyMode,concurrencyKey,parentExecutionId: parent?.executionId,depth,ancestry: [...ancestry,workflowId],
         expiresAt: new Date(Date.now() + (policy?.maxLifetimeDays ?? 365)*86400000) } });
       await tx.workflowExecutionToken.create({ data: { workspaceId: actor.workspaceId,executionId: row.id,nodeKey: startNode.nodeKey,branchKey: 'ROOT',activationKey: 'ROOT' } });

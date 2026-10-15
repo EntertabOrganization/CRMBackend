@@ -19,7 +19,24 @@ const sourceDto = z.strictObject({ entityType: z.enum(['DEAL','ORDER','INVOICE',
 export const createInventoryDocument = z.strictObject({ documentType,warehouseIds: warehousesDto,currency,sourceRef: sourceDto.optional() });
 export const inventoryLineInput = z.strictObject({ productId: uuid,variantId: uuid.optional(),quantity: positiveQuantity,unitCost: quantity,
   locationId: uuid.optional(),sourceLocationId: uuid.optional(),targetLocationId: uuid.optional(),adjustmentDirection: z.enum(['IN','OUT']).optional(),
-  writeOffReason: z.string().trim().min(1).max(2000).optional(),reservationId: uuid.optional() });
+  writeOffReason: z.string().trim().min(1).max(2000).optional(),reservationId: uuid.optional(),
+  serialIds: z.array(uuid).min(1).max(1000).refine(ids => new Set(ids).size===ids.length,'Serial numbers must be distinct').optional(),
+  batches: z.array(z.strictObject({ batchId: uuid,quantity: positiveQuantity })).min(1).max(100).refine(rows => new Set(rows.map(r => r.batchId)).size===rows.length,'Batches must be distinct').optional() });
+type Sku = { inventoryKey: string;tracking: 'NONE'|'SERIAL'|'BATCH';enforceBatchExpiry: boolean };
+/** Serial lifecycle effect of a posted line; receipts and incoming adjustments register serials afterwards. */
+function serialEffect(type: string,direction: string | null): { leg: 'ISSUE'|'TRANSFER'|'RETURN'|null;status?: string } {
+  if (type==='TRANSFER') return { leg: 'TRANSFER' };
+  if (type==='SALES_ORDER') return { leg: 'ISSUE',status: 'SOLD' };
+  if (['WRITE_OFF','SUPPLIER_RETURN'].includes(type) || type==='STOCK_ADJUSTMENT' && direction==='OUT') return { leg: 'ISSUE',status: 'WRITTEN_OFF' };
+  if (type==='CUSTOMER_RETURN') return { leg: 'RETURN',status: 'RETURNED' };
+  return { leg: null };
+}
+function batchLegs(document: InventoryDocument,line: { adjustmentDirection: string | null }) {
+  const source = document.sourceWarehouseId,destination = document.destinationWarehouseId;
+  if (document.type==='TRANSFER') return [{ warehouseId: source!,delta: -1 },{ warehouseId: destination!,delta: 1 }];
+  if (document.type==='STOCK_ADJUSTMENT') return [{ warehouseId: (source ?? destination)!,delta: line.adjustmentDirection==='IN' ? 1 : -1 }];
+  return destination ? [{ warehouseId: destination,delta: 1 }] : [{ warehouseId: source!,delta: -1 }];
+}
 export const inventoryDocumentPolicy = z.strictObject({ requiresApproval: z.boolean().default(false),minimumValue: quantity.optional(),currency: currency.optional(),
   approverRoleIds: z.array(uuid).min(1).max(100).optional(),requiredApprovals: z.number().int().min(1).max(10).default(1),allowSelfApproval: z.boolean().default(false),
   actions: z.record(z.string().regex(/^INVENTORY\.DOCUMENT_[A-Z_]+$/),z.array(uuid).max(100)).default({}) });
@@ -159,7 +176,32 @@ export class InventoryDocumentService {
         throw new AppError('INVENTORY_LINE_INVALID','Location is unavailable for this warehouse leg.',422);
     }
   }
-  async addLineInTransaction(tx: Tx,actor: Principal,id: string,raw: unknown) {
+  /** Serial/batch selections required by the Catalog SKU policy; stocktake and controlled reset adjustments are quantity-only (Phase 2 traceability). */
+  private async selections(tx: Tx,actor: Principal,row: InventoryDocument,sku: Sku,input: z.infer<typeof inventoryLineInput>,exempt: boolean) {
+    const invalid = (message: string) => new AppError('INVENTORY_LINE_INVALID',message,422);
+    if (sku.tracking==='NONE' || exempt) {
+      if (input.serialIds || input.batches) throw invalid('Serial or batch selection does not apply to this line.');
+      return [];
+    }
+    if (sku.tracking==='SERIAL') {
+      if (input.batches) throw invalid('This SKU is serial-tracked.');
+      if (!exact(input.quantity).isInteger()) throw invalid('Serial-tracked quantities must be whole units.');
+      if (!serialEffect(row.type,input.adjustmentDirection ?? null).leg) {
+        if (input.serialIds) throw invalid('Register serial numbers after the receipt is processed.');
+        return [];
+      }
+      if (!input.serialIds || input.serialIds.length!==Number(input.quantity)) throw invalid('Select exactly one serial number per unit.');
+      const found = await tx.inventorySerialNumber.count({ where: { workspaceId: actor.workspaceId,id: { in: input.serialIds },inventoryKey: sku.inventoryKey } });
+      if (found!==input.serialIds.length) throw invalid('Serial number is unavailable for this SKU.');
+      return input.serialIds.map(serialId => ({ serialId,quantity: '1' }));
+    }
+    if (input.serialIds) throw invalid('This SKU is batch-tracked.');
+    if (!input.batches || !input.batches.reduce((sum,b) => sum.plus(b.quantity),exact('0')).eq(input.quantity)) throw invalid('Select batches covering the line quantity.');
+    const found = await tx.inventoryBatch.count({ where: { workspaceId: actor.workspaceId,id: { in: input.batches.map(b => b.batchId) },inventoryKey: sku.inventoryKey,status: 'ACTIVE' } });
+    if (found!==input.batches.length) throw invalid('Batch is unavailable for this SKU.');
+    return input.batches.map(b => ({ batchId: b.batchId,quantity: b.quantity }));
+  }
+  async addLineInTransaction(tx: Tx,actor: Principal,id: string,raw: unknown,options: { trackingExempt?: boolean } = {}) {
     const input = parse(inventoryLineInput,raw),row = await this.document(tx,actor,id,'INVENTORY.DOCUMENT_EDIT'); this.editable(row);
     const sku = (await inventoryCatalogPort(tx,actor)).sku(input.productId,input.variantId);
     if (exact(input.quantity).decimalPlaces()>sku.unitPrecision) throw new AppError('INVENTORY_LINE_INVALID','Quantity exceeds the Catalog unit precision.',422);
@@ -169,11 +211,13 @@ export class InventoryDocumentService {
     if (row.type==='STOCK_ADJUSTMENT' && !input.adjustmentDirection || row.type!=='STOCK_ADJUSTMENT' && input.adjustmentDirection)
       throw new AppError('INVENTORY_LINE_INVALID','Adjustment direction does not match the document.',422);
     if (row.type==='WRITE_OFF' && !input.writeOffReason) throw new AppError('INVENTORY_LINE_INVALID','Write-off reason is required.',422);
+    const selections = await this.selections(tx,actor,row,sku,input,Boolean(options.trackingExempt));
     const last = await tx.inventoryDocumentLine.findFirst({ where: { workspaceId: actor.workspaceId,documentId: id },orderBy: { lineNumber: 'desc' } });
     const line = await tx.inventoryDocumentLine.create({ data: { workspaceId: actor.workspaceId,documentId: id,productId: sku.productId,variantId: sku.variantId,inventoryKey: sku.inventoryKey,
       quantity: input.quantity,unitCost: input.unitCost,sourceLocationId: source,targetLocationId: target,adjustmentDirection: input.adjustmentDirection,writeOffReason: input.writeOffReason,reservationId: input.reservationId,lineNumber: (last?.lineNumber ?? 0)+1 } });
+    if (selections.length) await tx.inventoryDocumentLineTracking.createMany({ data: selections.map(selection => ({ workspaceId: actor.workspaceId,documentId: id,documentLineId: line.id,...selection })) });
     const updated = await tx.inventoryDocument.update({ where: { id },data: { status: 'DRAFT',approvalRevision: null,version: { increment: 1 } } });
-    await this.history(tx,actor,updated,'INVENTORY_DOCUMENT_LINE_ADDED',{ lineId: line.id }); return { ...line,documentVersion: updated.version.toString() };
+    await this.history(tx,actor,updated,'INVENTORY_DOCUMENT_LINE_ADDED',{ lineId: line.id,selections: selections.length }); return { ...line,documentVersion: updated.version.toString(),selections };
   }
   async line(actor: Principal,id: string,raw: unknown,lineId?: string,remove = false) {
     const input = remove ? parse(z.strictObject({}),raw) : lineId ? parse(z.strictObject({ expectedVersion: inventoryVersion,quantity: positiveQuantity.optional(),unitCost: quantity.optional() }),raw) : parse(inventoryLineInput,raw);
@@ -188,6 +232,8 @@ export class InventoryDocumentService {
       const sku = (await inventoryCatalogPort(tx,actor)).sku(existing.productId,existing.variantId ?? undefined);
       const newQty = 'quantity' in input && typeof input.quantity==='string' ? input.quantity : existing.quantity.toFixed(6);
       if (exact(newQty).decimalPlaces()>sku.unitPrecision) throw new AppError('INVENTORY_LINE_INVALID','Quantity exceeds unit precision.',422);
+      if (!remove && !exact(newQty).eq(existing.quantity) && await tx.inventoryDocumentLineTracking.count({ where: { workspaceId: actor.workspaceId,documentLineId: lineId } }))
+        throw new AppError('INVENTORY_LINE_INVALID','Remove and re-add a serial/batch line to change its quantity.',422);
       let result: unknown;
       if (remove) { await tx.inventoryDocumentLine.delete({ where: { id: lineId } }); result = { deleted: true,id: lineId }; }
       else result = await tx.inventoryDocumentLine.update({ where: { id: lineId },data: { quantity: newQty,...('unitCost' in input && typeof input.unitCost==='string' ? { unitCost: input.unitCost } : {}),version: { increment: 1 } } });
@@ -213,7 +259,7 @@ export class InventoryDocumentService {
       group.quantity = numeric24(exact(group.quantity).plus(line.quantity)); outgoing.set(key,group);
     }
     for (const group of outgoing.values()) total = total.plus(await this.costs.previewIssue(tx,{ workspaceId: row.workspaceId,warehouseId: group.warehouseId,
-      inventoryKey: group.inventoryKey,currency: row.currency,generation: settings?.valuationGeneration ?? 1 },settings?.costingMethod ?? 'FIFO',group.quantity));
+      inventoryKey: group.inventoryKey,currency: row.currency,generation: settings?.valuationGeneration ?? 1 },settings?.costingMethod ?? 'FIFO',group.quantity,settings?.allowNegativeStock ?? false));
     return { required: !policy.minimumValue || total.gte(policy.minimumValue),policy };
   }
   async approval(actor: Principal,id: string,raw: unknown,submit = false) {
@@ -269,10 +315,12 @@ export class InventoryDocumentService {
   private async move(tx: Tx,actor: Principal,document: InventoryDocument,line: InventoryDocumentLine,warehouseId: string,locationId: string | null,
     settings: InventorySettings,input: { incoming: boolean;type: string;cost?: { unitCost: string;totalCost: string;allocations?: { quantity: string;unitCost: string;totalCost: string }[] } }) {
     const movementId = randomUUID(),qty = line.quantity.toFixed(6),scope = { workspaceId: actor.workspaceId,warehouseId,inventoryKey: line.inventoryKey,currency: document.currency,generation: settings.valuationGeneration };
-    const costs = input.incoming ? input.cost ?? { unitCost: line.unitCost.toFixed(6),totalCost: numeric24(exact(line.quantity).mul(line.unitCost)) }
-      : await this.costs.issue(tx,scope,settings.costingMethod,qty,movementId);
-    const quantityDelta = numeric24(input.incoming ? qty : exact(qty).neg()),totalCost = numeric24(input.incoming ? costs.totalCost : exact(costs.totalCost).neg());
+    // Physical availability is validated before valuation so a shortage reports STOCK_INSUFFICIENT.
+    const quantityDelta = numeric24(input.incoming ? qty : exact(qty).neg());
     await this.changeBalance(tx,actor,warehouseId,line,locationId,quantityDelta,settings.allowNegativeStock);
+    const costs = input.incoming ? input.cost ?? { unitCost: line.unitCost.toFixed(6),totalCost: numeric24(exact(line.quantity).mul(line.unitCost)) }
+      : await this.costs.issue(tx,scope,settings.costingMethod,qty,movementId,settings.allowNegativeStock);
+    const totalCost = numeric24(input.incoming ? costs.totalCost : exact(costs.totalCost).neg());
     await tx.inventoryMovement.create({ data: { id: movementId,workspaceId: actor.workspaceId,warehouseId,locationId,productId: line.productId,variantId: line.variantId,inventoryKey: line.inventoryKey,
       documentId: document.id,documentLineId: line.id,sourceType: document.sourceEntityType ?? 'INVENTORY_DOCUMENT',sourceId: document.sourceEntityId ?? document.id,
       quantityDelta,unitCost: costs.unitCost,totalCost,currency: document.currency,type: input.type,postingKey: document.id + ':' + line.id + ':' + input.type,
@@ -280,6 +328,68 @@ export class InventoryDocumentService {
     if (input.incoming) await this.costs.receipt(tx,scope,settings.costingMethod,{ quantity: qty,unitCost: costs.unitCost,totalCost: costs.totalCost,movementId,documentLineId: line.id,
       occurredAt: new Date(),parts: costs.allocations });
     return costs;
+  }
+  private async applyTracking(tx: Tx,actor: Principal,document: InventoryDocument,line: InventoryDocumentLine,sku: Sku,exempt: boolean) {
+    const rows = await tx.inventoryDocumentLineTracking.findMany({ where: { workspaceId: actor.workspaceId,documentLineId: line.id },orderBy: { id: 'asc' } });
+    const effect = serialEffect(document.type,line.adjustmentDirection);
+    if (!rows.length) {
+      if (exempt || sku.tracking==='NONE' || sku.tracking==='SERIAL' && !effect.leg) return;
+      throw new AppError('INVENTORY_LINE_INVALID','Tracked SKU line requires serial or batch selection.',422);
+    }
+    if (sku.tracking==='NONE' || rows.some(r => r.serialId ? sku.tracking!=='SERIAL' : sku.tracking!=='BATCH'))
+      throw new AppError('INVENTORY_LINE_INVALID','SKU tracking policy changed; re-create the line.',422);
+    const now = new Date();
+    for (const tracking of rows) {
+      if (tracking.serialId) {
+        await lock(tx,actor.workspaceId,'inventory:serial:' + tracking.serialId);
+        const serial = await tx.inventorySerialNumber.findFirstOrThrow({ where: { workspaceId: actor.workspaceId,id: tracking.serialId } });
+        let next: { status: string;warehouseId: string };
+        if (effect.leg==='RETURN') {
+          if (serial.status!=='SOLD') throw new AppError('SERIAL_NOT_AVAILABLE','Only a sold serial unit can be returned.',409);
+          next = { status: 'RETURNED',warehouseId: document.destinationWarehouseId! };
+        } else {
+          if (!['IN_STOCK','RETURNED'].includes(serial.status) || serial.warehouseId!==document.sourceWarehouseId)
+            throw new AppError('SERIAL_NOT_AVAILABLE','Serial unit is not in stock at the source warehouse.',409);
+          next = effect.leg==='TRANSFER' ? { status: serial.status,warehouseId: document.destinationWarehouseId! } : { status: effect.status!,warehouseId: serial.warehouseId };
+        }
+        await tx.inventoryDocumentLineTracking.update({ where: { id: tracking.id },data: { priorStatus: serial.status,priorWarehouseId: serial.warehouseId } });
+        await tx.inventorySerialNumber.update({ where: { id: serial.id },data: next });
+        continue;
+      }
+      const batch = await tx.inventoryBatch.findFirstOrThrow({ where: { workspaceId: actor.workspaceId,id: tracking.batchId! } });
+      for (const leg of batchLegs(document,line)) {
+        if (leg.delta<0 && sku.enforceBatchExpiry && batch.expiresAt && batch.expiresAt<=now && ['SALES_ORDER','TRANSFER'].includes(document.type))
+          throw new AppError('BATCH_EXPIRED','An expired batch cannot be issued for sale.',409);
+        await this.batchBalance(tx,actor,leg.warehouseId,batch.id,batch.inventoryKey,exact(tracking.quantity).mul(leg.delta),'STOCK_INSUFFICIENT');
+      }
+    }
+  }
+  private async batchBalance(tx: Tx,actor: Principal,warehouseId: string,batchId: string,inventoryKey: string,delta: Prisma.Decimal,shortage: string) {
+    const key = { workspaceId_warehouseId_batchId: { workspaceId: actor.workspaceId,warehouseId,batchId } };
+    const row = await tx.inventoryBatchBalance.upsert({ where: key,create: { workspaceId: actor.workspaceId,warehouseId,batchId,inventoryKey },update: {} });
+    const next = exact(row.onHand).plus(delta);
+    if (next.lt(0)) throw new AppError(shortage,'Batch quantity does not cover this movement.',409);
+    await tx.inventoryBatchBalance.update({ where: { id: row.id },data: { onHand: numeric24(next),version: { increment: 1 } } });
+  }
+  private async reverseTracking(tx: Tx,actor: Principal,document: InventoryDocument,lines: InventoryDocumentLine[]) {
+    for (const line of lines) {
+      const effect = serialEffect(document.type,line.adjustmentDirection);
+      for (const tracking of await tx.inventoryDocumentLineTracking.findMany({ where: { workspaceId: actor.workspaceId,documentLineId: line.id },orderBy: { id: 'asc' } })) {
+        if (tracking.serialId) {
+          if (!tracking.priorStatus || !tracking.priorWarehouseId) continue;
+          await lock(tx,actor.workspaceId,'inventory:serial:' + tracking.serialId);
+          const serial = await tx.inventorySerialNumber.findFirstOrThrow({ where: { workspaceId: actor.workspaceId,id: tracking.serialId } });
+          const expected = effect.leg==='RETURN' ? { status: 'RETURNED',warehouseId: document.destinationWarehouseId }
+            : effect.leg==='TRANSFER' ? { status: tracking.priorStatus,warehouseId: document.destinationWarehouseId } : { status: effect.status,warehouseId: tracking.priorWarehouseId };
+          if (serial.status!==expected.status || serial.warehouseId!==expected.warehouseId)
+            throw new AppError('INVENTORY_DOCUMENT_REVERSAL_BLOCKED','A serial unit changed after posting; reverse dependent documents first.',409);
+          await tx.inventorySerialNumber.update({ where: { id: serial.id },data: { status: tracking.priorStatus,warehouseId: tracking.priorWarehouseId } });
+        } else {
+          const batch = await tx.inventoryBatch.findFirstOrThrow({ where: { workspaceId: actor.workspaceId,id: tracking.batchId! } });
+          for (const leg of batchLegs(document,line)) await this.batchBalance(tx,actor,leg.warehouseId,batch.id,batch.inventoryKey,exact(tracking.quantity).mul(-leg.delta),'INVENTORY_DOCUMENT_REVERSAL_BLOCKED');
+        }
+      }
+    }
   }
   async processInTransaction(tx: Tx,actor: Principal,id: string,raw: unknown,key: string | null,context?: { controlledJobId: string }) {
     const input = parse(z.strictObject({ expectedVersion: inventoryVersion }),raw);
@@ -312,7 +422,8 @@ export class InventoryDocumentService {
       await this.binding(tx,actor,row.type,{ source: row.sourceWarehouseId ?? undefined,destination: row.destinationWarehouseId ?? undefined },'INVENTORY.DOCUMENT_PROCESS');
       await this.stockLocks(tx,actor,row,lines);
       const catalog = await inventoryCatalogPort(tx,actor);
-      const boundCount = await tx.inventoryStocktakeLine.count({ where: { workspaceId: actor.workspaceId,adjustmentDocumentLineId: { in: lines.map(line => line.id) } } });
+      const bound = await tx.inventoryStocktakeLine.findMany({ where: { workspaceId: actor.workspaceId,adjustmentDocumentLineId: { in: lines.map(line => line.id) } },select: { adjustmentDocumentLineId: true } });
+      const boundCount = bound.length,stocktakeLines = new Set(bound.map(b => b.adjustmentDocumentLineId));
       if (boundCount && !this.stocktakes) throw new AppError('STOCKTAKE_INVALID_STATUS','Stocktake posting authority is unavailable.',503);
       if (boundCount) await this.stocktakes!.validateDocument(tx,actor,row);
       for (const line of lines) {
@@ -331,6 +442,7 @@ export class InventoryDocumentService {
           await this.move(tx,actor,row,line,warehouseId,row.sourceWarehouseId ? line.sourceLocationId : line.targetLocationId,settings,{ incoming,type: row.type + (incoming ? '_IN' : '_OUT') });
         } else if (row.destinationWarehouseId) await this.move(tx,actor,row,line,row.destinationWarehouseId,line.targetLocationId,settings,{ incoming: true,type: row.type + '_IN' });
         else await this.move(tx,actor,row,line,row.sourceWarehouseId!,line.sourceLocationId,settings,{ incoming: false,type: row.type + '_OUT' });
+        await this.applyTracking(tx,actor,row,line,sku,Boolean(origin) || stocktakeLines.has(line.id));
       }
       await tx.inventorySettings.update({ where: { workspaceId: actor.workspaceId },data: { costingLocked: true } });
       const updated = await tx.inventoryDocument.update({ where: { id },data: { status: 'PROCESSED',processedAt: new Date(),processedByUserId: actor.userId,version: { increment: 1 } } });
@@ -385,6 +497,7 @@ export class InventoryDocumentService {
           sourceType: 'INVENTORY_REVERSAL',sourceId: id,quantityDelta: delta,unitCost: movement.unitCost,totalCost: numeric24(exact(movement.totalCost).neg()),currency: movement.currency,
           type: 'REVERSAL',postingKey: 'REVERSE:' + movement.id,reversesMovementId: movement.id,costingMethod: settings.costingMethod,valuationGeneration: settings.valuationGeneration,occurredAt: new Date() } });
       }
+      await this.reverseTracking(tx,actor,document,lines);
       const row = await tx.inventoryDocument.update({ where: { id },data: { reversedAt: new Date(),reversalReason: input.reason,version: { increment: 1 } } });
       await this.history(tx,actor,row,'INVENTORY_DOCUMENT_REVERSED',{ reason: input.reason,movementCount: movements.length });
       for (const movement of movements) await observeReorder(tx,actor,movement.warehouseId,movement.inventoryKey);

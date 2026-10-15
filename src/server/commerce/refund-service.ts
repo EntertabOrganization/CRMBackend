@@ -12,6 +12,7 @@ import { CommerceReturnService } from './return-service';
 import { PaymentProviderAuthority } from '../commercial/payment-provider-authority';
 import { SharedRefundLifecycleService,type ManagedRefund } from '../commercial/refund-lifecycle-service';
 
+const refundCreateDto=z.strictObject({paymentId:uuid,amount:decimal,reason:z.string().trim().min(1).max(2000),returnId:uuid.optional()});
 export class CommerceRefundService {
   readonly shared:SharedRefundLifecycleService;
   constructor(private readonly db:PrismaClient,readonly orders=new CommerceOrderService(db),readonly providers=new PaymentProviderAuthority()){this.shared=new SharedRefundLifecycleService(db);}
@@ -37,8 +38,13 @@ export class CommerceRefundService {
     await tx.commerceRefundRequest.create({data:{...identity,requestHash,response}});return response as T;
   }
   async create(actor:Principal,orderId:string,raw:unknown,key:string|null){
-    parse(uuid,orderId);const input=parse(z.strictObject({paymentId:uuid,amount:decimal,reason:z.string().trim().min(1).max(2000),returnId:uuid.optional()}),raw);
-    return this.db.$transaction(async tx=>{
+    parse(uuid,orderId);parse(refundCreateDto,raw);
+    return this.db.$transaction(tx=>this.createInTransaction(tx,actor,orderId,raw,key),{timeout:60000});
+  }
+  /** Owning Refund request entry point for callers (e.g. Workflow compensation) that already hold a transaction. */
+  async createInTransaction(tx:Tx,actor:Principal,orderId:string,raw:unknown,key:string|null){
+    parse(uuid,orderId);const input=parse(refundCreateDto,raw);
+    {
       await lock(tx,actor.workspaceId,'commerce:configuration');await lock(tx,actor.workspaceId,'commerce:order:'+orderId);await lock(tx,actor.workspaceId,'shared:payment:'+input.paymentId);
       actor=await resolvePrincipal(tx,actor.workspaceId,actor.userId);const order=await this.orders.load(tx,actor,orderId,'COMMERCE.REFUND_CREATE');
       const paymentBinding=await tx.commerceOrderPaymentBinding.findFirst({where:{workspaceId:actor.workspaceId,orderId,paymentId:input.paymentId}});
@@ -55,7 +61,7 @@ export class CommerceRefundService {
         await tx.commerceOrderHistory.create({data:{workspaceId:actor.workspaceId,storeId:order.storeId,orderId,actorUserId:actor.userId,action:'REFUND_REQUESTED',details:{refundId:refund.id,amount:refund.amount}}});
         return this.projection(tx,refund);
       });
-    },{timeout:60000});
+    }
   }
   async get(actor:Principal,id:string){return this.db.$transaction(async tx=>{actor=await resolvePrincipal(tx,actor.workspaceId,actor.userId);return this.projection(tx,(await this.load(tx,actor,id,'COMMERCE.REFUND_VIEW')).refund);});}
   async approve(actor:Principal,id:string,raw:unknown){

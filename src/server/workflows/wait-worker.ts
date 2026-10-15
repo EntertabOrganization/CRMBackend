@@ -6,7 +6,7 @@ import { evidence, lock, resolvePrincipal, type Principal, type Tx } from '../pr
 import { parse } from '../process-platform/dto';
 import { graph } from './dto';
 import { compileExpression,evaluateExpression } from './expression';
-import { typedValue } from './typed-values';
+import { typedValue, persistable } from './typed-values';
 import { WorkflowRuntime } from './runtime';
 
 const json = (value: unknown) => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
@@ -77,7 +77,7 @@ export class WorkflowWaitWorker {
           variables[code] = typedValue(definition,evaluateExpression(compileExpression(expression),context));
         }
         await this.runtime.executions.entities.validateReferences(tx,actor,variables);
-        await tx.workflowExecution.update({ where: { id: parent.id },data: { variables: json(variables) } });
+        await tx.workflowExecution.update({ where: { id: parent.id },data: { variables: json(persistable(snapshot.variables,variables)) } });
         if (!await this.runtime.resumeWait(tx,parent.workspaceId,parent.id,binding.parentNodeRunId,{ childExecutionId: child.id,status: child.status },child.status==='COMPLETED' ? 'NEXT' : 'ERROR')) return false;
         await tx.workflowChildExecution.update({ where: { id: binding.id },data: { resumedAt: new Date() } }); return true;
       },{ timeout: 60000 });

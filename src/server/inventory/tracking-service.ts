@@ -72,6 +72,7 @@ export class InventoryTrackingService {
       await lock(tx,actor.workspaceId,'inventory:configuration'); actor = await resolvePrincipal(tx,actor.workspaceId,actor.userId); requirePermission(actor,'INVENTORY.TRACKING_MANAGE');
       await this.warehouses.warehouse(tx,actor,input.warehouseId,'INVENTORY.TRACKING_MANAGE',true);
       const catalog = await inventoryCatalogPort(tx,actor),sku = catalog.sku(catalog.variantParent(input.variantId),input.variantId);
+      if (sku.tracking!=='SERIAL') throw new AppError('INVENTORY_TRACKING_DISABLED','Serial tracking is not enabled for this SKU by its Catalog policy.',422);
       await lock(tx,actor.workspaceId,'inventory:warehouse:' + input.warehouseId); await lock(tx,actor.workspaceId,'inventory:stock:' + input.warehouseId + ':' + sku.inventoryKey);
       const duplicate = await tx.inventorySerialNumber.count({ where: { workspaceId: actor.workspaceId,inventoryKey: sku.inventoryKey,serialNumber: input.serialNumber } });
       if (duplicate) throw new AppError('SERIAL_NUMBER_EXISTS','Serial number already exists for this SKU.',409);
@@ -110,6 +111,7 @@ export class InventoryTrackingService {
       await lock(tx,actor.workspaceId,'inventory:configuration'); actor = await resolvePrincipal(tx,actor.workspaceId,actor.userId); requirePermission(actor,'INVENTORY.TRACKING_MANAGE');
       if (!(await this.warehouses.availableWarehouses(tx,actor,'INVENTORY.TRACKING_MANAGE')).length) throw new AppError('WAREHOUSE_ACCESS_DENIED','No warehouse is accessible.',403);
       const catalog = await inventoryCatalogPort(tx,actor),sku = catalog.sku(catalog.variantParent(input.variantId),input.variantId);
+      if (sku.tracking!=='BATCH') throw new AppError('INVENTORY_TRACKING_DISABLED','Batch tracking is not enabled for this SKU by its Catalog policy.',422);
       if (await tx.inventoryBatch.count({ where: { workspaceId: actor.workspaceId,inventoryKey: sku.inventoryKey,batchNumber: input.batchNumber } })) throw new AppError('BATCH_NUMBER_EXISTS','Batch already exists for this SKU.',409);
       const row = await tx.inventoryBatch.create({ data: { workspaceId: actor.workspaceId,productId: sku.productId,variantId: sku.variantId,inventoryKey: sku.inventoryKey,batchNumber: input.batchNumber,
         expiresAt: input.expiresAt ? new Date(input.expiresAt) : undefined } });

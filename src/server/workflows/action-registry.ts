@@ -4,6 +4,12 @@ import { AppError } from '../errors';
 import { requirePermission, type Principal, type Tx } from '../process-platform/context';
 import { parse, uuid, version } from '../process-platform/dto';
 import { SpaItemService, spaCreateItemDto } from '../spa/item-service';
+import { InventoryReservationService, createReservation } from '../inventory/reservation-service';
+import { positiveQuantity } from '../inventory/dto';
+import { CommercePaymentCommandService } from '../commerce/payment-command-service';
+import { CommerceRefundService } from '../commerce/refund-service';
+import { PaymentProviderAuthority } from '../commercial/payment-provider-authority';
+import { decimal } from '../process-platform/dto';
 
 export type ActionDescriptor = { code: string; domain: string; permission: string; sideEffectClass: 'TRANSACTIONAL' | 'PROVIDER';
   inputSchema: z.ZodType; inverse?: string; timeoutMs: number; maxAttempts: number };
@@ -32,7 +38,8 @@ export class WorkflowActionRegistry {
   }
 }
 
-export function workflowActions(db: PrismaClient) {
+export type WorkflowActionOptions = { paymentProviders?: PaymentProviderAuthority };
+export function workflowActions(db: PrismaClient, options: WorkflowActionOptions = {}) {
   const registry = new WorkflowActionRegistry(), spa = new SpaItemService(db);
   registry.register({ code: 'SPA.CREATE_ITEM', domain: 'SPA', permission: 'SPA.ITEM.CREATE', sideEffectClass: 'TRANSACTIONAL', timeoutMs: 30000, maxAttempts: 3,
     inputSchema: z.strictObject({ typeId: uuid, item: spaCreateItemDto }), execute: async ({ tx,actor,input,idempotencyKey }) => {
@@ -55,6 +62,37 @@ export function workflowActions(db: PrismaClient) {
         expectedVersion: parsed.expectedVersion, targetPipelineId: parsed.pipelineId, targetStageId: parsed.stageId,
         ...(parsed.reason !== undefined ? { reason: parsed.reason } : {}) });
       return { entityType: 'SPA_ITEM', entityId: result.id, version: result.version };
+    } });
+  // Inventory owns reservations; the Workflow effect key is the owning command's durable idempotency key.
+  const reservations = new InventoryReservationService(db);
+  registry.register({ code: 'INVENTORY.RESERVE', domain: 'INVENTORY', permission: 'INVENTORY.RESERVATION_CREATE', sideEffectClass: 'TRANSACTIONAL', timeoutMs: 30000, maxAttempts: 3,
+    inverse: 'INVENTORY.RELEASE_RESERVATION', inputSchema: createReservation, execute: async ({ tx,actor,input,idempotencyKey }) => {
+      const result = await reservations.createInTransaction(tx,actor,input,idempotencyKey);
+      return { entityType: 'INVENTORY_RESERVATION', entityId: result.id, status: result.status, version: result.version };
+    } });
+  const release = z.strictObject({ reservationId: uuid, quantity: positiveQuantity.optional(), reason: z.string().trim().min(1).max(2000) });
+  registry.register({ code: 'INVENTORY.RELEASE_RESERVATION', domain: 'INVENTORY', permission: 'INVENTORY.RESERVATION_MANAGE', sideEffectClass: 'TRANSACTIONAL', timeoutMs: 30000, maxAttempts: 3,
+    inputSchema: release, execute: async ({ tx,actor,input,idempotencyKey }) => {
+      const { reservationId, ...change } = parse(release,input);
+      const result = await reservations.releaseInTransaction(tx,actor,reservationId,change,idempotencyKey);
+      return { entityType: 'INVENTORY_RESERVATION', entityId: result.id, status: result.status, version: result.version };
+    } });
+  // Commerce/shared Payments own provider commands; the adapters only queue durable owning commands in this transaction.
+  const providers = options.paymentProviders ?? new PaymentProviderAuthority();
+  const payments = new CommercePaymentCommandService(db, undefined, providers), refunds = new CommerceRefundService(db, undefined, providers);
+  const capture = z.strictObject({ paymentId: uuid, amount: decimal });
+  registry.register({ code: 'COMMERCE.CAPTURE_PAYMENT', domain: 'COMMERCE', permission: 'COMMERCE.PAYMENT_CAPTURE', sideEffectClass: 'TRANSACTIONAL', timeoutMs: 30000, maxAttempts: 3,
+    inverse: 'COMMERCE.REQUEST_REFUND', inputSchema: capture, execute: async ({ tx,actor,input,idempotencyKey }) => {
+      const parsed = parse(capture,input);
+      const ack = await payments.changeInTransaction(tx,actor,parsed.paymentId,'CAPTURE',{ amount: parsed.amount },idempotencyKey);
+      return { entityType: 'PAYMENT', entityId: parsed.paymentId, commandId: ack.commandId, status: ack.status };
+    } });
+  const refund = z.strictObject({ orderId: uuid, paymentId: uuid, amount: decimal, reason: z.string().trim().min(1).max(2000) });
+  registry.register({ code: 'COMMERCE.REQUEST_REFUND', domain: 'COMMERCE', permission: 'COMMERCE.REFUND_CREATE', sideEffectClass: 'TRANSACTIONAL', timeoutMs: 30000, maxAttempts: 3,
+    inputSchema: refund, execute: async ({ tx,actor,input,idempotencyKey }) => {
+      const { orderId, ...request } = parse(refund,input);
+      const result = await refunds.createInTransaction(tx,actor,orderId,request,idempotencyKey) as { id: string; status: string };
+      return { entityType: 'REFUND', entityId: result.id, status: result.status };
     } });
   return registry;
 }

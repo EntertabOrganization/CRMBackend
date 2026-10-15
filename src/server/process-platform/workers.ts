@@ -54,6 +54,7 @@ export class ProcessPlatformWorkers {
     const workflowCallbacks = await this.workflowRuntime.callbacks.tick(20);
     const workflowCompensations = await this.workflowCompensations.tick(20);
     const workflowReconciliation = await this.workflowGovernance.tick(10);
+    const workflowRetention = await this.workflowGovernance.purgeRetention(50);
     const inventoryExpiry = await this.inventoryReservations.expireDue(50);
     const commerceCarts = await this.commerceCarts.tick(50);
     const commerceDelivery = await this.commerceDelivery.tick(20);
@@ -65,7 +66,7 @@ export class ProcessPlatformWorkers {
     const commercePaidReservations = await this.commercePaidReservations.tick(10);
     const inventoryReconciliation = await this.inventoryReconciliation.tick(5);
     const inventoryControlledJobs = await this.inventoryControlledJobs.tick(5);
-    return { migrations, recurrence, transfers, purges, workflowDispatch, workflowWaits,workflowEvents,workflowSchedules,workflowCallbacks,workflowCompensations,workflowReconciliation,inventoryExpiry,commerceCarts,commerceDelivery,commercePayments,commerceRefunds,commercePaymentCallbacks,commerceReconciliation,commerceCrmSync,commercePaidReservations,inventoryReconciliation,inventoryControlledJobs };
+    return { migrations, recurrence, transfers, purges, workflowDispatch, workflowWaits,workflowEvents,workflowSchedules,workflowCallbacks,workflowCompensations,workflowReconciliation,workflowRetention,inventoryExpiry,commerceCarts,commerceDelivery,commercePayments,commerceRefunds,commercePaymentCallbacks,commerceReconciliation,commerceCrmSync,commercePaidReservations,inventoryReconciliation,inventoryControlledJobs };
   }
   async run() {
     while (!this.stopped) {
