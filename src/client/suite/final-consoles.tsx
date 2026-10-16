@@ -232,3 +232,61 @@ const partnerPortal: Section[] = [
 ];
 
 export const PartnerConsole = () => <Console product="Partner Program" storageKey="suite-partner-session" sections={partnerPortal} />;
+
+/** Knowledge Base: spaces, tree, editor (JSON blocks), review/publish, access, search, import/export, recycle bin. */
+const knowledge: Section[] = [
+  { title: 'Spaces', list: { label: 'Spaces', path: '/knowledge/spaces', contextKey: 'spaceId' }, actions: [
+    { label: 'Create space', method: 'POST', path: '/knowledge/spaces', fields: [{ name: 'name', required: true }, { name: 'description', type: 'textarea' }, { name: 'visibility', type: 'select', options: ['PRIVATE', 'SCOPED'] }, { name: 'bindings', type: 'json', placeholder: '[{"targetType":"COMPANY"}]' }] },
+    { label: 'Article tree', method: 'GET', path: '/knowledge/spaces/:spaceId/tree', describe: 'Only articles you can open appear; hidden branches never show titles.' },
+    { label: 'Update space', method: 'PATCH', path: '/knowledge/spaces/:spaceId', fields: [ver, { name: 'name' }, { name: 'description' }, { name: 'visibility', type: 'select', options: ['PRIVATE', 'SCOPED'] }, { name: 'bindings', type: 'json' }] },
+    { label: 'Archive space', method: 'POST', path: '/knowledge/spaces/:spaceId/archive', danger: true },
+    { label: 'Restore space', method: 'POST', path: '/knowledge/spaces/:spaceId/restore' },
+    { label: 'Review policy', method: 'PUT', path: '/knowledge/spaces/:spaceId/review-policy', fields: [{ name: 'requiredReviewers', type: 'number', defaultValue: '1' }, { name: 'reviewIntervalDays', type: 'number' }, { name: 'twoPersonRule', type: 'checkbox', defaultValue: 'true' }, { name: 'active', type: 'checkbox', defaultValue: 'true' }] },
+    { label: 'AI indexing policy', method: 'POST', path: '/knowledge/spaces/:spaceId/ai-indexing', fields: [{ name: 'enabled', type: 'checkbox' }, { name: 'contentClassification', type: 'select', options: ['PUBLIC', 'INTERNAL', 'CONFIDENTIAL', 'RESTRICTED'], required: true }] },
+  ] },
+  { title: 'Articles', actions: [
+    { label: 'Create article', method: 'POST', path: '/knowledge/articles', fields: [{ name: 'spaceId', required: true }, { name: 'parentArticleId' }, { name: 'title', required: true }, { name: 'templateId' }] },
+    { label: 'Open article', method: 'GET', path: '/knowledge/articles/:articleId', query: [{ name: 'view', type: 'select', options: ['published', 'draft'] }] },
+    { label: 'Save draft', method: 'PUT', path: '/knowledge/articles/:articleId/draft', fields: [{ name: 'baseRevisionId', required: true }, ver, { name: 'title' }, { name: 'content', type: 'json', required: true, placeholder: '{"blocks":[{"type":"heading","level":1,"text":"Overview"},{"type":"paragraph","text":"…"}]}' }], describe: 'A stale base revision returns REVISION_CONFLICT; your text is not lost.' },
+    { label: 'Revisions', method: 'GET', path: '/knowledge/articles/:articleId/revisions' },
+    { label: 'Revert to revision', method: 'POST', path: '/knowledge/articles/:articleId/revert', fields: [{ name: 'sourceRevisionId', required: true }, ver] },
+    { label: 'Move', method: 'POST', path: '/knowledge/articles/:articleId/move', fields: [{ name: 'targetSpaceId', required: true }, { name: 'parentArticleId' }, ver] },
+    { label: 'Request publication', method: 'POST', path: '/knowledge/articles/:articleId/request-publication', fields: [{ name: 'draftRevisionId', required: true }] },
+    { label: 'Approve', method: 'POST', path: '/knowledge/articles/:articleId/approve', fields: [{ name: 'requestId', required: true }, { name: 'expectedRevisionId', required: true }] },
+    { label: 'Publish', method: 'POST', path: '/knowledge/articles/:articleId/publish', fields: [{ name: 'draftRevisionId', required: true }, { name: 'approvedRequestId' }] },
+    { label: 'Acknowledge', method: 'POST', path: '/knowledge/articles/:articleId/acknowledge', fields: [{ name: 'publishedRevisionId', required: true }] },
+    { label: 'Require acknowledgement', method: 'POST', path: '/knowledge/articles/:articleId/acknowledgement-requirements', fields: [{ name: 'audienceScope', type: 'json', required: true, placeholder: '{"all":true}' }, { name: 'dueAt', type: 'datetime' }, { name: 'restricted', type: 'checkbox' }] },
+  ] },
+  { title: 'Access & sharing', actions: [
+    { label: 'Access list', method: 'GET', path: '/knowledge/articles/:articleId/access' },
+    { label: 'Replace ACL', method: 'PUT', path: '/knowledge/articles/:articleId/access', fields: [{ name: 'expectedVersion', type: 'number', required: true, placeholder: 'ACL version' }, { name: 'entries', type: 'json', required: true, placeholder: '[{"principalType":"DEPARTMENT","principalId":"…","level":"VIEW"}]' }], danger: true },
+    { label: 'Share with member', method: 'POST', path: '/knowledge/articles/:articleId/shares', fields: [{ name: 'recipientUserId', required: true }, { name: 'level', type: 'select', options: ['VIEW', 'COMMENT', 'EDIT'], required: true }, { name: 'expiresAt', type: 'datetime' }] },
+    { label: 'Invite guest (view one article)', method: 'POST', path: '/knowledge/articles/:articleId/guest-invitations', fields: [{ name: 'email', required: true }, { name: 'expiresAt', type: 'datetime', required: true }] },
+    { label: 'Revoke guest', method: 'DELETE', path: '/knowledge/articles/:articleId/guest-invitations/:invitationId', danger: true },
+    { label: 'Shared with me', method: 'GET', path: '/knowledge/me/shared' },
+  ] },
+  { title: 'Find & analyze', actions: [
+    { label: 'Search', method: 'GET', path: '/knowledge/search', query: [{ name: 'search', required: true }, { name: 'spaceId' }] },
+    { label: 'Favorites', method: 'GET', path: '/knowledge/me/favorites' },
+    { label: 'Add favorite', method: 'PUT', path: '/knowledge/me/favorites/:articleId' },
+    { label: 'Recent', method: 'GET', path: '/knowledge/me/recent' },
+    { label: 'Analytics', method: 'GET', path: '/knowledge/analytics', query: [{ name: 'spaceId' }, { name: 'period', type: 'select', options: ['7d', '30d', '90d'] }] },
+    { label: 'Review queue', method: 'GET', path: '/knowledge/admin/reviews', query: [{ name: 'status', type: 'select', options: ['OVERDUE', 'PENDING_APPROVAL'] }] },
+    { label: 'Citation', method: 'GET', path: '/knowledge/articles/:articleId/citation', query: [{ name: 'revisionId', required: true }, { name: 'anchor' }] },
+  ] },
+  { title: 'Import, export & lifecycle', actions: [
+    { label: 'Import preview', method: 'POST', path: '/knowledge/import-jobs', fields: [{ name: 'fileId', required: true }, { name: 'format', type: 'select', options: ['MARKDOWN', 'HTML', 'DOCX'], required: true }, { name: 'targetSpaceId', required: true }] },
+    { label: 'Run import', method: 'POST', path: '/knowledge/import-jobs/:importId/execute', fields: [{ name: 'idempotencyKey', required: true }] },
+    { label: 'Import status', method: 'GET', path: '/knowledge/import-jobs/:importId' },
+    { label: 'Export', method: 'POST', path: '/knowledge/export-jobs', fields: [{ name: 'spaceId' }, { name: 'articleIds', type: 'json' }, { name: 'format', type: 'select', options: ['MARKDOWN', 'HTML', 'JSON', 'DOCX'], required: true }] },
+    { label: 'Download export', method: 'GET', path: '/knowledge/export-jobs/:exportId/download' },
+    { label: 'Templates', method: 'GET', path: '/knowledge/templates' },
+    { label: 'Archive article', method: 'POST', path: '/knowledge/articles/:articleId/archive' },
+    { label: 'Move to recycle bin', method: 'DELETE', path: '/knowledge/articles/:articleId', danger: true },
+    { label: 'Recycle bin', method: 'GET', path: '/knowledge/recycle-bin' },
+    { label: 'Restore article', method: 'POST', path: '/knowledge/articles/:articleId/restore', fields: [{ name: 'newSlug' }] },
+    { label: 'Purge permanently', method: 'POST', path: '/knowledge/articles/:articleId/purge', fields: [reason, { name: 'confirmation', required: true, placeholder: 'PURGE' }], danger: true },
+  ] },
+];
+
+export const KnowledgeConsole = () => <Console product="Knowledge Base" storageKey="suite-knowledge-session" sections={knowledge} />;

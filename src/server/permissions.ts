@@ -3,12 +3,14 @@ import processPackPermissions from './process-platform/permission-catalog.json';
 import businessSuitePermissions from './suite/permission-catalog.json';
 import finalPackPermissions from './platform/permission-catalog.json';
 import billingPermissions from './billing/permission-catalog.json';
+import knowledgePermissions from './knowledge/permission-catalog.json';
 
 export const PERMISSION_CATALOG = [
   ...processPackPermissions,
   ...businessSuitePermissions,
   ...finalPackPermissions,
   ...billingPermissions,
+  ...knowledgePermissions,
   'workspace.read',
   'workspace.create',
   'workspace.update',

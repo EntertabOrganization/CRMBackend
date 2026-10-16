@@ -12,3 +12,7 @@ import '../billing/finance-service';
 import '../partners/commercial-service';
 import '../partners/finance-service';
 import '../partners/governance-service';
+// Knowledge Base: search source + access resolver, AI indexer consumer, review/import/export/reindex jobs.
+import '../knowledge/index-service';
+import '../knowledge/article-service';
+import '../knowledge/exchange-service';

@@ -1838,6 +1838,9 @@ describe('Cross-cutting behaviour', () => {
     'POST /api/v1/webhooks/billing/[provider]',
     // Final pack: public Partner application (always 202, rate limited, non-enumerating).
     'POST /api/v1/public/partners/applications',
+    // Final pack: Knowledge guest invitation acceptance and guest-session reads (token validated by the service).
+    'GET /api/v1/public/knowledge/[[...path]]',
+    'POST /api/v1/public/knowledge/[[...path]]',
   ]);
 
   it('only the allow-listed public endpoints exist without a bearer token', async () => {

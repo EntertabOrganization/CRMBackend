@@ -83,8 +83,12 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 - [x] 05 Search, AI indexing, citations — `knowledge/index-service.ts` (platform search source + live access resolver, outbox AI indexer for current published revision only, `retrieveKnowledge` re-checks ACL/revision/space policy/classification, exact-revision citations)
 - [x] 06 Import/export, templates — `knowledge/exchange-service.ts` (MIME/extension-checked Markdown/HTML/DOCX parsers → inert blocks, preview w/ collisions, cursor-resumable row import, ACL-filtered sealed exports re-authorized at download, templates)
 - [x] 07 Archive, trash (30-day), retention, moves — `article-service.ts` (subtree recycle w/ tombstones, restore to prior status + slug collision 409, purge gated by window + legal hold, sanitized tombstone row)
-- [ ] 08 Knowledge UI & analytics
-- [~] Migration `202610200001_knowledge_base` (26 tables, sibling-slug index, FTS index, immutable revisions/lifecycle triggers) written; services next
+- [x] 08 Knowledge UI & analytics — `knowledge/insight-service.ts` (query-time visible favorites/recents, deduped read events, identity-free scoped analytics with documented definitions, review queue) + console `app/knowledge/page.tsx`
+- [x] Migration `202610200001_knowledge_base` (26 tables, sibling-slug index, FTS index, immutable revisions/lifecycle triggers)
+- [x] Routes `src/server/knowledge/routes.ts` → `app/api/v1/knowledge/[[...path]]`, `public/knowledge/[[...path]]` (guest accept/read), `internal/knowledge/[[...path]]` (retrieve)
+- [x] Permissions `src/server/knowledge/permission-catalog.json` (+ seed); jobs/consumers registered via `platform/register.ts`
+- [x] Console `app/knowledge/page.tsx`
+- [!] Not implemented by design/blocked: real-time collaborative co-editing (spec marks it advanced phase; Core V1 optimistic concurrency done); vector embeddings provider (FTS only, `embeddingRef` reserved); guest invitation email delivery uses the returned one-time token (no mail provider wired to Knowledge)
 
 ### 29-AI-CoPilot
 - [ ] 01 Provider connections, model catalog, routing
