@@ -8,3 +8,7 @@ import './ops-service';
 import '../billing/usage-service';
 import '../billing/subscription-service';
 import '../billing/finance-service';
+// Partner Program: Billing discount/relation resolvers, commission consumer, maintenance/export jobs.
+import '../partners/commercial-service';
+import '../partners/finance-service';
+import '../partners/governance-service';

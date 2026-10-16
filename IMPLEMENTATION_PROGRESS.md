@@ -66,8 +66,8 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 - [x] 06 Referral codes, attribution, transfer — `commercial-service.ts` (hashed codes, consent-gated hashed touches, `attributeWorkspace` w/ self-referral + dispute checks, owner-consented transfer applied atomically on platform approval). Note: no signup hook calls `attributeWorkspace` yet (needs Sites/signup visitor token wiring)
 - [x] 07 Commission accrual ledger & reversals — `partners/finance-service.ts` (outbox consumer on BILLING_INVOICE_PAID / BILLING_PARTNER_TRANSACTION_RECONCILED, versioned policies, unique accrual, proportional append-only reversals/adjustments)
 - [x] 08 Payouts, finance approval, reconciliation — `partners/finance-service.ts` (locked claims + one-active-claim index, hold period, SoD approval w/ amount recheck, evidence-matched manual payment, failure keeps liability, reconciliation)
-- [ ] 09 Suspension, deletion, restore, retention
-- [ ] 10 Partner portal dashboard, admin search, reports
+- [x] 09 Suspension, deletion, restore, retention — `partners/governance-service.ts` (suspend revokes referral/discount/delegated authority w/o touching customer Workspaces, soft delete/restore, step-up purge = anonymization gated by legal holds + open obligations)
+- [x] 10 Partner portal dashboard, admin search, reports — `partners/governance-service.ts` (ledger-sourced scoped metrics, allowlisted admin query, sealed expiring exports re-authorized on download)
 - [~] Migration `202610190001_partner_program` (extends legacy partner tables, backfills, one-active-relation partial index, append-only triggers) written; services next
 
 ### 28-Knowledge-Base
