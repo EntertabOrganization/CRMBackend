@@ -53,6 +53,8 @@ The executing agent leads the work: derive the implementation sequence, implemen
 
 ## 3. Fixed scope and no new progress files
 
+> **Current exception (user instruction, 2026-10-16):** `IMPLEMENTATION_PROGRESS.md` (Final Modules pack plan) and `TESTING_REMAINING.md` are user-requested tracking files. Keep and update them after every change, commit and push to `main`; do not delete them until the user says so.
+
 The user's latest instruction supersedes all earlier progress-file requirements, including nested module contracts. Do not create, recreate, or replace `IMPLEMENTATION_PROGRESS.md`, similarly named progress Markdown files, or alternative tracking documents. Do not add new obligations to the existing checklist. Finish its existing obligations, verify them, and remove an existing progress file only when every obligation it tracks is complete. Preserve unfinished obligations until then; deleting a checklist does not complete its work.
 
 Do not recreate the removed `Repository layout consolidation`, `Layout consolidation completion`, or `Complete all tracked implementation work` sections, or replace them with equivalent historical tracking sections. Keep the repository layout rules above as the continuing file-placement instructions.
