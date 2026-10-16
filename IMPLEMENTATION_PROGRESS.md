@@ -103,7 +103,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 - [x] 10 Domain assistance & media — `ai/domain-service.ts` (transcription via scanned-file re-check + sealed transcript, schema-validated extraction proposals applied only through legacy CRM `updateRecord` with expected version, draft-only content scenarios, images via Files scan/publish with quarantine + review)
 - [x] Migration `202610210001_ai_copilot` (32 tables, append-only usage/policy, immutable published prompts, provider catalog seed)
 - [x] Routes `ai/routes.ts` → `app/api/v1/{ai,platform/ai,internal/ai,mcp}/[[...path]]` (public `POST /api/v1/ai/oauth/token`; MCP bearer-auth `GET /mcp/tools`, `POST /mcp/execute-tool`), `ai/permission-catalog.json` wired into `permissions.ts` + `seed-config.js`, platform `ai.providers.manage` added to PLATFORM_ADMIN bundle, AI jobs imported in `platform/register.ts`; scenario `site.copy` now requires existing `sites.ai.generate`
-- [ ] Console `app/ai/page.tsx`
+- [x] Console `app/ai/page.tsx` (`AiConsole` in `src/client/suite/final-consoles.tsx`: conversations, runs & tool approvals, drafts & media, configuration, external clients, governance)
 
 ### Final
 - [ ] Move `docs/.../Testing` to `tests/modules/TrueCRM_Final_Modules_Codex_Pack/` with fail-closed adapter stub (no test runs)

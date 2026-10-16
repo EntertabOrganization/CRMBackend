@@ -290,3 +290,83 @@ const knowledge: Section[] = [
 ];
 
 export const KnowledgeConsole = () => <Console product="Knowledge Base" storageKey="suite-knowledge-session" sections={knowledge} />;
+
+/** 29-AI-CoPilot: assistant, runs & approvals, configuration, external clients, governance and media drafts. */
+const idem = { name: 'idempotencyKey', required: true, placeholder: 'unique-request-key' } as const;
+const ai: Section[] = [
+  { title: 'Conversations', list: { label: 'My conversations', path: '/ai/conversations', contextKey: 'conversationId' }, actions: [
+    { label: 'New conversation', method: 'POST', path: '/ai/conversations', fields: [{ name: 'title' }, { name: 'assistantId' }, { name: 'classification', type: 'select', options: ['PUBLIC', 'INTERNAL', 'CONFIDENTIAL', 'RESTRICTED'] }, { name: 'noHistory', type: 'checkbox' }] },
+    { label: 'Messages', method: 'GET', path: '/ai/conversations/:conversationId/messages', query: [{ name: 'cursor' }] },
+    { label: 'Send message', method: 'POST', path: '/ai/conversations/:conversationId/messages', fields: [{ name: 'content', type: 'textarea', required: true }, idem, { name: 'contextRefs', type: 'json', placeholder: '[{"type":"crm.contact","id":"..."}]' }] },
+    { label: 'Archive', method: 'POST', path: '/ai/conversations/:conversationId/archive' },
+    { label: 'Export transcript', method: 'POST', path: '/ai/conversations/:conversationId/export' },
+    { label: 'Download export', method: 'GET', path: '/ai/conversation-exports/:artifactId' },
+    { label: 'Delete', method: 'DELETE', path: '/ai/conversations/:conversationId', danger: true },
+    { label: 'Deletion status', method: 'GET', path: '/ai/conversations/:conversationId/deletion' },
+  ] },
+  { title: 'Runs & approvals', list: { label: 'My runs', path: '/ai/runs', contextKey: 'runId' }, actions: [
+    { label: 'Run scenario', method: 'POST', path: '/ai/runs', fields: [{ name: 'scenarioId', required: true, placeholder: 'assistant.chat' }, { name: 'input', type: 'json', required: true, placeholder: '{"prompt":"..."}' }, idem, { name: 'contextRefs', type: 'json' }] },
+    { label: 'Run status', method: 'GET', path: '/ai/runs/:runId' },
+    { label: 'Citations', method: 'GET', path: '/ai/runs/:runId/citations' },
+    { label: 'Cancel', method: 'POST', path: '/ai/runs/:runId/cancel', danger: true },
+    { label: 'Retry', method: 'POST', path: '/ai/runs/:runId/retry' },
+    { label: 'Approve tool call', method: 'POST', path: '/ai/runs/:runId/tool-calls/:callId/approve', fields: [{ name: 'mode', type: 'select', options: ['ONCE', 'ALWAYS'], required: true }, { name: 'expectedArgumentsHash', required: true }], describe: 'Approves exactly the displayed arguments; high-risk tools only allow ONCE.' },
+    { label: 'Deny tool call', method: 'POST', path: '/ai/runs/:runId/tool-calls/:callId/deny', fields: [{ name: 'reason' }] },
+    { label: 'Feedback', method: 'POST', path: '/ai/runs/:runId/feedback', fields: [{ name: 'rating', type: 'number', required: true }, { name: 'tags', type: 'json', placeholder: '["GOOD_CITATIONS"]' }, { name: 'comment', type: 'textarea' }] },
+    { label: 'Run usage', method: 'GET', path: '/ai/usage/:runId' },
+    { label: 'My tool grants', method: 'GET', path: '/ai/tool-grants' },
+    { label: 'Revoke tool grant', method: 'DELETE', path: '/ai/tool-grants/:grantId', danger: true },
+  ] },
+  { title: 'Drafts & media', actions: [
+    { label: 'Generate content draft', method: 'POST', path: '/ai/scenarios/generate-content', fields: [{ name: 'targetModule', type: 'select', options: ['mail', 'calendar', 'tasks', 'sites', 'marketing', 'documents', 'crm'], required: true }, { name: 'type', required: true, placeholder: 'follow-up email' }, { name: 'prompt', type: 'textarea', required: true }, idem], describe: 'Output is a draft; it is never sent or published automatically.' },
+    { label: 'Extract contact fields', method: 'POST', path: '/ai/scenarios/extract-fields', fields: [{ name: 'sourceType', type: 'select', options: ['text', 'transcript', 'knowledge.article'], required: true }, { name: 'sourceId' }, { name: 'text', type: 'textarea' }, { name: 'targetType', type: 'select', options: ['crm.contact'], required: true }, { name: 'targetId' }, { name: 'schemaVersion', type: 'number', defaultValue: '1', required: true }, idem] },
+    { label: 'Extraction proposal', method: 'GET', path: '/ai/extractions/:extractionId' },
+    { label: 'Apply approved fields', method: 'POST', path: '/ai/extractions/:extractionId/apply', fields: [{ name: 'expectedTargetVersion', type: 'number', required: true }, { name: 'approvedFields', type: 'json', required: true, placeholder: '["email","phone"]' }, { name: 'targetId' }] },
+    { label: 'Transcribe file', method: 'POST', path: '/ai/scenarios/transcribe', fields: [{ name: 'fileId', required: true }, { name: 'language', placeholder: 'en' }, { name: 'diarization', type: 'checkbox' }, idem] },
+    { label: 'Transcript', method: 'GET', path: '/ai/runs/:runId/transcript' },
+    { label: 'Generate image', method: 'POST', path: '/ai/scenarios/generate-image', fields: [{ name: 'brief', type: 'textarea', required: true }, idem], describe: 'Images are scanned by Files; unsafe output is quarantined.' },
+    { label: 'Run artifacts', method: 'GET', path: '/ai/runs/:runId/artifacts' },
+    { label: 'Review artifact', method: 'POST', path: '/ai/artifacts/:artifactId/review', fields: [{ name: 'decision', type: 'select', options: ['APPROVE', 'REJECT'], required: true }] },
+  ] },
+  { title: 'Configuration', actions: [
+    { label: 'Providers', method: 'GET', path: '/ai/providers' },
+    { label: 'Models', method: 'GET', path: '/ai/models', query: [{ name: 'capability', type: 'select', options: ['chat', 'json', 'transcription', 'image', 'tools'] }] },
+    { label: 'Connections', method: 'GET', path: '/ai/provider-connections' },
+    { label: 'Add BYOK connection', method: 'POST', path: '/ai/provider-connections', fields: [{ name: 'provider', type: 'select', options: ['OPENAI', 'AZURE_OPENAI', 'ANTHROPIC', 'GOOGLE_GEMINI', 'OPENROUTER'], required: true }, { name: 'label', required: true }, { name: 'region', required: true, placeholder: 'eu' }, { name: 'endpoint' }, { name: 'allowedClassifications', type: 'json', placeholder: '["PUBLIC","INTERNAL"]' }, { name: 'secretSubmission', type: 'json', required: true, placeholder: '{"mode":"BYOK","apiKey":"..."}' }], describe: 'The key is sealed and never shown again.' },
+    { label: 'Verify connection', method: 'POST', path: '/ai/provider-connections/:connectionId/verify' },
+    { label: 'Rotate key', method: 'POST', path: '/ai/provider-connections/:connectionId/rotate-key', fields: [{ name: 'apiKey', required: true }] },
+    { label: 'Suspend connection', method: 'POST', path: '/ai/provider-connections/:connectionId/suspend', danger: true },
+    { label: 'Routes', method: 'GET', path: '/ai/routes' },
+    { label: 'Create route', method: 'POST', path: '/ai/routes', fields: [{ name: 'scenarioId', required: true }, { name: 'primaryModelId', required: true }, { name: 'connectionId', required: true }, { name: 'fallbackIds', type: 'json', placeholder: '[]' }] },
+    { label: 'Workspace AI settings', method: 'GET', path: '/ai/workspace-settings' },
+    { label: 'Update settings', method: 'PATCH', path: '/ai/workspace-settings', fields: [{ name: 'expectedVersion', type: 'number', required: true }, { name: 'moduleEnabled', type: 'checkbox' }, { name: 'scenarioSettings', type: 'json', placeholder: '{"hr.assist":{"enabled":true}}' }, { name: 'classificationRules', type: 'json', placeholder: '{"maxClassification":"INTERNAL"}' }] },
+    { label: 'Prompts', method: 'GET', path: '/ai/prompts', query: [{ name: 'scenarioId' }] },
+    { label: 'Create prompt draft', method: 'POST', path: '/ai/prompts', fields: [{ name: 'scenarioId', required: true }, { name: 'content', type: 'textarea', required: true }] },
+    { label: 'Publish prompt', method: 'POST', path: '/ai/prompts/:promptId/publish', fields: [ver] },
+    { label: 'Assistants', method: 'GET', path: '/ai/assistants' },
+    { label: 'Create assistant', method: 'POST', path: '/ai/assistants', fields: [{ name: 'name', required: true }, { name: 'scenarioIds', type: 'json', required: true, placeholder: '["assistant.chat"]' }, { name: 'allowedTools', type: 'json', placeholder: '["knowledge.search"]' }, { name: 'behaviorRole', type: 'json' }], describe: 'Behavior roles never grant permissions.' },
+    { label: 'Create retrieval profile', method: 'POST', path: '/ai/retrieval-profiles', fields: [{ name: 'name', required: true }, { name: 'allowedSources', type: 'json', required: true, placeholder: '["KNOWLEDGE"]' }, { name: 'maxChunks', type: 'number' }] },
+    { label: 'Tools', method: 'GET', path: '/ai/tools' },
+    { label: 'Set tool policy', method: 'PUT', path: '/ai/tool-policies', fields: [{ name: 'toolCode', required: true }, { name: 'scenarioId', defaultValue: '*' }, { name: 'consentMode', type: 'select', options: ['NO_CONFIRM', 'ALLOW_ONCE', 'ALLOW_ALWAYS', 'EVERY_TIME'], required: true }, { name: 'enabled', type: 'checkbox' }] },
+    { label: 'Usage', method: 'GET', path: '/ai/usage', query: [{ name: 'groupBy', type: 'select', options: ['scenario', 'model', 'user'] }] },
+    { label: 'Budget', method: 'GET', path: '/ai/workspace-budgets' },
+    { label: 'Set budget', method: 'PATCH', path: '/ai/workspace-budgets', fields: [{ name: 'currency', required: true, placeholder: 'CREDIT' }, { name: 'cap', placeholder: '1000' }, { name: 'alerts', placeholder: '800' }, { name: 'expectedVersion', type: 'number', required: true }] },
+  ] },
+  { title: 'External clients', list: { label: 'Clients', path: '/ai/external-clients', contextKey: 'clientId' }, actions: [
+    { label: 'Register client', method: 'POST', path: '/ai/external-clients', fields: [{ name: 'name', required: true }, { name: 'clientType', type: 'select', options: ['MCP', 'OAUTH_APP'] }, { name: 'redirectUris', type: 'json', required: true, placeholder: '["https://client.example/callback"]' }, { name: 'scopes', type: 'json', required: true, placeholder: '["tools:read"]' }], describe: 'The client secret is shown once.' },
+    { label: 'Authorize (PKCE)', method: 'POST', path: '/ai/external-clients/:clientId/authorize', fields: [{ name: 'scopes', type: 'json', required: true }, { name: 'toolIds', type: 'json' }, { name: 'redirectUri', required: true }, { name: 'state', required: true }, { name: 'codeChallenge', required: true }, { name: 'codeChallengeMethod', defaultValue: 'S256', required: true }] },
+    { label: 'Revoke client', method: 'POST', path: '/ai/external-clients/:clientId/revoke', danger: true },
+    { label: 'My external grants', method: 'GET', path: '/ai/external-grants' },
+    { label: 'Revoke grant', method: 'DELETE', path: '/ai/external-grants/:grantId', danger: true },
+  ] },
+  { title: 'Governance', actions: [
+    { label: 'Evaluations', method: 'GET', path: '/ai/evaluations' },
+    { label: 'Run evaluation', method: 'POST', path: '/ai/evaluations/run', fields: [{ name: 'suiteId', defaultValue: 'baseline-safety-v1', required: true }, { name: 'modelRouteId', required: true }] },
+    { label: 'Security findings', method: 'GET', path: '/ai/security-findings', query: [{ name: 'status', type: 'select', options: ['OPEN', 'TRIAGED', 'RESOLVED', 'FALSE_POSITIVE'] }] },
+    { label: 'Resolve finding', method: 'POST', path: '/ai/security-findings/:findingId/resolve', fields: [{ name: 'decision', type: 'select', options: ['TRIAGE', 'RESOLVE', 'FALSE_POSITIVE', 'DISABLE_SCENARIO'], required: true }, reason] },
+    { label: 'Policies', method: 'GET', path: '/ai/policies' },
+    { label: 'Publish policy version', method: 'PUT', path: '/ai/policies', fields: [{ name: 'classificationRules', type: 'json', required: true, placeholder: '{"maxClassification":"INTERNAL","allowedRegions":[],"blockedScenarios":[]}' }] },
+  ] },
+];
+
+export const AiConsole = () => <Console product="AI CoPilot" storageKey="suite-ai-session" sections={ai} />;
