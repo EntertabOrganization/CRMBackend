@@ -37,7 +37,11 @@ export class SuiteRouter {
         const matched = pattern.length === segments.length && pattern.every((part, i) => { score += part.startsWith(':') ? '0' : '1'; if (part.startsWith(':')) { params[part.slice(1)] = decodeURIComponent(segments[i]); return true; } return part === segments[i]; });
         return { entry, params, score, matched };
       }).filter(c => c.matched).sort((a, b) => b.score.localeCompare(a.score))[0];
-      if (!match) return NextResponse.json({ success: false, error: { code: 'NOT_FOUND', message: 'Resource was not found.', details: null }, requestId }, { status: 404 });
+      if (!match) {
+        // Unknown paths never reveal route existence to anonymous callers.
+        await authenticateUser(request.headers.get('authorization'));
+        return NextResponse.json({ success: false, error: { code: 'NOT_FOUND', message: 'Resource was not found.', details: null }, requestId }, { status: 404 });
+      }
       const { entry } = match;
       const rawBody = entry.signed ? await readRawBody(request, 262144) : undefined;
       const body = entry.signed ? {} : request.method === 'GET' || request.method === 'DELETE' && !request.headers.get('content-length') ? {} : await readJson(request, 262144);

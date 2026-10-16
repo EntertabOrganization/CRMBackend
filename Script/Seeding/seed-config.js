@@ -9,6 +9,7 @@ const ADMIN_ROLE_NAME = 'Owner/Admin';
 const PERMISSIONS = [
   ...require('../../src/server/process-platform/permission-catalog.json'),
   ...require('../../src/server/suite/permission-catalog.json'),
+  ...require('../../src/server/platform/permission-catalog.json'),
   'workspace.read',
   'workspace.create',
   'workspace.update',

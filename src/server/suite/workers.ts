@@ -4,6 +4,7 @@ import { MarketingDeliveryService } from '../marketing/delivery-service';
 import { MarketingGrowthService } from '../marketing/growth-service';
 import { HrJobsService } from '../hr/jobs-service';
 import { SitesJobsService } from '../sites/jobs-service';
+import { PlatformWorkers } from '../platform/workers';
 
 /** Business-suite background work: leased, idempotent, retryable; each tick isolates failures per job family. */
 export class SuiteWorkers {
@@ -12,13 +13,15 @@ export class SuiteWorkers {
   private readonly growth: MarketingGrowthService;
   private readonly hr: HrJobsService;
   private readonly sites: SitesJobsService;
+  private readonly platform: PlatformWorkers;
   constructor(db: PrismaClient) {
     this.campaigns = new MarketingCampaignService(db); this.deliveries = new MarketingDeliveryService(db); this.growth = new MarketingGrowthService(db);
-    this.hr = new HrJobsService(db); this.sites = new SitesJobsService(db);
+    this.hr = new HrJobsService(db); this.sites = new SitesJobsService(db); this.platform = new PlatformWorkers(db);
   }
   async tick() {
     const run = async <T>(name: string, fn: () => Promise<T>) => { try { return await fn(); } catch { process.stderr.write(`Business suite worker ${name} failed; retrying next cycle.\n`); return null; } };
     return {
+      ...await this.platform.tick(),
       marketingSchedules: await run('marketing-schedules', () => this.campaigns.tickSchedules(10)),
       marketingDeliveries: await run('marketing-deliveries', () => this.deliveries.tick(50)),
       marketingAdSync: await run('marketing-ad-sync', () => this.growth.tickAdSync(5)),

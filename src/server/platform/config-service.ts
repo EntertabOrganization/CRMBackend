@@ -159,9 +159,10 @@ export class PlatformConfigService {
 
   // ---------------------------------------------------------------- internal numbering endpoint
   async nextNumber(serviceToken: string | null, raw: unknown) {
+    const given = (serviceToken ?? '').replace(/^Bearer\s+/i, '');
+    if (!given) throw new AppError('UNAUTHENTICATED', 'Service identity is required.', 401);
     const expected = process.env.INTERNAL_JOB_TOKEN ?? '';
     if (!expected) throw new AppError('DEPENDENCY_UNAVAILABLE', 'INTERNAL_JOB_TOKEN is not configured.', 503);
-    const given = (serviceToken ?? '').replace(/^Bearer\s+/i, '');
     if (given.length !== expected.length || !timingSafeEqual(Buffer.from(given), Buffer.from(expected))) throw new AppError('UNAUTHENTICATED', 'Service identity is required.', 401);
     const input = z.strictObject({ workspaceId: z.uuid(), entityType: z.string().regex(/^[a-z][a-zA-Z0-9_.]{1,60}$/), sequenceName: z.string().regex(/^[a-zA-Z0-9_.-]{1,60}$/), idempotencyKey: z.string().min(8).max(200),
       prefix: z.string().max(20).regex(/^[A-Za-z0-9_-]*$/).optional(), padWidth: z.number().int().min(1).max(18).optional() }).parse(raw);

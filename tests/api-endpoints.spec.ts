@@ -1781,6 +1781,7 @@ describe('Cross-cutting behaviour', () => {
     'GET /swagger',
     'GET /api/docs',
     'GET /api/v1/health/ready',
+    'GET /api/v1/health/live',
     'POST /api/v1/auth/signup',
     'POST /api/v1/auth/signin',
     'POST /api/v1/auth/google/signup',

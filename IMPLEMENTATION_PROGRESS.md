@@ -22,17 +22,21 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 - [x] Inventory existing platform pieces to reuse (outbox, audit, idempotency, rate limit, jobs, notifications, search, Partner from Auth pack)
 
 ### 30-Platform-Services
-- [x] 01 Outbox & domain event contract — `src/server/platform/events-service.ts` (dispatcher, receipts, DLQ, replay); kernel `src/server/platform/kernel.ts`; router `src/server/platform/http.ts` (routes pending)
-- [x] 02 Jobs, schedules, retries, dead letter — `PlatformJobService` in `events-service.ts` (routes pending)
-- [x] 03 Notifications, preferences, mandatory notices, delivery — `src/server/platform/notifications-service.ts` + live-access registry `access.ts` (routes pending)
-- [x] 04 Realtime hints & presence — `realtime-service.ts` (signed token, SSE hints w/ live ACL + auth cache version, in-process presence; routes pending)
-- [x] 05 Global search, recents, favorites — `search-service.ts` + `search-sources.ts` (PostgreSQL FTS, projector consumer, reindex job; routes pending)
-- [x] 06 Audit query, security events, support access grants — `governance-service.ts` (customer-approved read-only grants, dual-approved break-glass w/ step-up + review; routes pending)
-- [x] 07 Platform settings, feature flags, locale, numbering sequences — `config-service.ts` (schema-validated settings docs, guarded flags + `requireFeature`, IANA/BCP47 validation, atomic `allocateNumber`; routes pending)
-- [x] 08 Rate limits, idempotency records, safe caching — `governance-service.ts` (`enforceRateLimit`, policy admin, idempotency metadata, cache invalidation; routes pending)
-- [x] 09 Retention policies, portability exports, privacy requests, legal holds — `privacy-service.ts` + module hooks `privacy-hooks.ts` (checkpointed resumable job, sealed 7-day export, holds via `suite_legal_holds`, `assertProductionReady`; routes pending)
-- [x] 10 Health/readiness, observability, backup & restore records — `ops-service.ts` (redacting structured logger, metrics snapshot schedule + alert rules, recovery plans, step-up restore tests via external runner; routes pending)
-- [~] Migration `202610170001_platform_services` + Prisma models written (schema valid, typecheck OK); services/routes/screen next
+- [x] 01 Outbox & domain event contract — `src/server/platform/events-service.ts` (dispatcher, receipts, DLQ, replay); kernel `src/server/platform/kernel.ts`; router `src/server/platform/http.ts`
+- [x] 02 Jobs, schedules, retries, dead letter — `PlatformJobService` in `events-service.ts`
+- [x] 03 Notifications, preferences, mandatory notices, delivery — `src/server/platform/notifications-service.ts` + live-access registry `access.ts`
+- [x] 04 Realtime hints & presence — `realtime-service.ts` (signed token, SSE hints w/ live ACL + auth cache version, in-process presence)
+- [x] 05 Global search, recents, favorites — `search-service.ts` + `search-sources.ts` (PostgreSQL FTS, projector consumer, reindex job)
+- [x] 06 Audit query, security events, support access grants — `governance-service.ts` (customer-approved read-only grants, dual-approved break-glass w/ step-up + review)
+- [x] 07 Platform settings, feature flags, locale, numbering sequences — `config-service.ts` (schema-validated settings docs, guarded flags + `requireFeature`, IANA/BCP47 validation, atomic `allocateNumber`)
+- [x] 08 Rate limits, idempotency records, safe caching — `governance-service.ts` (`enforceRateLimit`, policy admin, idempotency metadata, cache invalidation)
+- [x] 09 Retention policies, portability exports, privacy requests, legal holds — `privacy-service.ts` + module hooks `privacy-hooks.ts` (checkpointed resumable job, sealed 7-day export, holds via `suite_legal_holds`, `assertProductionReady`)
+- [x] 10 Health/readiness, observability, backup & restore records — `ops-service.ts` (redacting structured logger, metrics snapshot schedule + alert rules, recovery plans, step-up restore tests via external runner)
+- [x] Migration `202610170001_platform_services` + Prisma models (schema valid, typecheck OK)
+- [x] Routes `src/server/platform/routes.ts` → `app/api/v1/{platform,me,search}/[[...path]]`, `platform/realtime/stream` (SSE), `internal/numbering/next`, `health/live`, `workspaces/current/settings`, `workspaces/[id]/{support-access,privacy-requests,legal-holds,activation-readiness}`
+- [x] Permissions: workspace catalog `src/server/platform/permission-catalog.json` (in `permissions.ts` + seed); platform grants `platform-permissions.json` + `Script/Seeding/GrantPlatformRole.js`
+- [x] Workers: `src/server/platform/workers.ts` (schedules, outbox dispatch, jobs, notification delivery) ticked from `SuiteWorkers`
+- [x] Console `app/platform/page.tsx` (`src/client/suite/final-consoles.tsx`). Limitation: console cannot send `x-mfa-assertion`, so step-up actions (break-glass, restore test) only work via API.
 
 ### 31-Subscription-Billing
 - [ ] 01 Plan catalog, immutable versions, entitlement resolution
@@ -99,3 +103,4 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 ## Verification log (non-test checks only)
 - 2026-10-16 `prisma validate` OK; `tsc --noEmit` exit 0 after Platform schema
 - 2026-10-16 `tsc --noEmit` exit 0 after access/notifications/realtime/search/governance services
+- 2026-10-16 `tsc --noEmit` exit 0 after Platform routes/permissions/workers/console

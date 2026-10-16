@@ -1,0 +1,11 @@
+[
+  "legalHold.manage",
+  "platform.notification.admin",
+  "privacy.request",
+  "privacy.review",
+  "search.admin",
+  "search.confidential",
+  "search.global",
+  "workspace.settings.manage",
+  "workspace.support.approve"
+]
