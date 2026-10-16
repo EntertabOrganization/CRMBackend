@@ -64,8 +64,8 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 - [x] 04 Customer workspace provisioning, single active relationship — `commercial-service.ts` (idempotent provisioning through legacy `createOwnedWorkspace` via `runStateUnit`, customer is owner; owner-consented link; non-destructive end)
 - [x] 05 Delegated workspace access & revocation — `access-service.ts` (`delegatedPrincipal` fallback in `resolvePrincipal`: Partner membership ∩ active unexpired customer grant; read-only default, no self-grant/broadening, instant revoke + cache bump, expiry sweeper)
 - [x] 06 Referral codes, attribution, transfer — `commercial-service.ts` (hashed codes, consent-gated hashed touches, `attributeWorkspace` w/ self-referral + dispute checks, owner-consented transfer applied atomically on platform approval). Note: no signup hook calls `attributeWorkspace` yet (needs Sites/signup visitor token wiring)
-- [ ] 07 Commission accrual ledger & reversals
-- [ ] 08 Payouts, finance approval, reconciliation
+- [x] 07 Commission accrual ledger & reversals — `partners/finance-service.ts` (outbox consumer on BILLING_INVOICE_PAID / BILLING_PARTNER_TRANSACTION_RECONCILED, versioned policies, unique accrual, proportional append-only reversals/adjustments)
+- [x] 08 Payouts, finance approval, reconciliation — `partners/finance-service.ts` (locked claims + one-active-claim index, hold period, SoD approval w/ amount recheck, evidence-matched manual payment, failure keeps liability, reconciliation)
 - [ ] 09 Suspension, deletion, restore, retention
 - [ ] 10 Partner portal dashboard, admin search, reports
 - [~] Migration `202610190001_partner_program` (extends legacy partner tables, backfills, one-active-relation partial index, append-only triggers) written; services next
