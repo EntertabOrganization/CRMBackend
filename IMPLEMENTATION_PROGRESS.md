@@ -84,7 +84,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 - [ ] 06 Import/export, templates
 - [ ] 07 Archive, trash (30-day), retention, moves
 - [ ] 08 Knowledge UI & analytics
-- [ ] Migration, permissions, routes, knowledge screen
+- [~] Migration `202610200001_knowledge_base` (26 tables, sibling-slug index, FTS index, immutable revisions/lifecycle triggers) written; services next
 
 ### 29-AI-CoPilot
 - [ ] 01 Provider connections, model catalog, routing

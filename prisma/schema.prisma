@@ -10000,3 +10000,380 @@ model PartnerReportExport {
   @@index([partnerId, requesterId])
   @@map("partner_report_exports")
 }
+
+// ---------------------------------------------------------------------------------------------
+// 28-Knowledge-Base (spaces are content containers, never tenants; ACL = space ∩ article ∩ file)
+// ---------------------------------------------------------------------------------------------
+model KnowledgeSpace {
+  id                    String   @id @default(uuid()) @db.Uuid
+  workspaceId           String   @map("workspace_id") @db.Uuid
+  name                  String
+  slug                  String
+  description           String   @default("")
+  ownerUserId           String   @map("owner_user_id") @db.Uuid
+  visibility            String   @default("PRIVATE")
+  status                String   @default("ACTIVE")
+  statusBeforeRecycle   String?  @map("status_before_recycle")
+  aiIndexing            Boolean  @default(false) @map("ai_indexing")
+  contentClassification String   @default("INTERNAL") @map("content_classification")
+  aiPolicyApprovedBy    String?  @map("ai_policy_approved_by") @db.Uuid
+  aiPolicyApprovedAt    DateTime? @map("ai_policy_approved_at") @db.Timestamptz(6)
+  aclVersion            Int      @default(1) @map("acl_version")
+  version               Int      @default(1)
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([workspaceId, slug])
+  @@index([workspaceId, status])
+  @@map("knowledge_spaces")
+}
+model KnowledgeSpaceBinding {
+  id          String  @id @default(uuid()) @db.Uuid
+  workspaceId String  @map("workspace_id") @db.Uuid
+  spaceId     String  @map("space_id") @db.Uuid
+  targetType  String  @map("target_type")
+  targetId    String? @map("target_id") @db.Uuid
+  active      Boolean @default(true)
+
+  @@index([workspaceId, spaceId])
+  @@map("knowledge_space_bindings")
+}
+model KnowledgeArticle {
+  id                     String    @id @default(uuid()) @db.Uuid
+  workspaceId            String    @map("workspace_id") @db.Uuid
+  spaceId                String    @map("space_id") @db.Uuid
+  parentArticleId        String?   @map("parent_article_id") @db.Uuid
+  title                  String
+  slug                   String
+  sortOrder              Int       @default(0) @map("sort_order")
+  ownerUserId            String    @map("owner_user_id") @db.Uuid
+  currentDraftRevisionId String?   @map("current_draft_revision_id") @db.Uuid
+  publishedRevisionId    String?   @map("published_revision_id") @db.Uuid
+  status                 String    @default("DRAFT")
+  statusBeforeRecycle    String?   @map("status_before_recycle")
+  statusBeforeArchive    String?   @map("status_before_archive")
+  aclVersion             Int       @default(1) @map("acl_version")
+  version                Int       @default(1)
+  reviewDueAt            DateTime? @map("review_due_at") @db.Timestamptz(6)
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  publishedAt            DateTime? @map("published_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, spaceId, parentArticleId])
+  @@index([workspaceId, status])
+  @@map("knowledge_articles")
+}
+/// Closure projection of the canonical parent relation (rebuildable).
+model KnowledgeArticlePath {
+  ancestorId   String @map("ancestor_id") @db.Uuid
+  descendantId String @map("descendant_id") @db.Uuid
+  depth        Int
+
+  @@id([ancestorId, descendantId])
+  @@index([descendantId])
+  @@map("knowledge_article_paths")
+}
+model KnowledgeRevision {
+  id               String   @id @default(uuid()) @db.Uuid
+  workspaceId      String   @map("workspace_id") @db.Uuid
+  articleId        String   @map("article_id") @db.Uuid
+  versionNumber    Int      @map("version_number")
+  title            String
+  contentJson      Json     @map("content_json")
+  contentHash      String   @map("content_hash")
+  state            String   @default("DRAFT")
+  authorUserId     String   @map("author_user_id") @db.Uuid
+  sourceRevisionId String?  @map("source_revision_id") @db.Uuid
+  idempotencyKey   String?  @map("idempotency_key")
+  safetyScan       String   @default("PASSED") @map("safety_scan")
+  occurredAt       DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  @@unique([articleId, versionNumber])
+  @@unique([articleId, idempotencyKey])
+  @@map("knowledge_revisions")
+}
+model KnowledgeSection {
+  id           String @id @default(uuid()) @db.Uuid
+  revisionId   String @map("revision_id") @db.Uuid
+  anchor       String
+  headingLevel Int    @map("heading_level")
+  order        Int
+  title        String
+
+  @@unique([revisionId, anchor])
+  @@map("knowledge_sections")
+}
+model KnowledgeEditSession {
+  id                 String   @id @default(uuid()) @db.Uuid
+  articleId          String   @map("article_id") @db.Uuid
+  userId             String   @map("user_id") @db.Uuid
+  baselineRevisionId String?  @map("baseline_revision_id") @db.Uuid
+  conflictState      String?  @map("conflict_state")
+  lastSeenAt         DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+
+  @@unique([articleId, userId])
+  @@map("knowledge_edit_sessions")
+}
+model KnowledgeFileBinding {
+  id         String @id @default(uuid()) @db.Uuid
+  articleId  String @map("article_id") @db.Uuid
+  revisionId String @map("revision_id") @db.Uuid
+  fileId     String @map("file_id") @db.Uuid
+  usageKind  String @map("usage_kind")
+
+  @@unique([revisionId, fileId, usageKind])
+  @@index([articleId])
+  @@map("knowledge_file_bindings")
+}
+model KnowledgeAclEntry {
+  id            String    @id @default(uuid()) @db.Uuid
+  workspaceId   String    @map("workspace_id") @db.Uuid
+  resourceType  String    @map("resource_type")
+  resourceId    String    @map("resource_id") @db.Uuid
+  principalType String    @map("principal_type")
+  principalId   String    @map("principal_id") @db.Uuid
+  level         String
+  effect        String    @default("ALLOW")
+  issuedBy      String    @map("issued_by") @db.Uuid
+  expiresAt     DateTime? @map("expires_at") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, resourceType, resourceId])
+  @@map("knowledge_acl_entries")
+}
+model KnowledgeGuestInvitation {
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  articleId   String    @map("article_id") @db.Uuid
+  emailHash   String    @map("email_hash")
+  tokenHash   String    @unique @map("token_hash")
+  status      String    @default("PENDING")
+  invitedBy   String    @map("invited_by") @db.Uuid
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz(6)
+  acceptedAt  DateTime? @map("accepted_at") @db.Timestamptz(6)
+  revokedAt   DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, articleId])
+  @@map("knowledge_guest_invitations")
+}
+model KnowledgeShare {
+  id              String    @id @default(uuid()) @db.Uuid
+  workspaceId     String    @map("workspace_id") @db.Uuid
+  articleId       String    @map("article_id") @db.Uuid
+  sharedWithUserId String   @map("shared_with_user_id") @db.Uuid
+  level           String
+  grantedBy       String    @map("granted_by") @db.Uuid
+  expiresAt       DateTime? @map("expires_at") @db.Timestamptz(6)
+  revokedAt       DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, sharedWithUserId])
+  @@index([articleId])
+  @@map("knowledge_shares")
+}
+model KnowledgeReviewPolicy {
+  id                 String  @id @default(uuid()) @db.Uuid
+  workspaceId        String  @map("workspace_id") @db.Uuid
+  spaceId            String  @unique @map("space_id") @db.Uuid
+  requiredReviewers  Int     @default(1) @map("required_reviewers")
+  reviewIntervalDays Int?    @map("review_interval_days")
+  twoPersonRule      Boolean @default(true) @map("two_person_rule")
+  active             Boolean @default(true)
+  version            Int     @default(1)
+
+  @@map("knowledge_review_policies")
+}
+model KnowledgePublicationRequest {
+  id              String    @id @default(uuid()) @db.Uuid
+  workspaceId     String    @map("workspace_id") @db.Uuid
+  articleId       String    @map("article_id") @db.Uuid
+  draftRevisionId String    @map("draft_revision_id") @db.Uuid
+  contentHash     String    @map("content_hash")
+  status          String    @default("PENDING")
+  requestorId     String    @map("requestor_id") @db.Uuid
+  reviewerId      String?   @map("reviewer_id") @db.Uuid
+  decisionReason  String?   @map("decision_reason")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  decidedAt       DateTime? @map("decided_at") @db.Timestamptz(6)
+
+  @@index([articleId, status])
+  @@map("knowledge_publication_requests")
+}
+model KnowledgeAckRequirement {
+  id                  String    @id @default(uuid()) @db.Uuid
+  workspaceId         String    @map("workspace_id") @db.Uuid
+  articleId           String    @map("article_id") @db.Uuid
+  publishedRevisionId String    @map("published_revision_id") @db.Uuid
+  audienceScope       Json      @map("audience_scope")
+  dueAt               DateTime? @map("due_at") @db.Timestamptz(6)
+  renewalPolicy       String    @default("EACH_PUBLISHED_REVISION") @map("renewal_policy")
+  restricted          Boolean   @default(false)
+  active              Boolean   @default(true)
+  createdBy           String    @map("created_by") @db.Uuid
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, articleId])
+  @@map("knowledge_ack_requirements")
+}
+model KnowledgeAcknowledgment {
+  id             String   @id @default(uuid()) @db.Uuid
+  requirementId  String   @map("requirement_id") @db.Uuid
+  employeeUserId String   @map("employee_user_id") @db.Uuid
+  revisionId     String   @map("revision_id") @db.Uuid
+  acknowledgedAt DateTime @default(now()) @map("acknowledged_at") @db.Timestamptz(6)
+
+  @@unique([requirementId, employeeUserId, revisionId])
+  @@map("knowledge_acknowledgments")
+}
+model KnowledgeAiChunk {
+  id             String   @id @default(uuid()) @db.Uuid
+  workspaceId    String   @map("workspace_id") @db.Uuid
+  articleId      String   @map("article_id") @db.Uuid
+  revisionId     String   @map("revision_id") @db.Uuid
+  chunkNumber    Int      @map("chunk_number")
+  anchor         String?
+  content        String
+  contentHash    String   @map("content_hash")
+  classification String
+  embeddingRef   String?  @map("embedding_ref")
+  indexingStatus String   @default("ACTIVE") @map("indexing_status")
+  indexedAt      DateTime @default(now()) @map("indexed_at") @db.Timestamptz(6)
+
+  @@unique([revisionId, chunkNumber])
+  @@index([workspaceId, indexingStatus])
+  @@index([articleId])
+  @@map("knowledge_ai_chunks")
+}
+model KnowledgeImportJob {
+  id             String   @id @default(uuid()) @db.Uuid
+  workspaceId    String   @map("workspace_id") @db.Uuid
+  requestedBy    String   @map("requested_by") @db.Uuid
+  fileId         String   @map("file_id") @db.Uuid
+  format         String
+  targetSpaceId  String   @map("target_space_id") @db.Uuid
+  status         String   @default("UPLOADED")
+  progress       Int      @default(0)
+  cursor         Int      @default(0)
+  idempotencyKey String?  @map("idempotency_key")
+  preview        Json     @default("{}")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, status])
+  @@map("knowledge_import_jobs")
+}
+model KnowledgeImportRow {
+  id               String  @id @default(uuid()) @db.Uuid
+  jobId            String  @map("job_id") @db.Uuid
+  ordinal          Int
+  sourcePath       String  @map("source_path")
+  title            String
+  content          Json?
+  targetArticleId  String? @map("target_article_id") @db.Uuid
+  outcome          String  @default("PENDING")
+  validationErrors Json    @default("[]") @map("validation_errors")
+
+  @@unique([jobId, ordinal])
+  @@map("knowledge_import_rows")
+}
+model KnowledgeTemplate {
+  id            String   @id @default(uuid()) @db.Uuid
+  workspaceId   String   @map("workspace_id") @db.Uuid
+  name          String
+  contentSchema Json     @map("content_schema")
+  visibility    String   @default("WORKSPACE")
+  version       Int      @default(1)
+  createdBy     String   @map("created_by") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId])
+  @@map("knowledge_templates")
+}
+model KnowledgeExportJob {
+  id           String   @id @default(uuid()) @db.Uuid
+  workspaceId  String   @map("workspace_id") @db.Uuid
+  requesterId  String   @map("requester_id") @db.Uuid
+  scopeHash    String   @map("scope_hash")
+  request      Json
+  format       String
+  status       String   @default("QUEUED")
+  articleIds   Json     @default("[]") @map("article_ids")
+  outputSealed String?  @map("output_sealed")
+  expiresAt    DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, requesterId])
+  @@map("knowledge_export_jobs")
+}
+model KnowledgeLifecycleEvent {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  articleId   String   @map("article_id") @db.Uuid
+  priorStatus String   @map("prior_status")
+  nextStatus  String   @map("next_status")
+  actorId     String   @map("actor_id") @db.Uuid
+  reason      String?
+  occurredAt  DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  @@index([articleId])
+  @@map("knowledge_lifecycle_events")
+}
+model KnowledgeTombstone {
+  id               String   @id @default(uuid()) @db.Uuid
+  workspaceId      String   @map("workspace_id") @db.Uuid
+  articleId        String   @unique @map("article_id") @db.Uuid
+  originalSpaceId  String   @map("original_space_id") @db.Uuid
+  originalParentId String?  @map("original_parent_id") @db.Uuid
+  deletedAt        DateTime @default(now()) @map("deleted_at") @db.Timestamptz(6)
+  recoverUntil     DateTime @map("recover_until") @db.Timestamptz(6)
+  legalHold        Boolean  @default(false) @map("legal_hold")
+
+  @@index([workspaceId, recoverUntil])
+  @@map("knowledge_tombstones")
+}
+model KnowledgeRetentionAssignment {
+  id         String @id @default(uuid()) @db.Uuid
+  resourceId String @map("resource_id") @db.Uuid
+  category   String
+  policyId   String @map("policy_id") @db.Uuid
+
+  @@unique([resourceId, category])
+  @@map("knowledge_retention_assignments")
+}
+model KnowledgeFavorite {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  articleId   String   @map("article_id") @db.Uuid
+  favoritedAt DateTime @default(now()) @map("favorited_at") @db.Timestamptz(6)
+
+  @@unique([workspaceId, userId, articleId])
+  @@map("knowledge_user_favorites")
+}
+model KnowledgeReadEvent {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  articleId   String   @map("article_id") @db.Uuid
+  revisionId  String   @map("revision_id") @db.Uuid
+  readerId    String   @map("reader_id") @db.Uuid
+  dedupeKey   String   @unique @map("dedupe_key")
+  occurredAt  DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, articleId, occurredAt])
+  @@index([workspaceId, readerId, occurredAt])
+  @@map("knowledge_read_events")
+}
+model KnowledgeReviewAssignment {
+  id             String   @id @default(uuid()) @db.Uuid
+  workspaceId    String   @map("workspace_id") @db.Uuid
+  articleId      String   @map("article_id") @db.Uuid
+  reviewerUserId String   @map("reviewer_user_id") @db.Uuid
+  dueAt          DateTime @map("due_at") @db.Timestamptz(6)
+  currentState   String   @default("OPEN") @map("current_state")
+  escalatedAt    DateTime? @map("escalated_at") @db.Timestamptz(6)
+
+  @@unique([articleId, dueAt])
+  @@index([workspaceId, currentState, dueAt])
+  @@map("knowledge_review_assignments")
+}
