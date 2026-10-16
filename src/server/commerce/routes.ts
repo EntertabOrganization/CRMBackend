@@ -18,6 +18,8 @@ import { CommerceCrmSyncService } from './crm-sync-service';
 import { CommerceCustomerService } from './customer-service';
 import { CommerceReturnService } from './return-service';
 import { CommerceRefundService } from './refund-service';
+import { registerCommerceSuiteRoutes, commercePublicRouter } from './suite/routes';
+export { commercePublicRouter };
 export const commerceStores = new CommerceStoreService(prisma);
 export const commercePublications = new CommercePublicationService(prisma,commerceStores);
 export const commercePricingPolicies = new CommercePricingPolicyService(prisma,commerceStores);
@@ -36,7 +38,7 @@ export const commerceCrmSync = new CommerceCrmSyncService(prisma,commerceOrders)
 export const commerceCustomers = new CommerceCustomerService(prisma,commerceStores,commercePublications);
 export const commerceReturns = new CommerceReturnService(prisma,commerceOrders);
 export const commerceRefunds = new CommerceRefundService(prisma,commerceOrders);
-export const commerceRouter = new PackRouter()
+export const commerceRouter = registerCommerceSuiteRoutes(new PackRouter())
   .add('POST','/api/v1/commerce/orders/:orderId/refunds','CommerceRefundsController',c=>commerceRefunds.create(c.actor,c.params.orderId,c.body,c.request.headers.get('idempotency-key')),201)
   .add('GET','/api/v1/commerce/refunds/:refundId','CommerceRefundsController',c=>commerceRefunds.get(c.actor,c.params.refundId))
   .add('POST','/api/v1/commerce/refunds/:refundId/approve','CommerceRefundsController',c=>commerceRefunds.approve(c.actor,c.params.refundId,c.body))

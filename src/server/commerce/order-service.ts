@@ -30,6 +30,7 @@ export class CommerceOrderService {
     await tx.commerceOrderHistory.create({data:{workspaceId:actor.workspaceId,storeId:row.storeId,orderId,actorUserId:actor.userId,action:'PAYMENT_UPDATED',details:{providerEventId,paidAmount:paid.toFixed(6),refundedAmount:refunded.toFixed(6),paymentStatus,status,version:updated.version.toString()}}});
     await evidence(tx,actor,'COMMERCE_ORDER',orderId,'ORDER_PAYMENT_UPDATED',{providerEventId,paidAmount:paid.toFixed(6),refundedAmount:refunded.toFixed(6),paymentStatus,status});
     if(paymentStatus==='PAID'&&row.paymentStatus!=='PAID')await evidence(tx,actor,'COMMERCE_ORDER',orderId,'ORDER_PAID',{providerEventId,paidAmount:paid.toFixed(6)});
+    if(paymentStatus==='PAID'&&row.paymentStatus!=='PAID'){const {CommerceOrderLifecycleService}=await import('./suite/order-lifecycle-service');await CommerceOrderLifecycleService.onOrderPaid(tx,actor,updated,providerEventId);}
   }
   async refreshFulfillmentProjection(tx:Tx,actor:Principal,orderId:string,permission:string){
     const row=await this.load(tx,actor,orderId,permission);

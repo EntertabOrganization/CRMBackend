@@ -1074,6 +1074,7 @@ model CommerceOrder {
   refundedAmount    Decimal   @default(0) @map("refunded_amount") @db.Decimal(24, 6)
   paymentStatus     String    @default("UNPAID") @map("payment_status")
   fulfillmentStatus String    @default("UNFULFILLED") @map("fulfillment_status")
+  processingStatus  String?   @map("processing_status")
   snapshot          Json
   consents          Json
   businessMetadata  Json      @default("{}") @map("business_metadata")
@@ -6420,4 +6421,1911 @@ model CalendarSyncConflict {
   updatedAt            DateTime  @map("updated_at") @db.Timestamptz(6)
 
   @@map("calendar_sync_conflicts")
+}
+
+// ---------------------------------------------------------------------------
+// Business suite shared platform records (Commerce/Marketing/HR/Sites pack)
+// ---------------------------------------------------------------------------
+
+model SuiteProviderCall {
+  id             String   @id @default(uuid()) @db.Uuid
+  workspaceId    String   @map("workspace_id") @db.Uuid
+  module         String
+  provider       String
+  operation      String
+  idempotencyKey String   @unique @map("idempotency_key")
+  reference      String?
+  campaignId     String?  @map("campaign_id") @db.Uuid
+  recipientKey   String?  @map("recipient_key")
+  outcome        String
+  payload        Json     @default("{}")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, module, createdAt])
+  @@index([workspaceId, campaignId, recipientKey])
+  @@map("suite_provider_calls")
+}
+
+model SuiteRetentionPolicy {
+  id              String   @id @default(uuid()) @db.Uuid
+  workspaceId     String   @map("workspace_id") @db.Uuid
+  module          String
+  jurisdiction    String
+  category        String
+  retentionDays   Int      @map("retention_days")
+  effectiveFrom   DateTime @map("effective_from") @db.Date
+  legalBasis      String   @map("legal_basis")
+  disposalMethod  String   @map("disposal_method")
+  sensitiveFields Json     @default("[]") @map("sensitive_fields")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([workspaceId, module, jurisdiction, category, effectiveFrom])
+  @@map("suite_retention_policies")
+}
+
+model SuiteLegalHold {
+  id             String    @id @default(uuid()) @db.Uuid
+  workspaceId    String    @map("workspace_id") @db.Uuid
+  module         String
+  scopeType      String    @map("scope_type")
+  scopeId        String?   @map("scope_id") @db.Uuid
+  reason         String
+  placedByUserId String    @map("placed_by_user_id") @db.Uuid
+  placedAt       DateTime  @default(now()) @map("placed_at") @db.Timestamptz(6)
+  releasedAt     DateTime? @map("released_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, module, scopeType, scopeId])
+  @@map("suite_legal_holds")
+}
+
+// ----------------------------- Commerce extensions --------------------------
+
+model CommerceStoreProfile {
+  storeId               String    @id @map("store_id") @db.Uuid
+  workspaceId           String    @map("workspace_id") @db.Uuid
+  slug                  String
+  mode                  String    @default("HYBRID")
+  defaultLocale         String    @default("en") @map("default_locale")
+  reservationTtlSeconds Int?      @map("reservation_ttl_seconds")
+  backordersEnabled     Boolean   @default(false) @map("backorders_enabled")
+  guestCheckoutEnabled  Boolean   @default(true) @map("guest_checkout_enabled")
+  ordersCreateDeals     Boolean   @default(false) @map("orders_create_deals")
+  portalEnabled         Boolean   @default(false) @map("portal_enabled")
+  invoicePolicy         String    @default("NONE") @map("invoice_policy")
+  discountStackingMode  String    @default("PRIORITY") @map("discount_stacking_mode")
+  digitalAccessPolicy   Json      @default("{}") @map("digital_access_policy")
+  allowedReturnHosts    Json      @default("[]") @map("allowed_return_hosts")
+  retentionConfigured   Boolean   @default(false) @map("retention_configured")
+  policyVersion         Int       @default(1) @map("policy_version")
+  deletedAt             DateTime? @map("deleted_at") @db.Timestamptz(6)
+  updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([workspaceId, slug])
+  @@map("commerce_store_profiles")
+}
+
+model CommerceStoreChannel {
+  id          String  @id @default(uuid()) @db.Uuid
+  workspaceId String  @map("workspace_id") @db.Uuid
+  storeId     String  @map("store_id") @db.Uuid
+  siteId      String? @map("site_id") @db.Uuid
+  domainId    String? @map("domain_id") @db.Uuid
+  hostname    String?
+  routePrefix String  @map("route_prefix")
+  apiClientId String? @map("api_client_id")
+  status      String  @default("ACTIVE")
+
+  @@unique([hostname, routePrefix])
+  @@index([workspaceId, storeId])
+  @@map("commerce_store_channels")
+}
+
+model CommerceStoreCategory {
+  id                      String  @id @default(uuid()) @db.Uuid
+  workspaceId             String  @map("workspace_id") @db.Uuid
+  storeId                 String  @map("store_id") @db.Uuid
+  sourceCatalogCategoryId String? @map("source_catalog_category_id") @db.Uuid
+  name                    String
+  slug                    String
+  parentId                String? @map("parent_id") @db.Uuid
+  sortRank                Int     @default(0) @map("sort_rank")
+
+  @@unique([storeId, slug])
+  @@index([workspaceId, storeId])
+  @@map("commerce_store_categories")
+}
+
+model CommerceListingOverride {
+  id            String    @id @default(uuid()) @db.Uuid
+  workspaceId   String    @map("workspace_id") @db.Uuid
+  storeId       String    @map("store_id") @db.Uuid
+  publicationId String    @map("publication_id") @db.Uuid
+  priceTypeId   String?   @map("price_type_id") @db.Uuid
+  currency      String    @db.Char(3)
+  amount        Decimal?  @db.Decimal(24, 6)
+  validFrom     DateTime? @map("valid_from") @db.Timestamptz(6)
+  validTo       DateTime? @map("valid_to") @db.Timestamptz(6)
+  sortRank      Int       @default(0) @map("sort_rank")
+  seoOverrides  Json      @default("{}") @map("seo_overrides")
+  categoryIds   Json      @default("[]") @map("category_ids")
+  version       Int       @default(1)
+
+  @@unique([workspaceId, publicationId])
+  @@index([workspaceId, storeId])
+  @@map("commerce_listing_overrides")
+}
+
+model CommerceCustomerIdentity {
+  id               String    @id @default(uuid()) @db.Uuid
+  workspaceId      String    @map("workspace_id") @db.Uuid
+  emailNormalized  String    @map("email_normalized")
+  passwordHash     String    @map("password_hash")
+  status           String    @default("ACTIVE")
+  verifiedAt       DateTime? @map("verified_at") @db.Timestamptz(6)
+  failedAttempts   Int       @default(0) @map("failed_attempts")
+  lockedUntil      DateTime? @map("locked_until") @db.Timestamptz(6)
+  createdByStoreId String    @map("created_by_store_id") @db.Uuid
+  crmContactId     String?   @map("crm_contact_id") @db.Uuid
+  crmCompanyId     String?   @map("crm_company_id") @db.Uuid
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([workspaceId, emailNormalized])
+  @@map("commerce_customer_identities")
+}
+
+model CommerceCustomerStoreMembership {
+  identityId  String   @map("identity_id") @db.Uuid
+  storeId     String   @map("store_id") @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@id([identityId, storeId])
+  @@map("commerce_customer_store_memberships")
+}
+
+model CommerceCustomerToken {
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  storeId     String    @map("store_id") @db.Uuid
+  identityId  String?   @map("identity_id") @db.Uuid
+  orderId     String?   @map("order_id") @db.Uuid
+  purpose     String
+  tokenHash   String    @unique @map("token_hash")
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz(6)
+  consumedAt  DateTime? @map("consumed_at") @db.Timestamptz(6)
+  revokedAt   DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, orderId])
+  @@index([workspaceId, identityId, purpose])
+  @@map("commerce_customer_tokens")
+}
+
+model CommerceOrderStatusDefinition {
+  id          String  @id @default(uuid()) @db.Uuid
+  workspaceId String  @map("workspace_id") @db.Uuid
+  storeId     String  @map("store_id") @db.Uuid
+  code        String
+  name        String
+  sortOrder   Int     @default(100) @map("sort_order")
+  isProtected Boolean @default(false) @map("is_protected")
+
+  @@unique([storeId, code])
+  @@map("commerce_order_status_definitions")
+}
+
+model CommerceOrderAmendment {
+  id             String   @id @default(uuid()) @db.Uuid
+  workspaceId    String   @map("workspace_id") @db.Uuid
+  orderId        String   @map("order_id") @db.Uuid
+  beforeSnapshot Json     @map("before_snapshot")
+  afterSnapshot  Json     @map("after_snapshot")
+  reason         String
+  actorUserId    String   @map("actor_user_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, orderId, createdAt])
+  @@map("commerce_order_amendments")
+}
+
+model CommercePaymentIntentRef {
+  id                String   @id @default(uuid()) @db.Uuid
+  workspaceId       String   @map("workspace_id") @db.Uuid
+  orderId           String   @map("order_id") @db.Uuid
+  providerKey       String   @map("provider_key")
+  paymentMethodId   String   @map("payment_method_id")
+  paymentId         String?  @map("payment_id") @db.Uuid
+  providerReference String?  @map("provider_reference")
+  redirectUrl       String?  @map("redirect_url")
+  returnUrl         String?  @map("return_url")
+  amount            Decimal  @db.Decimal(24, 6)
+  currency          String   @db.Char(3)
+  status            String   @default("CREATED")
+  idempotencyKey    String   @map("idempotency_key")
+  requestHash       String   @map("request_hash")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([workspaceId, orderId, idempotencyKey])
+  @@index([workspaceId, orderId, status])
+  @@map("commerce_payment_intent_refs")
+}
+
+model CommerceFulfillmentException {
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  orderId     String    @map("order_id") @db.Uuid
+  paymentRef  String?   @map("payment_ref")
+  reason      String
+  status      String    @default("OPEN")
+  resolution  String?
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  resolvedAt  DateTime? @map("resolved_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, orderId, status])
+  @@map("commerce_fulfillment_exceptions")
+}
+
+model CommerceBackorderLine {
+  id           String    @id @default(uuid()) @db.Uuid
+  workspaceId  String    @map("workspace_id") @db.Uuid
+  orderId      String    @map("order_id") @db.Uuid
+  orderLineId  String    @map("order_line_id") @db.Uuid
+  remainingQty Decimal   @map("remaining_qty") @db.Decimal(24, 6)
+  expectedDate DateTime? @map("expected_date") @db.Date
+  state        String    @default("WAITING")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([workspaceId, orderLineId])
+  @@index([workspaceId, orderId])
+  @@map("commerce_backorder_lines")
+}
+
+model CommerceFulfillment {
+  id              String   @id @default(uuid()) @db.Uuid
+  workspaceId     String   @map("workspace_id") @db.Uuid
+  storeId         String   @map("store_id") @db.Uuid
+  orderId         String   @map("order_id") @db.Uuid
+  warehouseId     String?  @map("warehouse_id") @db.Uuid
+  type            String
+  status          String   @default("PLANNED")
+  lines           Json
+  shipmentId      String?  @unique @map("shipment_id") @db.Uuid
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  version         Int      @default(1)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, orderId, status])
+  @@map("commerce_fulfillments")
+}
+
+model CommerceCheckoutLink {
+  id             String    @id @default(uuid()) @db.Uuid
+  workspaceId    String    @map("workspace_id") @db.Uuid
+  storeId        String    @map("store_id") @db.Uuid
+  orderId        String?   @map("order_id") @db.Uuid
+  cartId         String?   @map("cart_id") @db.Uuid
+  conversationId String?   @map("conversation_id") @db.Uuid
+  tokenHash      String    @unique @map("token_hash")
+  status         String    @default("ACTIVE")
+  expiresAt      DateTime  @map("expires_at") @db.Timestamptz(6)
+  usedAt         DateTime? @map("used_at") @db.Timestamptz(6)
+  issuedByUserId String    @map("issued_by_user_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, orderId])
+  @@map("commerce_checkout_links")
+}
+
+model CommerceDigitalDelivery {
+  id               String    @id @default(uuid()) @db.Uuid
+  workspaceId      String    @map("workspace_id") @db.Uuid
+  storeId          String    @map("store_id") @db.Uuid
+  orderId          String    @map("order_id") @db.Uuid
+  orderLineId      String    @map("order_line_id") @db.Uuid
+  fileId           String?   @map("file_id") @db.Uuid
+  licenseReference String?   @map("license_reference")
+  accessState      String    @default("PENDING") @map("access_state")
+  downloadLimit    Int?      @map("download_limit")
+  downloadCount    Int       @default(0) @map("download_count")
+  availableAt      DateTime? @map("available_at") @db.Timestamptz(6)
+  expiresAt        DateTime? @map("expires_at") @db.Timestamptz(6)
+  revokedAt        DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([workspaceId, orderLineId])
+  @@index([workspaceId, orderId])
+  @@map("commerce_digital_deliveries")
+}
+
+model CommerceDigitalAccessToken {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  deliveryId  String   @map("delivery_id") @db.Uuid
+  tokenHash   String   @unique @map("token_hash")
+  expiresAt   DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, deliveryId])
+  @@map("commerce_digital_access_tokens")
+}
+
+model CommerceServiceFulfillment {
+  id                String    @id @default(uuid()) @db.Uuid
+  workspaceId       String    @map("workspace_id") @db.Uuid
+  orderId           String    @map("order_id") @db.Uuid
+  orderLineId       String    @map("order_line_id") @db.Uuid
+  scheduledAt       DateTime? @map("scheduled_at") @db.Timestamptz(6)
+  completedAt       DateTime? @map("completed_at") @db.Timestamptz(6)
+  status            String    @default("PENDING")
+  completedByUserId String?   @map("completed_by_user_id") @db.Uuid
+
+  @@unique([workspaceId, orderLineId])
+  @@index([workspaceId, orderId])
+  @@map("commerce_service_fulfillments")
+}
+
+model CommerceOperationalAlert {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  storeId     String   @map("store_id") @db.Uuid
+  kind        String
+  status      String   @default("OPEN")
+  details     Json     @default("{}")
+  raisedAt    DateTime @default(now()) @map("raised_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, storeId, status])
+  @@map("commerce_operational_alerts")
+}
+
+// ----------------------------- Marketing ------------------------------------
+
+model MarketingSegment {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  name        String
+  kind        String
+  channel     String   @default("EMAIL")
+  ruleTree    Json     @default("{}") @map("rule_tree")
+  exclusions  Json     @default("[]")
+  revision    Int      @default(1)
+  status      String   @default("DRAFT")
+  ownerUserId String   @map("owner_user_id") @db.Uuid
+  version     Int      @default(1)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, status, createdAt])
+  @@map("marketing_segments")
+}
+
+model MarketingSegmentMember {
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  segmentId   String    @map("segment_id") @db.Uuid
+  identityRef String    @map("identity_ref")
+  source      String
+  addedAt     DateTime  @default(now()) @map("added_at") @db.Timestamptz(6)
+  removedAt   DateTime? @map("removed_at") @db.Timestamptz(6)
+
+  @@unique([segmentId, identityRef])
+  @@index([workspaceId, segmentId])
+  @@map("marketing_segment_members")
+}
+
+model MarketingAudienceIdentity {
+  id                   String   @id @default(uuid()) @db.Uuid
+  workspaceId          String   @map("workspace_id") @db.Uuid
+  channel              String
+  destinationEncrypted String   @map("destination_encrypted")
+  destinationHash      String   @map("destination_hash")
+  metadata             Json     @default("{}")
+  sourceImportId       String?  @map("source_import_id") @db.Uuid
+  crmContactId         String?  @map("crm_contact_id") @db.Uuid
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([workspaceId, channel, destinationHash])
+  @@map("marketing_audience_identities")
+}
+
+model MarketingAudienceImport {
+  id              String   @id @default(uuid()) @db.Uuid
+  workspaceId     String   @map("workspace_id") @db.Uuid
+  segmentId       String   @map("segment_id") @db.Uuid
+  fileId          String   @map("file_id") @db.Uuid
+  fileChecksum    String   @map("file_checksum")
+  channel         String
+  fieldMapping    Json     @map("field_mapping")
+  duplicatePolicy String   @map("duplicate_policy")
+  consentPolicy   String   @map("consent_policy")
+  status          String   @default("UPLOADED")
+  importedCount   Int      @default(0) @map("imported_count")
+  rejectedCount   Int      @default(0) @map("rejected_count")
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  idempotencyKey  String   @map("idempotency_key")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([workspaceId, fileChecksum, idempotencyKey])
+  @@index([workspaceId, segmentId])
+  @@map("marketing_audience_imports")
+}
+
+model MarketingAudienceImportRow {
+  id                String  @id @default(uuid()) @db.Uuid
+  workspaceId       String  @map("workspace_id") @db.Uuid
+  importId          String  @map("import_id") @db.Uuid
+  rowNumber         Int     @map("row_number")
+  destinationHash   String? @map("destination_hash")
+  destinationSealed String? @map("destination_sealed")
+  maskedDestination String? @map("masked_destination")
+  errorCode         String? @map("error_code")
+  identityId        String? @map("identity_id") @db.Uuid
+  duplicate         Boolean @default(false)
+
+  @@unique([importId, rowNumber])
+  @@map("marketing_audience_import_rows")
+}
+
+model MarketingAudienceSnapshot {
+  id              String   @id @default(uuid()) @db.Uuid
+  workspaceId     String   @map("workspace_id") @db.Uuid
+  campaignId      String   @map("campaign_id") @db.Uuid
+  segmentId       String   @map("segment_id") @db.Uuid
+  segmentRevision Int      @map("segment_revision")
+  status          String   @default("BUILDING")
+  targetCount     Int      @default(0) @map("target_count")
+  checksum        String?
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, campaignId])
+  @@map("marketing_audience_snapshots")
+}
+
+model MarketingAudienceRecipient {
+  id                String @id @default(uuid()) @db.Uuid
+  workspaceId       String @map("workspace_id") @db.Uuid
+  snapshotId        String @map("snapshot_id") @db.Uuid
+  campaignId        String @map("campaign_id") @db.Uuid
+  recipientKey      String @map("recipient_key")
+  destinationHash   String @map("destination_hash")
+  destinationSealed String @map("destination_sealed")
+  channel           String
+  sourceRef         String @map("source_ref")
+  eligibilityState  String @map("eligibility_state")
+
+  @@unique([snapshotId, destinationHash, channel])
+  @@index([workspaceId, campaignId])
+  @@map("marketing_audience_recipients")
+}
+
+model MarketingConsentRecord {
+  id               String   @id @default(uuid()) @db.Uuid
+  workspaceId      String   @map("workspace_id") @db.Uuid
+  subjectRef       String?  @map("subject_ref")
+  destinationHash  String   @map("destination_hash")
+  channel          String
+  purpose          String
+  lawfulBasis      String   @map("lawful_basis")
+  source           String
+  evidenceFileId   String?  @map("evidence_file_id") @db.Uuid
+  jurisdiction     String
+  state            String
+  effectiveAt      DateTime @map("effective_at") @db.Timestamptz(6)
+  recordedByUserId String?  @map("recorded_by_user_id") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, destinationHash, channel, purpose, effectiveAt])
+  @@map("marketing_consent_records")
+}
+
+model MarketingSuppression {
+  id              String    @id @default(uuid()) @db.Uuid
+  workspaceId     String    @map("workspace_id") @db.Uuid
+  destinationHash String    @map("destination_hash")
+  channel         String
+  reason          String
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt       DateTime? @map("expires_at") @db.Timestamptz(6)
+  liftedAt        DateTime? @map("lifted_at") @db.Timestamptz(6)
+  createdByUserId String?   @map("created_by_user_id") @db.Uuid
+
+  @@index([workspaceId, destinationHash, channel])
+  @@map("marketing_suppressions")
+}
+
+model MarketingConsentPolicy {
+  id              String   @id @default(uuid()) @db.Uuid
+  workspaceId     String   @map("workspace_id") @db.Uuid
+  jurisdiction    String
+  channel         String
+  purpose         String
+  consentRequired Boolean  @default(true) @map("consent_required")
+  quietHours      Json     @default("{}") @map("quiet_hours")
+  frequencyCap    Json     @default("{}") @map("frequency_cap")
+  rulesVersion    Int      @default(1) @map("rules_version")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([workspaceId, jurisdiction, channel, purpose])
+  @@map("marketing_consent_policies")
+}
+
+model MarketingOptoutToken {
+  id              String    @id @default(uuid()) @db.Uuid
+  workspaceId     String    @map("workspace_id") @db.Uuid
+  destinationHash String    @map("destination_hash")
+  channel         String
+  campaignId      String?   @map("campaign_id") @db.Uuid
+  tokenHash       String    @unique @map("token_hash")
+  expiresAt       DateTime  @map("expires_at") @db.Timestamptz(6)
+  usedAt          DateTime? @map("used_at") @db.Timestamptz(6)
+
+  @@map("marketing_optout_tokens")
+}
+
+model MarketingProviderConnection {
+  id                  String    @id @default(uuid()) @db.Uuid
+  workspaceId         String    @map("workspace_id") @db.Uuid
+  provider            String
+  channel             String
+  ownership           String
+  credentialSecretRef String    @map("credential_secret_ref")
+  credentialMask      String    @map("credential_mask")
+  webhookSecretRef    String?   @map("webhook_secret_ref")
+  region              String?
+  quotas              Json      @default("{}")
+  capabilities        Json      @default("[]")
+  status              String    @default("PENDING")
+  health              String    @default("UNKNOWN")
+  lastHealthAt        DateTime? @map("last_health_at") @db.Timestamptz(6)
+  version             Int       @default(1)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, channel, status])
+  @@map("marketing_provider_connections")
+}
+
+model MarketingSenderIdentity {
+  id                    String    @id @default(uuid()) @db.Uuid
+  workspaceId           String    @map("workspace_id") @db.Uuid
+  channel               String
+  displayName           String    @map("display_name")
+  address               String
+  providerConnectionId  String    @map("provider_connection_id") @db.Uuid
+  status                String    @default("PENDING")
+  verificationTokenHash String?   @map("verification_token_hash")
+  verifiedAt            DateTime? @map("verified_at") @db.Timestamptz(6)
+  version               Int       @default(1)
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([workspaceId, channel, address])
+  @@map("marketing_sender_identities")
+}
+
+model MarketingTemplate {
+  id              String   @id @default(uuid()) @db.Uuid
+  workspaceId     String   @map("workspace_id") @db.Uuid
+  channel         String
+  name            String
+  status          String   @default("DRAFT")
+  latestVersionId String?  @map("latest_version_id") @db.Uuid
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  version         Int      @default(1)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, channel, status])
+  @@map("marketing_templates")
+}
+
+model MarketingTemplateVersion {
+  id               String    @id @default(uuid()) @db.Uuid
+  workspaceId      String    @map("workspace_id") @db.Uuid
+  templateId       String    @map("template_id") @db.Uuid
+  versionNo        Int       @map("version_no")
+  subject          String?
+  bodyMarkup       String?   @map("body_markup")
+  bodyText         String    @map("body_text")
+  providerTemplate String?   @map("provider_template")
+  variableSchema   Json      @default("{}") @map("variable_schema")
+  checksum         String
+  status           String    @default("DRAFT")
+  createdByUserId  String    @map("created_by_user_id") @db.Uuid
+  approvedByUserId String?   @map("approved_by_user_id") @db.Uuid
+  approvedAt       DateTime? @map("approved_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([templateId, versionNo])
+  @@index([workspaceId, templateId])
+  @@map("marketing_template_versions")
+}
+
+model MarketingCampaign {
+  id                  String    @id @default(uuid()) @db.Uuid
+  workspaceId         String    @map("workspace_id") @db.Uuid
+  name                String
+  channel             String
+  purpose             String    @default("MARKETING")
+  jurisdiction        String    @default("DEFAULT")
+  segmentId           String    @map("segment_id") @db.Uuid
+  senderIdentityId    String?   @map("sender_identity_id") @db.Uuid
+  templateVersionId   String?   @map("template_version_id") @db.Uuid
+  status              String    @default("DRAFT")
+  scheduledAt         DateTime? @map("scheduled_at") @db.Timestamptz(6)
+  scheduledLocal      String?   @map("scheduled_local")
+  timezone            String    @default("UTC")
+  revision            Int       @default(1)
+  approvedRevision    Int?      @map("approved_revision")
+  contentHash         String    @map("content_hash")
+  audienceSnapshotId  String?   @map("audience_snapshot_id") @db.Uuid
+  priority            Int       @default(100)
+  estimatedRecipients Int       @default(0) @map("estimated_recipients")
+  createdByUserId     String    @map("created_by_user_id") @db.Uuid
+  version             Int       @default(1)
+  launchedAt          DateTime? @map("launched_at") @db.Timestamptz(6)
+  completedAt         DateTime? @map("completed_at") @db.Timestamptz(6)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, status, createdAt])
+  @@map("marketing_campaigns")
+}
+
+model MarketingCampaignApproval {
+  id              String    @id @default(uuid()) @db.Uuid
+  workspaceId     String    @map("workspace_id") @db.Uuid
+  campaignId      String    @map("campaign_id") @db.Uuid
+  revision        Int
+  requesterUserId String    @map("requester_user_id") @db.Uuid
+  approverUserId  String?   @map("approver_user_id") @db.Uuid
+  state           String    @default("REQUESTED")
+  reason          String?
+  riskLevel       String    @default("STANDARD") @map("risk_level")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  decidedAt       DateTime? @map("decided_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, campaignId, revision])
+  @@map("marketing_campaign_approvals")
+}
+
+model MarketingCampaignSchedule {
+  id             String    @id @default(uuid()) @db.Uuid
+  workspaceId    String    @map("workspace_id") @db.Uuid
+  campaignId     String    @map("campaign_id") @db.Uuid
+  revision       Int
+  runAt          DateTime  @map("run_at") @db.Timestamptz(6)
+  executionKey   String    @unique @map("execution_key")
+  status         String    @default("PENDING")
+  leaseToken     String?   @map("lease_token")
+  leaseExpiresAt DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  executedAt     DateTime? @map("executed_at") @db.Timestamptz(6)
+
+  @@index([status, runAt])
+  @@map("marketing_campaign_schedules")
+}
+
+model MarketingDelivery {
+  id                   String    @id @default(uuid()) @db.Uuid
+  workspaceId          String    @map("workspace_id") @db.Uuid
+  campaignId           String    @map("campaign_id") @db.Uuid
+  recipientId          String?   @map("recipient_id") @db.Uuid
+  recipientKey         String    @map("recipient_key")
+  destinationHash      String    @map("destination_hash")
+  channel              String
+  variantId            String    @default("") @map("variant_id")
+  templateVersionId    String    @map("template_version_id") @db.Uuid
+  senderIdentityId     String    @map("sender_identity_id") @db.Uuid
+  providerConnectionId String    @map("provider_connection_id") @db.Uuid
+  state                String    @default("QUEUED")
+  isTest               Boolean   @default(false) @map("is_test")
+  attemptCount         Int       @default(0) @map("attempt_count")
+  nextAttemptAt        DateTime  @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  lastErrorCode        String?   @map("last_error_code")
+  providerMessageId    String?   @map("provider_message_id")
+  leaseToken           String?   @map("lease_token")
+  leaseExpiresAt       DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  sentAt               DateTime? @map("sent_at") @db.Timestamptz(6)
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([campaignId, recipientKey, channel, variantId])
+  @@index([state, nextAttemptAt])
+  @@index([workspaceId, campaignId, state])
+  @@map("marketing_deliveries")
+}
+
+model MarketingDeliveryAttempt {
+  id                String   @id @default(uuid()) @db.Uuid
+  workspaceId       String   @map("workspace_id") @db.Uuid
+  deliveryId        String   @map("delivery_id") @db.Uuid
+  attemptNo         Int      @map("attempt_no")
+  providerRequestId String   @map("provider_request_id")
+  providerMessageId String?  @map("provider_message_id")
+  responseCode      String   @map("response_code")
+  occurredAt        DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  @@unique([deliveryId, attemptNo])
+  @@map("marketing_delivery_attempts")
+}
+
+model MarketingProviderEvent {
+  id              String   @id @default(uuid()) @db.Uuid
+  workspaceId     String   @map("workspace_id") @db.Uuid
+  connectionId    String   @map("connection_id") @db.Uuid
+  providerEventId String   @map("provider_event_id")
+  deliveryId      String?  @map("delivery_id") @db.Uuid
+  status          String
+  occurredAt      DateTime @map("occurred_at") @db.Timestamptz(6)
+  receivedAt      DateTime @default(now()) @map("received_at") @db.Timestamptz(6)
+
+  @@unique([connectionId, providerEventId])
+  @@map("marketing_provider_events")
+}
+
+model MarketingEngagementEvent {
+  id              String   @id @default(uuid()) @db.Uuid
+  workspaceId     String   @map("workspace_id") @db.Uuid
+  campaignId      String   @map("campaign_id") @db.Uuid
+  deliveryId      String?  @map("delivery_id") @db.Uuid
+  recipientKey    String?  @map("recipient_key")
+  providerEventId String?  @map("provider_event_id")
+  type            String
+  occurredAt      DateTime @map("occurred_at") @db.Timestamptz(6)
+  source          String
+  confidence      String
+  uniqueKey       String   @unique @map("unique_key")
+  isUnique        Boolean  @default(true) @map("is_unique")
+  suspectedBot    Boolean  @default(false) @map("suspected_bot")
+
+  @@index([workspaceId, campaignId, type])
+  @@map("marketing_engagement_events")
+}
+
+model MarketingTrackingLink {
+  id              String  @id @default(uuid()) @db.Uuid
+  workspaceId     String  @map("workspace_id") @db.Uuid
+  campaignId      String  @map("campaign_id") @db.Uuid
+  deliveryId      String? @map("delivery_id") @db.Uuid
+  variantId       String  @default("") @map("variant_id")
+  destinationUrl  String  @map("destination_url")
+  tokenHash       String  @unique @map("token_hash")
+  consentCategory String  @map("consent_category")
+
+  @@map("marketing_tracking_links")
+}
+
+model MarketingExperiment {
+  id               String   @id @default(uuid()) @db.Uuid
+  workspaceId      String   @map("workspace_id") @db.Uuid
+  campaignId       String   @unique @map("campaign_id") @db.Uuid
+  metric           String
+  minSample        Int      @map("min_sample")
+  seed             String
+  status           String   @default("DRAFT")
+  winningVariantId String?  @map("winning_variant_id") @db.Uuid
+  version          Int      @default(1)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("marketing_experiments")
+}
+
+model MarketingVariant {
+  id                 String  @id @default(uuid()) @db.Uuid
+  workspaceId        String  @map("workspace_id") @db.Uuid
+  experimentId       String  @map("experiment_id") @db.Uuid
+  label              String
+  templateVersionId  String  @map("template_version_id") @db.Uuid
+  percentage         Decimal @db.Decimal(6, 2)
+  assignedRecipients Int     @default(0) @map("assigned_recipients")
+
+  @@unique([experimentId, label])
+  @@map("marketing_variants")
+}
+
+model MarketingJourney {
+  id                   String   @id @default(uuid()) @db.Uuid
+  workspaceId          String   @map("workspace_id") @db.Uuid
+  name                 String
+  workflowDefinitionId String   @map("workflow_definition_id") @db.Uuid
+  workflowVersionId    String?  @map("workflow_version_id") @db.Uuid
+  status               String   @default("DRAFT")
+  reentryPolicy        String   @default("PROHIBIT_ACTIVE") @map("reentry_policy")
+  createdByUserId      String   @map("created_by_user_id") @db.Uuid
+  version              Int      @default(1)
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("marketing_journeys")
+}
+
+model MarketingJourneyEnrollment {
+  id                  String   @id @default(uuid()) @db.Uuid
+  workspaceId         String   @map("workspace_id") @db.Uuid
+  journeyId           String   @map("journey_id") @db.Uuid
+  subjectKey          String   @map("subject_key")
+  subjectType         String   @map("subject_type")
+  subjectId           String   @map("subject_id") @db.Uuid
+  workflowExecutionId String?  @map("workflow_execution_id") @db.Uuid
+  status              String   @default("PENDING")
+  errorCode           String?  @map("error_code")
+  sourceEventId       String?  @map("source_event_id")
+  enteredAt           DateTime @default(now()) @map("entered_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, journeyId, subjectKey, status])
+  @@map("marketing_journey_enrollments")
+}
+
+model MarketingAdConnection {
+  id                  String   @id @default(uuid()) @db.Uuid
+  workspaceId         String   @map("workspace_id") @db.Uuid
+  platform            String
+  credentialSecretRef String   @map("credential_secret_ref")
+  credentialMask      String   @map("credential_mask")
+  externalAccountId   String   @map("external_account_id")
+  sandbox             Boolean  @default(false)
+  state               String   @default("ACTIVE")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([workspaceId, platform, externalAccountId])
+  @@map("marketing_ad_connections")
+}
+
+model MarketingAdAudience {
+  id                 String    @id @default(uuid()) @db.Uuid
+  workspaceId        String    @map("workspace_id") @db.Uuid
+  connectionId       String    @map("connection_id") @db.Uuid
+  segmentId          String    @map("segment_id") @db.Uuid
+  platform           String
+  externalAudienceId String?   @map("external_audience_id")
+  syncedHashes       Json      @default("[]") @map("synced_hashes")
+  lastSyncAt         DateTime? @map("last_sync_at") @db.Timestamptz(6)
+  syncState          String    @default("PENDING") @map("sync_state")
+  version            Int       @default(1)
+
+  @@unique([connectionId, segmentId])
+  @@map("marketing_ad_audiences")
+}
+
+model MarketingAdSyncJob {
+  id             String    @id @default(uuid()) @db.Uuid
+  workspaceId    String    @map("workspace_id") @db.Uuid
+  audienceId     String    @map("audience_id") @db.Uuid
+  sourceRevision Int       @map("source_revision")
+  addedCount     Int       @default(0) @map("added_count")
+  removedCount   Int       @default(0) @map("removed_count")
+  rejectedCount  Int       @default(0) @map("rejected_count")
+  status         String    @default("PENDING")
+  attempts       Int       @default(0)
+  nextAttemptAt  DateTime  @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  errorCode      String?   @map("error_code")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  completedAt    DateTime? @map("completed_at") @db.Timestamptz(6)
+
+  @@index([status, nextAttemptAt])
+  @@map("marketing_ad_sync_jobs")
+}
+
+model MarketingAdMetricImport {
+  id                 String   @id @default(uuid()) @db.Uuid
+  workspaceId        String   @map("workspace_id") @db.Uuid
+  connectionId       String   @map("connection_id") @db.Uuid
+  platform           String
+  externalCampaignId String   @map("external_campaign_id")
+  periodFrom         DateTime @map("period_from") @db.Date
+  periodTo           DateTime @map("period_to") @db.Date
+  currency           String   @db.Char(3)
+  spend              Decimal  @db.Decimal(24, 6)
+  impressions        Int
+  clicks             Int
+  checksum           String
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([workspaceId, platform, externalCampaignId, periodFrom, periodTo, checksum])
+  @@map("marketing_ad_metric_imports")
+}
+
+model MarketingRepeatSaleRule {
+  id           String   @id @default(uuid()) @db.Uuid
+  workspaceId  String   @map("workspace_id") @db.Uuid
+  triggerEvent String   @map("trigger_event")
+  segmentId    String   @map("segment_id") @db.Uuid
+  journeyId    String   @map("journey_id") @db.Uuid
+  status       String   @default("ACTIVE")
+  version      Int      @default(1)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("marketing_repeat_sale_rules")
+}
+
+// ----------------------------- HR / Time tracking ---------------------------
+
+model HrPosition {
+  id          String  @id @default(uuid()) @db.Uuid
+  workspaceId String  @map("workspace_id") @db.Uuid
+  title       String
+  grade       String?
+
+  @@unique([workspaceId, title])
+  @@map("hr_positions")
+}
+
+model HrEmployee {
+  id                String    @id @default(uuid()) @db.Uuid
+  workspaceId       String    @map("workspace_id") @db.Uuid
+  userId            String?   @map("user_id") @db.Uuid
+  employeeNumber    String    @map("employee_number")
+  status            String    @default("INVITED")
+  displayName       String    @map("display_name")
+  departmentId      String?   @map("department_id") @db.Uuid
+  managerEmployeeId String?   @map("manager_employee_id") @db.Uuid
+  positionId        String?   @map("position_id") @db.Uuid
+  workLocationId    String?   @map("work_location_id") @db.Uuid
+  employmentType    String    @default("FULL_TIME") @map("employment_type")
+  timezone          String
+  startDate         DateTime  @map("start_date") @db.Date
+  endDate           DateTime? @map("end_date") @db.Date
+  privateSealed     String?   @map("private_sealed")
+  createdByUserId   String    @map("created_by_user_id") @db.Uuid
+  version           Int       @default(1)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([workspaceId, employeeNumber])
+  @@index([workspaceId, userId, status])
+  @@index([workspaceId, departmentId])
+  @@map("hr_employees")
+}
+
+model HrEmploymentRecord {
+  id             String    @id @default(uuid()) @db.Uuid
+  workspaceId    String    @map("workspace_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  employmentType String    @map("employment_type")
+  positionId     String?   @map("position_id") @db.Uuid
+  effectiveFrom  DateTime  @map("effective_from") @db.Date
+  effectiveTo    DateTime? @map("effective_to") @db.Date
+
+  @@index([workspaceId, employeeId])
+  @@map("hr_employment_records")
+}
+
+model HrWorkLocation {
+  id              String  @id @default(uuid()) @db.Uuid
+  workspaceId     String  @map("workspace_id") @db.Uuid
+  name            String
+  timezone        String
+  allowedNetworks Json    @default("[]") @map("allowed_networks")
+  geoRules        Json?   @map("geo_rules")
+  qrRequired      Boolean @default(false) @map("qr_required")
+  qrSecretRef     String? @map("qr_secret_ref")
+
+  @@unique([workspaceId, name])
+  @@map("hr_work_locations")
+}
+
+model HrSchedule {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  name        String
+  type        String
+  timezone    String
+  version     Int      @default(1)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([workspaceId, name])
+  @@map("hr_schedules")
+}
+
+model HrScheduleVersion {
+  id            String    @id @default(uuid()) @db.Uuid
+  workspaceId   String    @map("workspace_id") @db.Uuid
+  scheduleId    String    @map("schedule_id") @db.Uuid
+  versionNo     Int       @map("version_no")
+  effectiveFrom DateTime  @map("effective_from") @db.Date
+  effectiveTo   DateTime? @map("effective_to") @db.Date
+  rules         Json
+  status        String    @default("ACTIVE")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([scheduleId, versionNo])
+  @@map("hr_schedule_versions")
+}
+
+model HrScheduleAssignment {
+  id                String    @id @default(uuid()) @db.Uuid
+  workspaceId       String    @map("workspace_id") @db.Uuid
+  employeeId        String    @map("employee_id") @db.Uuid
+  scheduleVersionId String    @map("schedule_version_id") @db.Uuid
+  effectiveFrom     DateTime  @map("effective_from") @db.Date
+  effectiveTo       DateTime? @map("effective_to") @db.Date
+
+  @@index([workspaceId, employeeId, effectiveFrom])
+  @@map("hr_schedule_assignments")
+}
+
+model HrShift {
+  id                String   @id @default(uuid()) @db.Uuid
+  workspaceId       String   @map("workspace_id") @db.Uuid
+  scheduleVersionId String?  @map("schedule_version_id") @db.Uuid
+  startAt           DateTime @map("start_at") @db.Timestamptz(6)
+  endAt             DateTime @map("end_at") @db.Timestamptz(6)
+  capacity          Int
+  locationId        String?  @map("location_id") @db.Uuid
+  departmentId      String?  @map("department_id") @db.Uuid
+  status            String   @default("PUBLISHED")
+
+  @@index([workspaceId, startAt])
+  @@map("hr_shifts")
+}
+
+model HrShiftAssignment {
+  id          String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  shiftId     String @map("shift_id") @db.Uuid
+  employeeId  String @map("employee_id") @db.Uuid
+  status      String @default("ASSIGNED")
+
+  @@unique([shiftId, employeeId])
+  @@map("hr_shift_assignments")
+}
+
+model HrWorkSession {
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  employeeId  String    @map("employee_id") @db.Uuid
+  shiftId     String?   @map("shift_id") @db.Uuid
+  startedAt   DateTime  @map("started_at") @db.Timestamptz(6)
+  endedAt     DateTime? @map("ended_at") @db.Timestamptz(6)
+  status      String    @default("OPEN")
+  source      String
+  version     Int       @default(1)
+
+  @@index([workspaceId, employeeId, status])
+  @@index([workspaceId, employeeId, startedAt])
+  @@map("hr_work_sessions")
+}
+
+model HrWorkEvent {
+  id                String   @id @default(uuid()) @db.Uuid
+  workspaceId       String   @map("workspace_id") @db.Uuid
+  employeeId        String   @map("employee_id") @db.Uuid
+  sessionId         String   @map("session_id") @db.Uuid
+  type              String
+  occurredAt        DateTime @map("occurred_at") @db.Timestamptz(6)
+  receivedAt        DateTime @default(now()) @map("received_at") @db.Timestamptz(6)
+  source            String
+  idempotencyKey    String?  @map("idempotency_key")
+  correctionId      String?  @map("correction_id") @db.Uuid
+  supersedesEventId String?  @map("supersedes_event_id") @db.Uuid
+  recordedByUserId  String   @map("recorded_by_user_id") @db.Uuid
+
+  @@unique([workspaceId, employeeId, idempotencyKey])
+  @@index([workspaceId, sessionId, occurredAt])
+  @@map("hr_work_events")
+}
+
+model HrBreak {
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  sessionId   String    @map("session_id") @db.Uuid
+  startedAt   DateTime  @map("started_at") @db.Timestamptz(6)
+  endedAt     DateTime? @map("ended_at") @db.Timestamptz(6)
+  kind        String    @default("UNPAID")
+
+  @@index([workspaceId, sessionId])
+  @@map("hr_breaks")
+}
+
+model HrAttendanceEvidence {
+  id               String   @id @default(uuid()) @db.Uuid
+  workspaceId      String   @map("workspace_id") @db.Uuid
+  eventId          String   @map("event_id") @db.Uuid
+  kind             String
+  encryptedPayload String   @map("encrypted_payload")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, eventId])
+  @@map("hr_attendance_evidence")
+}
+
+model HrAttendanceCorrection {
+  id                String    @id @default(uuid()) @db.Uuid
+  workspaceId       String    @map("workspace_id") @db.Uuid
+  employeeId        String    @map("employee_id") @db.Uuid
+  workSessionId     String?   @map("work_session_id") @db.Uuid
+  targetDate        DateTime  @map("target_date") @db.Date
+  proposedEvents    Json      @map("proposed_events")
+  reasonSealed      String    @map("reason_sealed")
+  status            String    @default("REQUESTED")
+  requestedByUserId String    @map("requested_by_user_id") @db.Uuid
+  reviewedByUserId  String?   @map("reviewed_by_user_id") @db.Uuid
+  reviewedAt        DateTime? @map("reviewed_at") @db.Timestamptz(6)
+  appliedAt         DateTime? @map("applied_at") @db.Timestamptz(6)
+  override          Boolean   @default(false)
+  version           Int       @default(1)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, employeeId, status])
+  @@map("hr_attendance_corrections")
+}
+
+model HrCorrectionHistory {
+  id           String   @id @default(uuid()) @db.Uuid
+  workspaceId  String   @map("workspace_id") @db.Uuid
+  correctionId String   @unique @map("correction_id") @db.Uuid
+  before       Json
+  after        Json
+  actorUserId  String   @map("actor_user_id") @db.Uuid
+  appliedAt    DateTime @default(now()) @map("applied_at") @db.Timestamptz(6)
+
+  @@map("hr_correction_history")
+}
+
+model HrTimesheet {
+  id             String    @id @default(uuid()) @db.Uuid
+  workspaceId    String    @map("workspace_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  periodStart    DateTime  @map("period_start") @db.Date
+  periodEnd      DateTime  @map("period_end") @db.Date
+  timezone       String
+  status         String    @default("DRAFT")
+  revision       Int       @default(1)
+  totals         Json      @default("{}")
+  policyVersions Json      @default("{}") @map("policy_versions")
+  version        Int       @default(1)
+  submittedAt    DateTime? @map("submitted_at") @db.Timestamptz(6)
+  approvedAt     DateTime? @map("approved_at") @db.Timestamptz(6)
+  lockedAt       DateTime? @map("locked_at") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([workspaceId, employeeId, periodStart, periodEnd])
+  @@map("hr_timesheets")
+}
+
+model HrTimesheetLine {
+  id                 String   @id @default(uuid()) @db.Uuid
+  workspaceId        String   @map("workspace_id") @db.Uuid
+  timesheetId        String   @map("timesheet_id") @db.Uuid
+  workDate           DateTime @map("work_date") @db.Date
+  sourceSessionIds   Json     @map("source_session_ids")
+  scheduledMinutes   Int      @map("scheduled_minutes")
+  workedMinutes      Int      @map("worked_minutes")
+  unpaidBreakMinutes Int      @map("unpaid_break_minutes")
+  overtimeMinutes    Int      @map("overtime_minutes")
+  leaveMinutes       Int      @map("leave_minutes")
+  anomalyCodes       Json     @default("[]") @map("anomaly_codes")
+
+  @@unique([timesheetId, workDate])
+  @@map("hr_timesheet_lines")
+}
+
+model HrTimesheetReview {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  timesheetId String   @map("timesheet_id") @db.Uuid
+  revision    Int
+  actorUserId String   @map("actor_user_id") @db.Uuid
+  decision    String
+  comment     String?
+  occurredAt  DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  @@unique([timesheetId, revision, decision])
+  @@map("hr_timesheet_reviews")
+}
+
+model HrOvertimePolicy {
+  id                      String    @id @default(uuid()) @db.Uuid
+  workspaceId             String    @map("workspace_id") @db.Uuid
+  workLocationId          String?   @map("work_location_id") @db.Uuid
+  thresholds              Json
+  eligibleEmploymentTypes Json      @map("eligible_employment_types")
+  countLeaveAsWorked      Boolean   @default(false) @map("count_leave_as_worked")
+  effectiveFrom           DateTime  @map("effective_from") @db.Date
+  effectiveTo             DateTime? @map("effective_to") @db.Date
+  version                 Int       @default(1)
+
+  @@index([workspaceId, effectiveFrom])
+  @@map("hr_overtime_policies")
+}
+
+model HrOvertimeEntry {
+  id            String   @id @default(uuid()) @db.Uuid
+  workspaceId   String   @map("workspace_id") @db.Uuid
+  employeeId    String   @map("employee_id") @db.Uuid
+  workDate      DateTime @map("work_date") @db.Date
+  periodKey     String   @map("period_key")
+  rule          String
+  minutes       Int
+  policyId      String?  @map("policy_id") @db.Uuid
+  policyVersion Int?     @map("policy_version")
+  status        String   @default("CALCULATED")
+  version       Int      @default(1)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([workspaceId, employeeId, periodKey, rule])
+  @@map("hr_overtime_entries")
+}
+
+model HrOvertimeApproval {
+  id             String   @id @default(uuid()) @db.Uuid
+  workspaceId    String   @map("workspace_id") @db.Uuid
+  entryId        String   @map("entry_id") @db.Uuid
+  entryVersion   Int      @map("entry_version")
+  reviewerUserId String   @map("reviewer_user_id") @db.Uuid
+  decision       String
+  comment        String?
+  occurredAt     DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  @@unique([entryId, entryVersion, decision])
+  @@map("hr_overtime_approvals")
+}
+
+model HrLeaveType {
+  id              String  @id @default(uuid()) @db.Uuid
+  workspaceId     String  @map("workspace_id") @db.Uuid
+  name            String
+  unit            String
+  paid            Boolean
+  requiresBalance Boolean @map("requires_balance")
+  approvalChain   Json    @default("[\"MANAGER\"]") @map("approval_chain")
+
+  @@unique([workspaceId, name])
+  @@map("hr_leave_types")
+}
+
+model HrLeavePolicy {
+  id              String    @id @default(uuid()) @db.Uuid
+  workspaceId     String    @map("workspace_id") @db.Uuid
+  leaveTypeId     String    @map("leave_type_id") @db.Uuid
+  locationId      String?   @map("location_id") @db.Uuid
+  accrualRule     Json      @map("accrual_rule")
+  carryOverRule   Json      @map("carry_over_rule")
+  negativeAllowed Boolean   @default(false) @map("negative_allowed")
+  holidays        Json      @default("[]")
+  leadTimeDays    Int       @default(0) @map("lead_time_days")
+  effectiveFrom   DateTime  @map("effective_from") @db.Date
+  effectiveTo     DateTime? @map("effective_to") @db.Date
+  version         Int       @default(1)
+
+  @@index([workspaceId, leaveTypeId, effectiveFrom])
+  @@map("hr_leave_policies")
+}
+
+model HrLeaveAccount {
+  id          String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  employeeId  String @map("employee_id") @db.Uuid
+  leaveTypeId String @map("leave_type_id") @db.Uuid
+  period      String
+  unit        String
+
+  @@unique([workspaceId, employeeId, leaveTypeId, period])
+  @@map("hr_leave_accounts")
+}
+
+model HrLeaveLedger {
+  id              String   @id @default(uuid()) @db.Uuid
+  workspaceId     String   @map("workspace_id") @db.Uuid
+  accountId       String   @map("account_id") @db.Uuid
+  employeeId      String   @map("employee_id") @db.Uuid
+  kind            String
+  units           Decimal  @db.Decimal(12, 4)
+  sourceId        String?  @map("source_id") @db.Uuid
+  idempotencyKey  String   @map("idempotency_key")
+  active          Boolean  @default(true)
+  policyVersion   Int?     @map("policy_version")
+  note            String?
+  createdByUserId String?  @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([accountId, idempotencyKey])
+  @@index([workspaceId, employeeId, kind, active])
+  @@map("hr_leave_ledger")
+}
+
+model HrLeaveRequest {
+  id                  String   @id @default(uuid()) @db.Uuid
+  workspaceId         String   @map("workspace_id") @db.Uuid
+  employeeId          String   @map("employee_id") @db.Uuid
+  leaveTypeId         String   @map("leave_type_id") @db.Uuid
+  fromLocal           DateTime @map("from_local") @db.Date
+  toLocal             DateTime @map("to_local") @db.Date
+  partDayMinutes      Int?     @map("part_day_minutes")
+  timezone            String
+  requestedUnits      Decimal  @map("requested_units") @db.Decimal(12, 4)
+  status              String   @default("DRAFT")
+  reasonSealed        String?  @map("reason_sealed")
+  approvalChain       Json     @default("[]") @map("approval_chain")
+  currentStep         Int      @default(0) @map("current_step")
+  policyVersion       Int?     @map("policy_version")
+  workflowExecutionId String?  @map("workflow_execution_id") @db.Uuid
+  createdByUserId     String   @map("created_by_user_id") @db.Uuid
+  idempotencyKey      String?  @map("idempotency_key")
+  version             Int      @default(1)
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([workspaceId, employeeId, idempotencyKey])
+  @@index([workspaceId, employeeId, status])
+  @@map("hr_leave_requests")
+}
+
+model HrLeaveApproval {
+  id             String   @id @default(uuid()) @db.Uuid
+  workspaceId    String   @map("workspace_id") @db.Uuid
+  requestId      String   @map("request_id") @db.Uuid
+  approverUserId String   @map("approver_user_id") @db.Uuid
+  stepIndex      Int      @map("step_index")
+  decision       String
+  breakglass     Boolean  @default(false)
+  occurredAt     DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  @@unique([requestId, stepIndex])
+  @@map("hr_leave_approvals")
+}
+
+model HrAbsenceProjection {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  employeeId  String   @map("employee_id") @db.Uuid
+  requestId   String   @unique @map("request_id") @db.Uuid
+  startDate   DateTime @map("start_date") @db.Date
+  endDate     DateTime @map("end_date") @db.Date
+  visibility  String   @default("FREE_BUSY")
+  active      Boolean  @default(true)
+
+  @@index([workspaceId, startDate, endDate])
+  @@map("hr_absence_projections")
+}
+
+model HrWorkReport {
+  id           String   @id @default(uuid()) @db.Uuid
+  workspaceId  String   @map("workspace_id") @db.Uuid
+  employeeId   String   @map("employee_id") @db.Uuid
+  periodType   String   @map("period_type")
+  periodStart  DateTime @map("period_start") @db.Date
+  periodEnd    DateTime @map("period_end") @db.Date
+  summary      String
+  achievements String   @default("")
+  blockers     String   @default("")
+  taskIds      Json     @default("[]") @map("task_ids")
+  status       String   @default("DRAFT")
+  revision     Int      @default(1)
+  version      Int      @default(1)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, employeeId, periodStart])
+  @@map("hr_work_reports")
+}
+
+model HrWorkReportReview {
+  id             String   @id @default(uuid()) @db.Uuid
+  workspaceId    String   @map("workspace_id") @db.Uuid
+  reportId       String   @map("report_id") @db.Uuid
+  revision       Int
+  reviewerUserId String   @map("reviewer_user_id") @db.Uuid
+  decision       String
+  comment        String?
+  snapshot       Json
+  reviewedAt     DateTime @default(now()) @map("reviewed_at") @db.Timestamptz(6)
+
+  @@unique([reportId, revision])
+  @@map("hr_work_report_reviews")
+}
+
+model HrLifecycleCase {
+  id                  String   @id @default(uuid()) @db.Uuid
+  workspaceId         String   @map("workspace_id") @db.Uuid
+  employeeId          String   @map("employee_id") @db.Uuid
+  kind                String
+  effectiveDate       DateTime @map("effective_date") @db.Date
+  workflowExecutionId String?  @map("workflow_execution_id") @db.Uuid
+  status              String
+  checklist           Json     @default("[]")
+  createdByUserId     String   @map("created_by_user_id") @db.Uuid
+  version             Int      @default(1)
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, employeeId, kind])
+  @@map("hr_lifecycle_cases")
+}
+
+model HrDocumentBinding {
+  id              String    @id @default(uuid()) @db.Uuid
+  workspaceId     String    @map("workspace_id") @db.Uuid
+  employeeId      String    @map("employee_id") @db.Uuid
+  fileId          String    @map("file_id") @db.Uuid
+  category        String
+  confidentiality String
+  expiresAt       DateTime? @map("expires_at") @db.Date
+  removedAt       DateTime? @map("removed_at") @db.Timestamptz(6)
+  createdByUserId String    @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, employeeId])
+  @@map("hr_document_bindings")
+}
+
+model HrAccessTransition {
+  id            String    @id @default(uuid()) @db.Uuid
+  workspaceId   String    @map("workspace_id") @db.Uuid
+  employeeId    String    @map("employee_id") @db.Uuid
+  caseId        String    @map("case_id") @db.Uuid
+  userId        String?   @map("user_id") @db.Uuid
+  effectiveAt   DateTime  @map("effective_at") @db.Timestamptz(6)
+  action        String
+  executionKey  String    @unique @map("execution_key")
+  status        String    @default("PENDING")
+  attempts      Int       @default(0)
+  nextAttemptAt DateTime  @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  errorCode     String?   @map("error_code")
+  completedAt   DateTime? @map("completed_at") @db.Timestamptz(6)
+
+  @@index([status, nextAttemptAt])
+  @@map("hr_access_transitions")
+}
+
+model HrAccessAudit {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  actorUserId String   @map("actor_user_id") @db.Uuid
+  employeeId  String   @map("employee_id") @db.Uuid
+  fields      Json
+  reason      String?
+  eventAt     DateTime @default(now()) @map("event_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, employeeId, eventAt])
+  @@map("hr_access_audits")
+}
+
+// ----------------------------- Sites / Landing pages ------------------------
+
+model Site {
+  id               String    @id @default(uuid()) @db.Uuid
+  workspaceId      String    @map("workspace_id") @db.Uuid
+  name             String
+  type             String
+  subdomain        String    @unique
+  defaultLocale    String    @map("default_locale")
+  status           String    @default("DRAFT")
+  siteVersion      Int       @default(1) @map("site_version")
+  activeReleaseId  String?   @map("active_release_id") @db.Uuid
+  requiresApproval Boolean   @default(false) @map("requires_approval")
+  storeId          String?   @map("store_id") @db.Uuid
+  archivedAt       DateTime? @map("archived_at") @db.Timestamptz(6)
+  recoverBefore    DateTime? @map("recover_before") @db.Timestamptz(6)
+  createdByUserId  String    @map("created_by_user_id") @db.Uuid
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, status])
+  @@map("sites")
+}
+
+model SiteDomain {
+  id                    String    @id @default(uuid()) @db.Uuid
+  workspaceId           String    @map("workspace_id") @db.Uuid
+  siteId                String    @map("site_id") @db.Uuid
+  hostname              String    @unique
+  verificationTokenHash String    @map("verification_token_hash")
+  verificationState     String    @default("PENDING") @map("verification_state")
+  certificateState      String    @default("NONE") @map("certificate_state")
+  isPrimary             Boolean   @default(false) @map("is_primary")
+  verifiedAt            DateTime? @map("verified_at") @db.Timestamptz(6)
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, siteId])
+  @@map("site_domains")
+}
+
+model SiteHostRoute {
+  id          String  @id @default(uuid()) @db.Uuid
+  workspaceId String  @map("workspace_id") @db.Uuid
+  siteId      String  @map("site_id") @db.Uuid
+  domainId    String? @map("domain_id") @db.Uuid
+  hostname    String
+  pathPrefix  String  @map("path_prefix")
+  storeId     String? @map("store_id") @db.Uuid
+  status      String  @default("ACTIVE")
+
+  @@unique([hostname, pathPrefix])
+  @@index([workspaceId, siteId])
+  @@map("site_host_routes")
+}
+
+model SiteFolder {
+  id          String  @id @default(uuid()) @db.Uuid
+  workspaceId String  @map("workspace_id") @db.Uuid
+  siteId      String  @map("site_id") @db.Uuid
+  parentId    String? @map("parent_id") @db.Uuid
+  slug        String
+  name        String
+
+  @@index([workspaceId, siteId])
+  @@map("site_folders")
+}
+
+model SitePage {
+  id              String    @id @default(uuid()) @db.Uuid
+  workspaceId     String    @map("workspace_id") @db.Uuid
+  siteId          String    @map("site_id") @db.Uuid
+  parentFolderId  String?   @map("parent_folder_id") @db.Uuid
+  parentKey       String    @default("") @map("parent_key")
+  slug            String
+  type            String
+  locale          String
+  title           String
+  sortRank        Int       @default(0) @map("sort_rank")
+  status          String    @default("DRAFT")
+  latestRevision  Int       @default(0) @map("latest_revision")
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
+  deletedByUserId String?   @map("deleted_by_user_id") @db.Uuid
+  createdByUserId String    @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([siteId, locale, parentKey, slug])
+  @@index([workspaceId, siteId, status])
+  @@map("site_pages")
+}
+
+model SitePageRevision {
+  id              String   @id @default(uuid()) @db.Uuid
+  workspaceId     String   @map("workspace_id") @db.Uuid
+  siteId          String   @map("site_id") @db.Uuid
+  pageId          String   @map("page_id") @db.Uuid
+  locale          String
+  revision        Int
+  blockTree       Json     @map("block_tree")
+  seo             Json     @default("{}")
+  contentHash     String   @map("content_hash")
+  status          String   @default("DRAFT")
+  origin          String   @default("EDITOR")
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([pageId, revision])
+  @@index([workspaceId, siteId, status])
+  @@map("site_page_revisions")
+}
+
+model SiteNavigationMenu {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  siteId      String   @map("site_id") @db.Uuid
+  name        String
+  locale      String
+  items       Json
+  revision    Int      @default(1)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([siteId, name, locale])
+  @@map("site_navigation_menus")
+}
+
+model SiteContentEntry {
+  id               String   @id @default(uuid()) @db.Uuid
+  workspaceId      String   @map("workspace_id") @db.Uuid
+  siteId           String   @map("site_id") @db.Uuid
+  kind             String
+  slug             String
+  locale           String
+  category         String
+  title            String
+  body             Json
+  revision         Int      @default(1)
+  authorUserId     String   @map("author_user_id") @db.Uuid
+  publicationState String   @default("DRAFT") @map("publication_state")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([siteId, kind, locale, slug])
+  @@map("site_content_entries")
+}
+
+model SiteRedirect {
+  id          String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  siteId      String @map("site_id") @db.Uuid
+  fromPath    String @map("from_path")
+  toPath      String @map("to_path")
+  statusCode  Int    @map("status_code")
+  reason      String @default("MANUAL")
+
+  @@unique([siteId, fromPath])
+  @@map("site_redirects")
+}
+
+model SiteSharedBlock {
+  id                String   @id @default(uuid()) @db.Uuid
+  workspaceId       String   @map("workspace_id") @db.Uuid
+  ownerSiteId       String?  @map("owner_site_id") @db.Uuid
+  name              String
+  kind              String
+  latestRevision    Int      @default(0) @map("latest_revision")
+  publishedRevision Int?     @map("published_revision")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, ownerSiteId])
+  @@map("site_shared_blocks")
+}
+
+model SiteSharedBlockRevision {
+  id              String   @id @default(uuid()) @db.Uuid
+  workspaceId     String   @map("workspace_id") @db.Uuid
+  sharedBlockId   String   @map("shared_block_id") @db.Uuid
+  revision        Int
+  props           Json
+  status          String   @default("DRAFT")
+  createdByUserId String   @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([sharedBlockId, revision])
+  @@map("site_shared_block_revisions")
+}
+
+model SiteTheme {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  siteId      String   @map("site_id") @db.Uuid
+  revision    Int
+  tokens      Json
+  breakpoints Json
+  status      String   @default("DRAFT")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([siteId, revision])
+  @@map("site_themes")
+}
+
+model SiteRelease {
+  id               String    @id @default(uuid()) @db.Uuid
+  workspaceId      String    @map("workspace_id") @db.Uuid
+  siteId           String    @map("site_id") @db.Uuid
+  releaseNumber    Int       @map("release_number")
+  manifest         Json
+  status           String    @default("DRAFT")
+  approvalState    String    @default("NOT_REQUIRED") @map("approval_state")
+  approvedByUserId String?   @map("approved_by_user_id") @db.Uuid
+  scheduledAt      DateTime? @map("scheduled_at") @db.Timestamptz(6)
+  activatedAt      DateTime? @map("activated_at") @db.Timestamptz(6)
+  createdByUserId  String    @map("created_by_user_id") @db.Uuid
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([siteId, releaseNumber])
+  @@index([workspaceId, siteId, status])
+  @@map("site_releases")
+}
+
+model SitePreviewToken {
+  id              String    @id @default(uuid()) @db.Uuid
+  workspaceId     String    @map("workspace_id") @db.Uuid
+  siteId          String    @map("site_id") @db.Uuid
+  releaseId       String    @map("release_id") @db.Uuid
+  tokenHash       String    @unique @map("token_hash")
+  passwordHash    String?   @map("password_hash")
+  audienceScope   String    @map("audience_scope")
+  expiresAt       DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt       DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdByUserId String    @map("created_by_user_id") @db.Uuid
+
+  @@index([workspaceId, siteId])
+  @@map("site_preview_tokens")
+}
+
+model SiteLanguage {
+  id             String  @id @default(uuid()) @db.Uuid
+  workspaceId    String  @map("workspace_id") @db.Uuid
+  siteId         String  @map("site_id") @db.Uuid
+  locale         String
+  isDefault      Boolean @default(false) @map("is_default")
+  enabled        Boolean @default(true)
+  fallbackPolicy String  @default("DEFAULT_LANGUAGE") @map("fallback_policy")
+  rtl            Boolean @default(false)
+
+  @@unique([siteId, locale])
+  @@map("site_languages")
+}
+
+model SiteTranslation {
+  id               String   @id @default(uuid()) @db.Uuid
+  workspaceId      String   @map("workspace_id") @db.Uuid
+  siteId           String   @map("site_id") @db.Uuid
+  sourcePageId     String   @map("source_page_id") @db.Uuid
+  targetPageId     String   @map("target_page_id") @db.Uuid
+  sourceRevisionId String   @map("source_revision_id") @db.Uuid
+  draftRevisionId  String   @map("draft_revision_id") @db.Uuid
+  sourceLocale     String   @map("source_locale")
+  targetLocale     String   @map("target_locale")
+  aiDraftId        String?  @map("ai_draft_id") @db.Uuid
+  status           String   @default("DRAFT")
+  reviewedByUserId String?  @map("reviewed_by_user_id") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, siteId, status])
+  @@map("site_translations")
+}
+
+model SiteSeoSettings {
+  siteId               String  @id @map("site_id") @db.Uuid
+  workspaceId          String  @map("workspace_id") @db.Uuid
+  robotsDefault        String  @default("index,follow") @map("robots_default")
+  sitemapEnabled       Boolean @default(true) @map("sitemap_enabled")
+  defaultOgImageFileId String? @map("default_og_image_file_id") @db.Uuid
+  version              Int     @default(1)
+
+  @@map("site_seo_settings")
+}
+
+model SiteSitemapBuild {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  siteId      String   @map("site_id") @db.Uuid
+  releaseId   String   @map("release_id") @db.Uuid
+  status      String   @default("BUILDING")
+  content     String   @default("")
+  generatedAt DateTime @default(now()) @map("generated_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, siteId, generatedAt])
+  @@map("site_sitemap_builds")
+}
+
+model SitePerformanceMetric {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  siteId      String   @map("site_id") @db.Uuid
+  pageId      String   @map("page_id") @db.Uuid
+  releaseId   String   @map("release_id") @db.Uuid
+  lcp         Float?
+  cls         Float?
+  ttfb        Float?
+  measuredAt  DateTime @default(now()) @map("measured_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, siteId, measuredAt])
+  @@map("site_performance_metrics")
+}
+
+model SiteModuleBinding {
+  id                 String    @id @default(uuid()) @db.Uuid
+  workspaceId        String    @map("workspace_id") @db.Uuid
+  siteId             String    @map("site_id") @db.Uuid
+  pageId             String    @map("page_id") @db.Uuid
+  blockKey           String    @map("block_key")
+  module             String
+  externalResourceId String    @map("external_resource_id") @db.Uuid
+  publicSettings     Json      @default("{}") @map("public_settings")
+  status             String    @default("ACTIVE")
+  lastCheckedAt      DateTime? @map("last_checked_at") @db.Timestamptz(6)
+  version            Int       @default(1)
+
+  @@index([workspaceId, siteId])
+  @@map("site_module_bindings")
+}
+
+model SiteCookiePolicy {
+  siteId            String   @id @map("site_id") @db.Uuid
+  workspaceId       String   @map("workspace_id") @db.Uuid
+  categories        Json
+  jurisdictionRules Json     @default("{}") @map("jurisdiction_rules")
+  version           Int      @default(1)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("site_cookie_policies")
+}
+
+model SiteConsentPreference {
+  id                 String   @id @default(uuid()) @db.Uuid
+  workspaceId        String   @map("workspace_id") @db.Uuid
+  siteId             String   @map("site_id") @db.Uuid
+  visitorKey         String   @map("visitor_key")
+  consentVersion     Int      @map("consent_version")
+  acceptedCategories Json     @map("accepted_categories")
+  recordedAt         DateTime @default(now()) @map("recorded_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, siteId, visitorKey])
+  @@map("site_consent_preferences")
+}
+
+model SiteScript {
+  id                String   @id @default(uuid()) @db.Uuid
+  workspaceId       String   @map("workspace_id") @db.Uuid
+  siteId            String   @map("site_id") @db.Uuid
+  kind              String
+  language          String
+  source            String
+  sourceHash        String   @map("source_hash")
+  allowedCategory   String   @map("allowed_category")
+  originAllowlist   Json     @default("[]") @map("origin_allowlist")
+  status            String   @default("REVIEW")
+  requestedByUserId String   @map("requested_by_user_id") @db.Uuid
+  approvedByUserId  String?  @map("approved_by_user_id") @db.Uuid
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, siteId, status])
+  @@map("site_scripts")
+}
+
+model SiteExperiment {
+  id                     String    @id @default(uuid()) @db.Uuid
+  workspaceId            String    @map("workspace_id") @db.Uuid
+  siteId                 String    @map("site_id") @db.Uuid
+  pageId                 String    @map("page_id") @db.Uuid
+  metric                 String
+  goalEvent              String    @map("goal_event")
+  attributionWindowHours Int       @default(24) @map("attribution_window_hours")
+  seed                   String
+  persistAssignments     Boolean   @default(true) @map("persist_assignments")
+  status                 String    @default("DRAFT")
+  startAt                DateTime? @map("start_at") @db.Timestamptz(6)
+  endAt                  DateTime? @map("end_at") @db.Timestamptz(6)
+  version                Int       @default(1)
+
+  @@index([workspaceId, siteId, status])
+  @@map("site_experiments")
+}
+
+model SiteExperimentVariant {
+  id             String  @id @default(uuid()) @db.Uuid
+  workspaceId    String  @map("workspace_id") @db.Uuid
+  experimentId   String  @map("experiment_id") @db.Uuid
+  label          String
+  pageRevisionId String  @map("page_revision_id") @db.Uuid
+  trafficPercent Decimal @map("traffic_percent") @db.Decimal(6, 2)
+
+  @@unique([experimentId, label])
+  @@map("site_experiment_variants")
+}
+
+model SiteVisitorAssignment {
+  id           String   @id @default(uuid()) @db.Uuid
+  workspaceId  String   @map("workspace_id") @db.Uuid
+  experimentId String   @map("experiment_id") @db.Uuid
+  visitorKey   String   @map("visitor_key")
+  variantId    String   @map("variant_id") @db.Uuid
+  assignedAt   DateTime @default(now()) @map("assigned_at") @db.Timestamptz(6)
+
+  @@unique([experimentId, visitorKey])
+  @@map("site_visitor_assignments")
+}
+
+model SiteExperimentEvent {
+  id           String   @id @default(uuid()) @db.Uuid
+  workspaceId  String   @map("workspace_id") @db.Uuid
+  experimentId String   @map("experiment_id") @db.Uuid
+  variantId    String   @map("variant_id") @db.Uuid
+  visitorKey   String   @map("visitor_key")
+  eventType    String   @map("event_type")
+  consentState String   @map("consent_state")
+  occurredAt   DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  @@unique([experimentId, visitorKey, eventType])
+  @@map("site_experiment_events")
+}
+
+model SiteAiDraft {
+  id                  String   @id @default(uuid()) @db.Uuid
+  workspaceId         String   @map("workspace_id") @db.Uuid
+  siteId              String   @map("site_id") @db.Uuid
+  pageId              String?  @map("page_id") @db.Uuid
+  scenario            String
+  status              String   @default("QUEUED")
+  generatedRevisionId String?  @map("generated_revision_id") @db.Uuid
+  modelId             String?  @map("model_id")
+  inputTokens         Int      @default(0) @map("input_tokens")
+  outputTokens        Int      @default(0) @map("output_tokens")
+  costMicros          BigInt   @default(0) @map("cost_micros")
+  usageKey            String   @unique @map("usage_key")
+  billed              Boolean  @default(false)
+  errorCode           String?  @map("error_code")
+  requestedByUserId   String   @map("requested_by_user_id") @db.Uuid
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, siteId])
+  @@map("site_ai_drafts")
+}
+
+model SiteExportJob {
+  id                String   @id @default(uuid()) @db.Uuid
+  workspaceId       String   @map("workspace_id") @db.Uuid
+  siteId            String   @map("site_id") @db.Uuid
+  releaseId         String?  @map("release_id") @db.Uuid
+  format            String
+  status            String   @default("QUEUED")
+  content           Json?
+  downloadTokenHash String?  @unique @map("download_token_hash")
+  expiresAt         DateTime @map("expires_at") @db.Timestamptz(6)
+  requestedByUserId String   @map("requested_by_user_id") @db.Uuid
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, siteId])
+  @@map("site_export_jobs")
 }

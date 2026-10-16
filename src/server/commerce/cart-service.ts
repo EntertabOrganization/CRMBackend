@@ -65,7 +65,11 @@ export class CommerceCartService {
     const publication = await tx.commerceProductPublication.findFirst({ where: { workspaceId: store.workspaceId,storeId: store.id,productId,variantId,published: true,
       AND: [{ OR: [{ availableFrom: null },{ availableFrom: { lte: now } }] },{ OR: [{ availableUntil: null },{ availableUntil: { gt: now } }] }] } });
     if (!publication) throw new AppError('COMMERCE_ITEM_NOT_AVAILABLE','Product is unavailable.',404);
-    return (await this.catalog(tx,store.workspaceId)).product(store.catalogId,productId,variantId,store.priceTypeId,store.defaultCurrency);
+    const resolved = (await this.catalog(tx,store.workspaceId)).product(store.catalogId,productId,variantId,store.priceTypeId,store.defaultCurrency);
+    // Price resolution order: valid store override > configured Catalog price type. Orders snapshot the result.
+    const override = await tx.commerceListingOverride.findFirst({ where: { workspaceId: store.workspaceId,publicationId: publication.id,currency: store.defaultCurrency,amount: { not: null },
+      AND: [{ OR: [{ validFrom: null },{ validFrom: { lte: now } }] },{ OR: [{ validTo: null },{ validTo: { gt: now } }] }] } });
+    return override?.amount ? { ...resolved,unitPrice: override.amount.toFixed(6),revision: { ...resolved.revision,override: override.version } } : resolved;
   }
 
   async projection(tx: Tx, store: CommerceStore, cart: CommerceCart) {

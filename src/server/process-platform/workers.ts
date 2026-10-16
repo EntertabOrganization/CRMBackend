@@ -18,6 +18,7 @@ import { CommercePaidReservationService } from '../commerce/paid-reservation-ser
 import { CommerceRefundService } from '../commerce/refund-service';
 import { InventoryReconciliationService } from '../inventory/reconciliation-service';
 import { InventoryControlledJobsService } from '../inventory/controlled-jobs-service';
+import { SuiteWorkers } from '../suite/workers';
 
 /** A separate worker process may scale independently; domain DB locks/leases fence competing processes. */
 export class ProcessPlatformWorkers {
@@ -41,6 +42,7 @@ export class ProcessPlatformWorkers {
   private readonly commerceRefunds = new CommerceRefundService(prisma);
   private readonly inventoryReconciliation = new InventoryReconciliationService(prisma);
   private readonly inventoryControlledJobs = new InventoryControlledJobsService(prisma);
+  private readonly suite = new SuiteWorkers(prisma);
   stop() { this.stopped = true; }
   async tick() {
     const migrations = await this.migrations.runDue(10);
@@ -66,7 +68,8 @@ export class ProcessPlatformWorkers {
     const commercePaidReservations = await this.commercePaidReservations.tick(10);
     const inventoryReconciliation = await this.inventoryReconciliation.tick(5);
     const inventoryControlledJobs = await this.inventoryControlledJobs.tick(5);
-    return { migrations, recurrence, transfers, purges, workflowDispatch, workflowWaits,workflowEvents,workflowSchedules,workflowCallbacks,workflowCompensations,workflowReconciliation,workflowRetention,inventoryExpiry,commerceCarts,commerceDelivery,commercePayments,commerceRefunds,commercePaymentCallbacks,commerceReconciliation,commerceCrmSync,commercePaidReservations,inventoryReconciliation,inventoryControlledJobs };
+    const businessSuite = await this.suite.tick();
+    return { migrations, recurrence, transfers, purges, workflowDispatch, workflowWaits,workflowEvents,workflowSchedules,workflowCallbacks,workflowCompensations,workflowReconciliation,workflowRetention,inventoryExpiry,commerceCarts,commerceDelivery,commercePayments,commerceRefunds,commercePaymentCallbacks,commerceReconciliation,commerceCrmSync,commercePaidReservations,inventoryReconciliation,inventoryControlledJobs,businessSuite };
   }
   async run() {
     while (!this.stopped) {

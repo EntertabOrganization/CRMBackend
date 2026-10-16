@@ -11,6 +11,7 @@ import { CommerceQuoteService } from './quote-service';
 import { enqueueOrderCrmSync } from './crm-sync-service';
 import { preparePaidReservations } from './paid-reservation-service';
 import { checkoutCustomer } from './customer-service';
+import { CommerceStoreAdminService } from './suite/store-admin-service';
 
 const customerInfo = z.strictObject({ name: z.string().trim().min(1).max(160),email: z.email().max(254).transform(v => v.trim().toLowerCase()),phone: z.string().trim().min(5).max(40).optional() });
 const shippingInfo = z.strictObject({ country: z.string().regex(/^[A-Z]{2}$/),region: z.string().regex(/^[A-Z]{2}(?:-[A-Z0-9]{1,10})?$/),
@@ -90,10 +91,13 @@ export class CommerceCheckoutService {
       await lock(tx,scope.store.workspaceId,'commerce:configuration'); await lock(tx,scope.store.workspaceId,'commerce:checkout:' + id);
       const store = await tx.commerceStore.findUniqueOrThrow({ where: { id: scope.store.id } });
       if (store.status!=='ACTIVE') throw new AppError('COMMERCE_STORE_NOT_FOUND','Store is unavailable.',404);
+      const profile = await tx.commerceStoreProfile.findUnique({ where: { storeId: store.id } });
       const session = await this.session(tx,store,id,token),requestHash = createHash('sha256').update(canonical(input)).digest('hex');
       const identity = { workspaceId: store.workspaceId,storeId: store.id,sessionId: id,key };
       const prior = await tx.commerceCheckoutCommand.findUnique({ where: { workspaceId_storeId_sessionId_key: identity } });
       if (prior) { if (prior.requestHash!==requestHash) throw new AppError('IDEMPOTENCY_KEY_REUSED','Key was used with another request.',409); return prior.response; }
+      await CommerceStoreAdminService.assertCheckoutAllowed(tx,store.workspaceId);
+      if (profile && !profile.guestCheckoutEnabled && !session.customerAccountId) throw new AppError('PERMISSION_DENIED','Guest checkout is disabled for this store.',403);
       const cart = await tx.commerceCart.findUniqueOrThrow({ where: { id: session.cartId } });
       await lock(tx,store.workspaceId,'commerce:cart:' + cart.tokenHash);
       const currentCart = await tx.commerceCart.findUniqueOrThrow({ where: { id: cart.id } });
@@ -114,10 +118,15 @@ export class CommerceCheckoutService {
         if(store.reservationTiming==='PAYMENT_PAID')await preparePaidReservations(tx,order,store);
         else for (const line of result.quote.lines.filter(l => l.stockable).sort((a,b) => a.inventoryKey.localeCompare(b.inventoryKey))) {
           try {
-            const reservation=await this.reservations.createInTransaction(tx,actor,{ sourceType: 'ORDER',sourceId: order.id,productId: line.productId,variantId: line.variantId ?? undefined,quantity: line.quantity,warehouseId: store.defaultWarehouseId ?? undefined },'checkout:'+id+':'+line.itemId) as {id:string};
+            // Store reservation TTL drives expiry; Inventory owns the arithmetic and expiry worker.
+            const expiresAt = profile?.reservationTtlSeconds ? new Date(Date.now()+profile.reservationTtlSeconds*1000).toISOString() : undefined;
+            const reservation=await this.reservations.createInTransaction(tx,actor,{ sourceType: 'ORDER',sourceId: order.id,productId: line.productId,variantId: line.variantId ?? undefined,quantity: line.quantity,warehouseId: store.defaultWarehouseId ?? undefined,...(expiresAt ? { expiresAt } : {}) },'checkout:'+id+':'+line.itemId) as {id:string};
             await tx.commerceOrderLineReservation.create({data:{workspaceId:store.workspaceId,storeId:store.id,orderId:order.id,orderLineId:line.itemId,reservationId:reservation.id,inventoryKey:line.inventoryKey,quantity:line.quantity}});
           }
-          catch (error) { if (isAppError(error)) throw new AppError('COMMERCE_STOCK_RESERVATION_FAILED','Stock could not be reserved.',409); throw error; }
+          catch (error) {
+            // Explicit opt-in backorder records unreserved quantity; it never fabricates an ACTIVE reservation.
+            if (isAppError(error) && profile?.backordersEnabled) { await tx.commerceBackorderLine.create({ data: { workspaceId: store.workspaceId,orderId: order.id,orderLineId: line.itemId,remainingQty: line.quantity } }); continue; }
+            if (isAppError(error)) throw new AppError('COMMERCE_STOCK_RESERVATION_FAILED','Stock could not be reserved.',409,{ reason: 'INSUFFICIENT_STOCK' }); throw error; }
         }
       }
       for (const promotion of result.quote.promotions) {

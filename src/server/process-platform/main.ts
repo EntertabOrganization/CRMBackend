@@ -9,10 +9,13 @@ import { SpaModule } from '../spa/spa.module';
 import { WorkflowsModule } from '../workflows/workflows.module';
 import { InventoryModule } from '../inventory/inventory.module';
 import { CommerceModule } from '../commerce/commerce.module';
+import { MarketingModule } from '../marketing/routes';
+import { HrModule } from '../hr/routes';
+import { SitesModule } from '../sites/routes';
 import { prisma } from '../prisma-client';
 
 export class ProcessPlatformModule {}
-Module({ imports: [SpaModule, WorkflowsModule,InventoryModule,CommerceModule],controllers: nestControllers(resourceTimelineRouter) })(ProcessPlatformModule);
+Module({ imports: [SpaModule, WorkflowsModule,InventoryModule,CommerceModule,MarketingModule,HrModule,SitesModule],controllers: nestControllers(resourceTimelineRouter) })(ProcessPlatformModule);
 
 export async function startProcessPlatform(port = Number(process.env.PROCESS_PLATFORM_PORT ?? 3002)) {
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid process platform port');
