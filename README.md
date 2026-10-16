@@ -93,3 +93,15 @@ Migration `202610220001_final_module_integrations` adds provider-customer refere
 - Diarization requires an approved `gpt-4o-transcribe-diarize` model route. The adapter requests speaker annotations and stores segments encrypted; transcript reads reauthorize source Files access. Other transcription models reject diarization rather than silently ignoring it. Provider contract: [transcription](https://developers.openai.com/api/reference/resources/audio/subresources/transcriptions/methods/create).
 
 Production type checking uses `tsconfig.build.json` to exclude the independent development/live build route declarations. `npm run typecheck` allows an 8 GiB Node heap for the current Prisma schema. No runtime, provider, migration or UI checks are implied by a successful type check or build.
+
+### Filling the local integration configuration
+
+The local `.env` contains configuration slots matching `.env.example`. Keep real credentials in `.env` (Git ignores it). Existing values must be preserved when adding missing slots. Restart the API and workers after editing configuration.
+
+- Billing: fill the selected provider's `BILLING_STRIPE_*` or `BILLING_XPAY_*` credentials, choose `BILLING_PAYMENT_PROVIDER=STRIPE|XPAY`, and supply the approved `BILLING_TAX_POLICY_JSON` policy. Keep unselected credentials blank.
+- Email: choose `NOTIFICATION_EMAIL_PROVIDER=SES|SMTP`, fill the matching `NOTIFICATION_SES_CREDENTIALS` or `NOTIFICATION_SMTP_CREDENTIALS`, and set `NOTIFICATION_EMAIL_SECRET_REF=env:NOTIFICATION_SES_CREDENTIALS` or `env:NOTIFICATION_SMTP_CREDENTIALS`. Configure the verified sender and public `APP_URL` too. The credential formats are documented beside the slots.
+- AI: fill only the selected provider's credential slot. Through the existing `/platform/ai` and `/ai` configuration APIs/consoles, create the provider connection referencing that `env:NAME`, versioned model rates/capabilities, approved region/classification routes, Workspace settings and Billing credits. Credentials alone do not create these database records. Knowledge embeddings additionally require the `knowledge.embedding` route and the Space indexing policy.
+- MFA: connect an issuer that performs MFA before issuing the supported signed assertion, using the shared `PLATFORM_MFA_VERIFIER_SECRET`. An empty slot leaves protected actions unavailable; the environment file does not supply an issuer.
+- Set encryption/signing secrets before using their features. Preserve established keys and the current database URL. In an existing development environment, leave the new `SUITE_DATA_KEY` slot commented until deliberately configured: an empty active value changes the legacy development key derivation. Setting a new key after encrypting data requires re-encryption. Database migrations require separate authorization; adding environment slots does not apply them.
+
+Blank credentials are intentional until configured. Sandbox selections record simulated operations in development; they do not deliver email or call live payment/AI providers.

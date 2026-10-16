@@ -1,7 +1,8 @@
 # Remaining testing work
 
 Code in the modules below was written **without running any tests** (user instruction). A testing agent must
-run, fix and verify each module one at a time, in the order given, committing after every fix.
+run, fix and verify each module one at a time, in the order given, once the user enables testing.
+Latest user instruction (2026-10-16): do not commit or push; the user will commit.
 Nothing here is verified until its command has been run and passed. Do not mark items done without real output.
 
 ## How to work through this file
@@ -10,7 +11,7 @@ Nothing here is verified until its command has been run and passed. Do not mark 
 2. Pick the first unchecked module, run its command, fix the **application** (not the test) where the test reflects
    the spec; fix the test only when it is wrong about the spec. Never skip, delete or weaken assertions.
 3. Re-run until green, then `npm run typecheck` and `npm run build`, tick the box with the date and the pass count,
-   commit (`git commit`) and push before moving on.
+   record the actual result before moving on. Do not commit or push.
 
 Common run command (replace the path):
 
@@ -55,7 +56,7 @@ Order required by the pack:
 - [ ] **29-AI-CoPilot** — 10 specs + e2e. Code: `src/server/ai/*`. Use `AI_SANDBOX_ENABLED=true` with a SANDBOX connection and route; credit cases need a Billing credit grant on the test Workspace. Domain/media cases (10) need a scanned audio file and the Files scanner fixture.
 - [ ] **CrossModule** — `tests/modules/TrueCRM_Final_Modules_Codex_Pack/CrossModule/cross-module.e2e-spec.ts`
 - [ ] Apply migrations `202610170001_platform_services` through `202610210001_ai_copilot` plus `202610220001_final_module_integrations` to a disposable DB (`prisma migrate deploy` against an owned test database only), then rerun the Pack 1 suites as regression.
-- [x] `npm run build` passed on the updated integration tree (2026-10-16, exit 0, 88/88 static pages, 8 GiB Node heap; source commit `f8d9468`, recorded in `IMPLEMENTATION_PROGRESS.md`); runtime tests remain unrun. Rerun after test wiring.
+- [x] `npm run build` passed on the updated integration tree (2026-10-16, exit 0, 88/88 static pages, 8 GiB Node heap; source commit `f8d9468`; typecheck and Prisma validation also exited 0 on that tree); runtime tests remain unrun. Rerun after test wiring.
 
 ### `tests/api-endpoints.spec.ts` changes made for Pack 2 (verify)
 - The admin fixture now also receives a `platformRoleAssignment` (Prisma) because Partner approval moved to platform roles. The legacy approve expectation is now an idempotent replay instead of a 404.
@@ -70,9 +71,11 @@ Order required by the pack:
 - AI: SSE streaming and OpenAI diarization are written, untested. Verify per-snapshot reauthorization, no-history/tool/JSON/retrieval gating, stream interruption/UNKNOWN accounting, cancellation, reconnect and encrypted buffer cleanup. Verify approved model routing, speaker segment validation/encryption and live source access. Image/transcription need supported provider routes and credentials.
 - Platform/Billing/Partner consoles now send per-action `x-mfa-assertion`; verify the assertion is cleared, excluded from the request body/storage/results, and missing/expired assertions fail. UI and API tests remain deferred.
 
-See `IMPLEMENTATION_PROGRESS.md` for which Pack 2 features exist in code.
+See `IMPLEMENTATION_PROGRESS.md` for remaining operator setup and environment blockers. Completed code entries have been removed at the user's request.
 
 ## External prerequisites (cannot be verified in tests; need staging credentials)
+
+Local `.env` and `.env.example` now provide credential/configuration slots. The user will fill credentials later; no provider calls or runtime checks were performed while preparing these slots. Setup instructions are in README under "Filling the local integration configuration".
 
 Stripe/XPay and SaaS billing payment providers, SES/SMTP/Twilio/WhatsApp/Meta, Google Ads developer token,
 TLS issuer (`SITES_TLS_PROVIDER`), AI providers (OpenAI/Azure/Anthropic/Gemini/OpenRouter keys or `AI_GATEWAY_URL`),
