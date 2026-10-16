@@ -5,7 +5,7 @@ import { parse, uuid } from '../process-platform/dto';
 import { evidence, lock, requirePermission, type Principal } from '../process-platform/context';
 import { assertVersion, expectedVersion, inTx, listQuery, newToken, notFound, paged, safeEqual, sha256 } from '../suite/kernel';
 import { currentDnsVerifier } from '../suite/providers';
-import { hostname, loadSite, locale, PLATFORM_DOMAIN } from './support';
+import { hostname, loadSite, locale, PLATFORM_DOMAIN, sitesAccess } from './support';
 
 const GLOBAL = '00000000-0000-0000-0000-000000000000';
 const subdomain = z.string().trim().toLowerCase().regex(/^[a-z0-9](?:[a-z0-9-]{1,40}[a-z0-9])$/);
@@ -19,7 +19,7 @@ export class SitesSiteService {
     const input = parse(z.strictObject({ name: z.string().trim().min(1).max(160), type: z.enum(['SITE', 'LANDING', 'STORE']), subdomain, defaultLocale: locale, requiresApproval: z.boolean().default(false), storeId: uuid.optional() }), raw);
     if (RESERVED.has(input.subdomain)) throw new AppError('VALIDATION_FAILED', 'Subdomain is reserved.', 400, { fields: [{ field: 'subdomain', reason: 'RESERVED' }] });
     return inTx(this.db, actor, async (tx, actor) => {
-      requirePermission(actor, 'sites.site.create');
+      requirePermission(actor, 'sites.site.create'); sitesAccess(actor, 'sites.site.create');
       await lock(tx, GLOBAL, 'sites:hostnames');
       const limit = actor.entitlements?.sitesLimit;
       if (typeof limit === 'number' && await tx.site.count({ where: { workspaceId: actor.workspaceId, archivedAt: null } }) >= limit) throw new AppError('PLAN_LIMIT_REACHED', 'Site quota reached.', 403);

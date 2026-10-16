@@ -39,3 +39,7 @@ Implemented features, schema migrations, typed APIs, Next.js screens, provider i
 ## Important boundaries
 
 Commerce Orders are separate from CRM Deals and Payments; HR Employees separate from User auth; Marketing delivery separate from Sales Intelligence attribution; Sites drafts separate from public releases. Additional market-specific taxes, leave entitlements, consent and legal retention values are **explicit required configuration**, not universal hard-coded guesses. Site managed-hosting support does not promise a portable standalone runtime export.
+
+## Repository location of the Testing pack
+
+Per the repository `AGENTS.md`, executable tests do not live in documentation folders. The `Testing/` pack now lives in `tests/modules/TrueCRM_Commerce_Marketing_HR_Sites_Codex_Pack/` with its structure and assertions preserved. `_harness/adapter.ts` defaults to the repository binding `tests/support/truecrm-contract-adapter.ts` (owned disposable PostgreSQL database `truecrm_suite_contract_test`, real route handlers, deterministic provider fakes).

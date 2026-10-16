@@ -39,7 +39,7 @@ export class CommercePublicCheckoutService {
     const session = await this.session(sessionId);
     const result = await this.checkout.quote(await this.slugForStore(session.workspaceId, session.storeId), sessionId, token, raw) as Record<string, unknown>;
     const current = await this.db.commerceCheckoutSession.findUniqueOrThrow({ where: { id: sessionId } });
-    return { ...result, quoteVersion: Number(current.version) };
+    return { ...result, quoteVersion: Number(current.version) - 1 }; // n-th quote of the session (session creation is version 1)
   }
   private async session(id: string) {
     parse(uuid, id);
@@ -62,7 +62,7 @@ export class CommercePublicCheckoutService {
     const slug = await this.slugForStore(session.workspaceId, session.storeId);
     if (!prior) {
       if (session.status === 'ORDERED' && session.orderId) throw new AppError('IDEMPOTENCY_KEY_REUSED', 'Checkout was already confirmed with another key.', 409);
-      if (session.status !== 'QUOTED' || !session.quoteExpiresAt || session.quoteExpiresAt <= new Date() || Number(session.version) !== input.acceptedQuoteVersion)
+      if (session.status !== 'QUOTED' || !session.quoteExpiresAt || session.quoteExpiresAt <= new Date() || Number(session.version) - 1 !== input.acceptedQuoteVersion)
         throw new AppError('QUOTE_EXPIRED', 'Quote changed or expired; request a fresh quote.', 409, { refresh: `/api/v1/public/checkout-sessions/${sessionId}/quote` });
       const quoted = (session.quoteInput ?? {}) as { paymentMethodId?: string; deliveryMethodId?: string };
       if (input.paymentMethodId && input.paymentMethodId !== quoted.paymentMethodId || input.deliveryMethodId && quoted.deliveryMethodId && input.deliveryMethodId !== quoted.deliveryMethodId)

@@ -1806,6 +1806,26 @@ describe('Cross-cutting behaviour', () => {
     'POST /api/v1/contact-center/connections/[connectionId]/events',
     'POST /api/v1/integrations/providers/[provider]/[connectionId]/webhook',
     'GET /t/[token]',
+    // Business suite public surfaces (storefront tokens, signed provider callbacks, published sites).
+    'GET /api/v1/public/stores/[[...path]]',
+    'POST /api/v1/public/stores/[[...path]]',
+    'POST /api/v1/public/carts/[[...path]]',
+    'PATCH /api/v1/public/carts/[[...path]]',
+    'DELETE /api/v1/public/carts/[[...path]]',
+    'POST /api/v1/public/checkout-sessions/[[...path]]',
+    'POST /api/v1/public/order-access/[[...path]]',
+    'GET /api/v1/public/payment-links/[[...path]]',
+    'GET /api/v1/public/digital-deliveries/[[...path]]',
+    'POST /api/v1/public/digital-deliveries/[[...path]]',
+    'GET /api/v1/public/marketing/[[...path]]',
+    'POST /api/v1/public/marketing/[[...path]]',
+    'GET /api/v1/public/sites/[[...path]]',
+    'POST /api/v1/public/sites/[[...path]]',
+    'GET /api/v1/public/robots.txt',
+    'GET /api/v1/public/sitemap.xml',
+    'POST /api/v1/integrations/payments/[[...path]]',
+    'POST /api/v1/integrations/shipping/[[...path]]',
+    'POST /api/v1/integrations/marketing/[[...path]]',
   ]);
 
   it('only the allow-listed public endpoints exist without a bearer token', async () => {

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { AppError } from '../errors';
 import { requirePermission, type Principal, type Tx } from '../process-platform/context';
 import { ownerVisible } from '../process-platform/owner-scope';
-import { assertNoExecutable, entitled, notFound, safeUrl, sha256 } from '../suite/kernel';
+import { assertNoExecutable, notFound, safeUrl, sha256 } from '../suite/kernel';
 import { cleanFile } from '../suite/files-port';
 
 const text = (max: number) => z.string().max(max);
@@ -54,8 +54,16 @@ export async function validateBlockTree(tx: Tx, actor: Principal, raw: unknown):
 }
 export function contentHash(value: unknown) { return sha256(JSON.stringify(value)); }
 
+/** Subscription capability: full access while entitled or within the grace window; afterwards read/export only. */
+export function sitesAccess(actor: Principal, permission: string) {
+  const ent = actor.entitlements ?? {};
+  if (ent.sites !== false) return;
+  const graceDays = typeof ent.sitesGraceDays === 'number' ? ent.sitesGraceDays : 15;
+  if (typeof ent.sitesExpiredAt === 'string' && new Date(ent.sitesExpiredAt).getTime() + graceDays * 86400000 > Date.now()) return;
+  if (!['sites.site.read', 'sites.site.export'].includes(permission)) throw new AppError('PERMISSION_DENIED', 'Sites is read-only for this Workspace subscription.', 403);
+}
 export async function loadSite(tx: Tx, actor: Principal, id: string, permission: string, includeArchived = false): Promise<Site> {
-  requirePermission(actor, permission); entitled(actor, 'sites');
+  requirePermission(actor, permission); sitesAccess(actor, permission);
   const site = await tx.site.findFirst({ where: { workspaceId: actor.workspaceId, id } });
   if (!site || !await ownerVisible(tx, actor, site.createdByUserId, permission)) throw notFound('Site');
   if (site.archivedAt && !includeArchived) throw notFound('Site');

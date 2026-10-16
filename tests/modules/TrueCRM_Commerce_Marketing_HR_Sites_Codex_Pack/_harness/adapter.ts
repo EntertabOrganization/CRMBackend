@@ -28,7 +28,8 @@ export interface RepositoryHarness {
 let loaded: RepositoryHarness | undefined;
 export function repositoryHarness():RepositoryHarness {
   if (loaded) return loaded;
-  const locator=process.env.TRUECRM_CONTRACT_ADAPTER;
+  // Repository binding: the real TrueCRM harness (owned disposable PostgreSQL + in-process route handlers) is the default.
+  const locator=process.env.TRUECRM_CONTRACT_ADAPTER ?? 'tests/support/truecrm-contract-adapter.ts';
   if (!locator) throw new Error('CONTRACT TEST NOT WIRED: set TRUECRM_CONTRACT_ADAPTER to a repository-specific TestHarness implementing Testing/_harness/adapter.ts; do not skip these tests.');
   // Require here is deliberate: source package is portable to Jest/NestJS commonjs runner.
   // Agents using ESM may adapt the loader while preserving fail-closed behavior.

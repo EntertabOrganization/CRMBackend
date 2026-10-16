@@ -57,6 +57,7 @@ export class MarketingDeliveryService {
     const ctx = { workspaceId: row.workspaceId, connectionId: connection.id, correlationId: row.campaignId, idempotencyKey: 'delivery:' + row.id, secretRef: connection.credentialSecretRef };
     if (row.state === 'SENDING' || row.attemptCount > 0) {
       const known = await sendAdapter.lookupDelivery(ctx, row.id).catch(() => ({ state: 'UNKNOWN' as const, externalMessageId: undefined }));
+      if (known.state === 'ACCEPTED' || known.state === 'DELIVERED') await this.db.$transaction(tx => recordProviderCall(tx, { workspaceId: row.workspaceId, module: 'marketing', provider: connection.provider, operation: 'SEND', idempotencyKey: ctx.idempotencyKey, campaignId: row.campaignId, recipientKey: row.recipientKey, reference: known.externalMessageId, outcome: 'ACCEPTED', payload: { reconciled: true } }));
       if (known.state === 'ACCEPTED' || known.state === 'DELIVERED') return finish({ state: known.state, providerMessageId: known.externalMessageId ?? row.providerMessageId, sentAt: row.sentAt ?? new Date() }, 'MESSAGE_ACCEPTED', { reconciled: true });
       if (await this.db.suiteProviderCall.findFirst({ where: { idempotencyKey: ctx.idempotencyKey, outcome: 'ACCEPTED' } })) return finish({ state: 'ACCEPTED' }, 'MESSAGE_ACCEPTED', { reconciled: true });
     }
@@ -87,7 +88,8 @@ export class MarketingDeliveryService {
       await systemEvent(tx, row.workspaceId, 'MARKETING_DELIVERY', id, 'MESSAGE_SEND_ATTEMPTED', { campaignId: row.campaignId, attemptNo }, false);
     });
     if (result.accepted) return finish({ state: 'ACCEPTED', providerMessageId: result.externalMessageId, sentAt: new Date(), lastErrorCode: null }, 'MESSAGE_ACCEPTED');
-    if (result.errorCode === 'PROVIDER_TIMEOUT') return finish({ state: 'SENDING', lastErrorCode: 'PROVIDER_TIMEOUT', nextAttemptAt: new Date(Date.now() + 60000) }); // reconciled on next claim
+    // Uncertain outcome: stays claimable; the next claim looks the message up before any resend (attemptCount > 0).
+    if (result.errorCode === 'PROVIDER_TIMEOUT') return finish({ state: 'FAILED_RETRYABLE', lastErrorCode: 'PROVIDER_TIMEOUT', nextAttemptAt: new Date(Date.now() + 60000) });
     if (!result.retryable) {
       if (result.errorCode === 'INVALID_DESTINATION') await this.db.$transaction(tx => tx.marketingSuppression.create({ data: { workspaceId: row.workspaceId, destinationHash: row.destinationHash, channel: row.channel, reason: 'HARD_BOUNCE' } }));
       return finish({ state: 'FAILED', lastErrorCode: result.errorCode }, 'DELIVERY_FAILED', { errorCode: result.errorCode });
