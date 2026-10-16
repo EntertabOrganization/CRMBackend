@@ -80,7 +80,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 - [x] 02 Article editor & revisions — `knowledge/article-service.ts` (whitelisted plain-text block schema + safety scan, stable anchors, REVISION_CONFLICT on stale base, idempotent autosave, batched audit, revert=new revision, File ACL intersection)
 - [x] 03 ACL, sharing, external guests — `knowledge/access-service.ts` (ACL replace capped by grantor level, deny-wins, version+outbox+audit, member shares, hashed single-use guest tokens → signed session re-checked per read, instant revoke)
 - [x] 04 Review, publish, acknowledgement — `article-service.ts` (exact-revision approvals expiring on change, two-person rule, idempotent publish w/ safety/file/space checks, self-only idempotent acks, overdue review job)
-- [ ] 05 Search, AI indexing, citations
+- [x] 05 Search, AI indexing, citations — `knowledge/index-service.ts` (platform search source + live access resolver, outbox AI indexer for current published revision only, `retrieveKnowledge` re-checks ACL/revision/space policy/classification, exact-revision citations)
 - [ ] 06 Import/export, templates
 - [x] 07 Archive, trash (30-day), retention, moves — `article-service.ts` (subtree recycle w/ tombstones, restore to prior status + slug collision 409, purge gated by window + legal hold, sanitized tombstone row)
 - [ ] 08 Knowledge UI & analytics
