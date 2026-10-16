@@ -2975,7 +2975,7 @@ model DepartmentMember {
 
 model PartnerApplication {
   id                  String                   @id @default(uuid()) @db.Uuid
-  userId              String                   @map("user_id") @db.Uuid
+  userId              String?                  @map("user_id") @db.Uuid
   firstName           String                   @map("first_name")
   lastName            String                   @map("last_name")
   email               String
@@ -2995,7 +2995,7 @@ model PartnerApplication {
   reviewFlags         Json                     @default("[]") @map("review_flags")
   version             Int                      @default(1)
   createdAt           DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
-  user                User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user                User?                    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("partner_applications")
 }

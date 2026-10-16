@@ -58,8 +58,8 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 - [!] Blocked on external setup (not code): Stripe/XPay SaaS credentials (`BILLING_STRIPE_*`, `BILLING_XPAY_*`); hosted payment-method setup flow (no adapter capability, endpoint fails closed 503); tax engine (tax is 0 on quotes until a tax policy provider exists)
 
 ### 32-Partner-Program
-- [ ] 01 Public applications, verification, atomic approval
-- [ ] 02 Partner memberships, fixed roles, scoped permissions
+- [x] 01 Public applications, verification, atomic approval — `src/server/partners/program-service.ts` (non-enumerating 202 submit, duplicate-org flags, idempotent locked approval creating Partner+roles+owner membership; applicant linked by verified email)
+- [x] 02 Partner memberships, fixed roles, scoped permissions — `program-service.ts`, `support.ts` (hashed invitations, last-owner guard, allowlisted custom roles, `partnerActor` 404 for non-members)
 - [ ] 03 Discounts & price rules (basis points)
 - [ ] 04 Customer workspace provisioning, single active relationship
 - [ ] 05 Delegated workspace access & revocation

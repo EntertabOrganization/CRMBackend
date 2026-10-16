@@ -578,3 +578,6 @@ CREATE TRIGGER partner_payout_events_append_only BEFORE UPDATE OR DELETE ON "par
 CREATE TRIGGER partner_lifecycle_cases_append_only BEFORE UPDATE OR DELETE ON "partner_lifecycle_cases" FOR EACH ROW EXECUTE FUNCTION partner_forbid_history_mutation();
 CREATE TRIGGER partner_discount_versions_append_only BEFORE UPDATE OR DELETE ON "partner_discount_versions" FOR EACH ROW EXECUTE FUNCTION partner_forbid_history_mutation();
 CREATE TRIGGER partner_price_audit_append_only BEFORE UPDATE OR DELETE ON "partner_price_audit" FOR EACH ROW EXECUTE FUNCTION partner_forbid_history_mutation();
+
+-- Public applications may precede account signup: the applicant User is linked (by verified, normalized email) at approval.
+ALTER TABLE "partner_applications" ALTER COLUMN "user_id" DROP NOT NULL;
