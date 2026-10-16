@@ -8872,3 +8872,735 @@ model PlatformAlert {
   @@index([state, metric])
   @@map("platform_alerts")
 }
+
+// ---------------------------------------------------------------------------------------------
+// 31-Subscription-Billing (TrueCRM SaaS billing; separate from CRM customer invoices and Commerce)
+// ---------------------------------------------------------------------------------------------
+model BillingPlan {
+  id        String   @id @default(uuid()) @db.Uuid
+  code      String   @unique
+  name      String
+  status    String   @default("ACTIVE")
+  createdBy String   @map("created_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("billing_plans")
+}
+
+model BillingPlanVersion {
+  id          String    @id @default(uuid()) @db.Uuid
+  planId      String    @map("plan_id") @db.Uuid
+  version     Int
+  status      String    @default("DRAFT")
+  sellable    Boolean   @default(true)
+  trialDays   Int?      @map("trial_days")
+  publishedAt DateTime? @map("published_at") @db.Timestamptz(6)
+  retiredAt   DateTime? @map("retired_at") @db.Timestamptz(6)
+  createdBy   String    @map("created_by") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([planId, version])
+  @@index([status])
+  @@map("billing_plan_versions")
+}
+
+model BillingPrice {
+  id               String   @id @default(uuid()) @db.Uuid
+  planVersionId    String   @map("plan_version_id") @db.Uuid
+  currency         String
+  amount           Decimal  @db.Decimal(20, 4)
+  period           String
+  effectiveAt      DateTime @map("effective_at") @db.Timestamptz(6)
+  providerPriceRef String?  @map("provider_price_ref")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([planVersionId, currency, period, effectiveAt])
+  @@map("billing_prices")
+}
+
+model BillingEntitlementDefinition {
+  id           String   @id @default(uuid()) @db.Uuid
+  code         String   @unique
+  valueType    String   @map("value_type")
+  defaultValue Json     @map("default_value")
+  quotaKind    String   @default("NONE") @map("quota_kind")
+  minValue     Decimal? @map("min_value") @db.Decimal(24, 6)
+  maxValue     Decimal? @map("max_value") @db.Decimal(24, 6)
+  description  String   @default("")
+
+  @@map("billing_entitlement_definitions")
+}
+
+model BillingPlanEntitlement {
+  id           String @id @default(uuid()) @db.Uuid
+  versionId    String @map("version_id") @db.Uuid
+  definitionId String @map("definition_id") @db.Uuid
+  value        Json
+
+  @@unique([versionId, definitionId])
+  @@map("billing_plan_entitlements")
+}
+
+model BillingEntitlementOverride {
+  id           String    @id @default(uuid()) @db.Uuid
+  workspaceId  String    @map("workspace_id") @db.Uuid
+  definitionId String    @map("definition_id") @db.Uuid
+  value        Json
+  reason       String
+  expiresAt    DateTime  @map("expires_at") @db.Timestamptz(6)
+  approvalId   String?   @map("approval_id") @db.Uuid
+  createdBy    String    @map("created_by") @db.Uuid
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  revokedAt    DateTime? @map("revoked_at") @db.Timestamptz(6)
+  revokedBy    String?   @map("revoked_by") @db.Uuid
+
+  @@index([workspaceId, expiresAt])
+  @@map("billing_entitlement_overrides")
+}
+
+/// Derived projection read by `resolvePrincipal`; rebuilt from subscription + plan + overrides.
+model BillingEffectiveEntitlement {
+  workspaceId          String   @id @map("workspace_id") @db.Uuid
+  values               Json
+  sourceSubscriptionId String?  @map("source_subscription_id") @db.Uuid
+  version              Int      @default(1)
+  computedAt           DateTime @default(now()) @map("computed_at") @db.Timestamptz(6)
+
+  @@map("billing_effective_entitlements")
+}
+
+model BillingEntitlementHistory {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  version     Int
+  values      Json
+  cause       String
+  occurredAt  DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, occurredAt])
+  @@map("billing_entitlement_history")
+}
+
+model BillingAccount {
+  id               String   @id @default(uuid()) @db.Uuid
+  workspaceId      String   @map("workspace_id") @db.Uuid
+  payerType        String   @map("payer_type")
+  payerCustomerRef String?  @map("payer_customer_ref")
+  partnerId        String?  @map("partner_id") @db.Uuid
+  legalIdentity    Json     @map("legal_identity_snapshot")
+  billingCurrency  String   @map("billing_currency")
+  billingTimezone  String   @default("UTC") @map("billing_timezone")
+  taxProfile       Json     @default("{}") @map("tax_profile")
+  status           String   @default("ACTIVE")
+  version          Int      @default(1)
+  createdBy        String   @map("created_by") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId])
+  @@index([partnerId])
+  @@map("billing_accounts")
+}
+
+model BillingSubscription {
+  id                 String    @id @default(uuid()) @db.Uuid
+  workspaceId        String    @map("workspace_id") @db.Uuid
+  billingAccountId   String?   @map("billing_account_id") @db.Uuid
+  planVersionId      String    @map("plan_version_id") @db.Uuid
+  priceId            String?   @map("price_id") @db.Uuid
+  status             String
+  currentPeriodStart DateTime? @map("current_period_start") @db.Timestamptz(6)
+  currentPeriodEnd   DateTime? @map("current_period_end") @db.Timestamptz(6)
+  trialEnd           DateTime? @map("trial_end") @db.Timestamptz(6)
+  cancelAtPeriodEnd  Boolean   @default(false) @map("cancel_at_period_end")
+  cancelReason       String?   @map("cancel_reason")
+  graceUntil         DateTime? @map("grace_until") @db.Timestamptz(6)
+  renewalCount       Int       @default(0) @map("renewal_count")
+  version            Int       @default(1)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, status])
+  @@index([status, currentPeriodEnd])
+  @@map("billing_subscriptions")
+}
+
+model BillingTrial {
+  id              String    @id @default(uuid()) @db.Uuid
+  workspaceId     String    @map("workspace_id") @db.Uuid
+  fingerprintHash String    @map("identity_fingerprint_hash")
+  startedAt       DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
+  endsAt          DateTime  @map("ends_at") @db.Timestamptz(6)
+  consumedAt      DateTime? @map("consumed_at") @db.Timestamptz(6)
+  status          String    @default("ACTIVE")
+
+  @@unique([fingerprintHash])
+  @@unique([workspaceId])
+  @@map("billing_trials")
+}
+
+model BillingSubscriptionChange {
+  id                String    @id @default(uuid()) @db.Uuid
+  subscriptionId    String    @map("subscription_id") @db.Uuid
+  changeType        String    @map("change_type")
+  fromPlanVersionId String?   @map("from_plan_version_id") @db.Uuid
+  toPlanVersionId   String    @map("to_plan_version_id") @db.Uuid
+  toPriceId         String?   @map("to_price_id") @db.Uuid
+  quoteId           String?   @unique @map("quote_id") @db.Uuid
+  effectiveAt       DateTime  @map("effective_at") @db.Timestamptz(6)
+  prorationSnapshot Json      @default("{}") @map("proration_snapshot")
+  status            String
+  requestedBy       String?   @map("requested_by") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  appliedAt         DateTime? @map("applied_at") @db.Timestamptz(6)
+
+  @@index([subscriptionId, status])
+  @@index([status, effectiveAt])
+  @@map("billing_subscription_changes")
+}
+
+/// Immutable commercial quote (purchase, plan change, top-up, renewal); totals are NUMERIC snapshots.
+model BillingQuote {
+  id                 String   @id @default(uuid()) @db.Uuid
+  workspaceId        String   @map("workspace_id") @db.Uuid
+  kind               String
+  subscriptionId     String?  @map("subscription_id") @db.Uuid
+  fromPlanVersionId  String?  @map("from_plan_version_id") @db.Uuid
+  toPlanVersionId    String?  @map("to_plan_version_id") @db.Uuid
+  priceId            String?  @map("price_id") @db.Uuid
+  topupProductId     String?  @map("topup_product_id") @db.Uuid
+  payerAccountId     String   @map("payer_account_id") @db.Uuid
+  requestedTiming    String   @default("IMMEDIATE") @map("requested_timing")
+  effectiveAt        DateTime @map("effective_at") @db.Timestamptz(6)
+  subtotal           Decimal  @db.Decimal(20, 4)
+  discount           Decimal  @default(0) @db.Decimal(20, 4)
+  credits            Decimal  @default(0) @db.Decimal(20, 4)
+  tax                Decimal  @default(0) @db.Decimal(20, 4)
+  total              Decimal  @db.Decimal(20, 4)
+  currency           String
+  lines              Json
+  priceFingerprint   String   @map("price_fingerprint")
+  calculationVersion Int      @default(1) @map("calculation_version")
+  status             String   @default("QUOTED")
+  idempotencyKey     String?  @map("idempotency_key")
+  createdBy          String?  @map("created_by") @db.Uuid
+  expiresAt          DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, kind, status])
+  @@map("billing_quotes")
+}
+
+model BillingCompatibilityCheck {
+  id              String   @id @default(uuid()) @db.Uuid
+  subscriptionId  String   @map("subscription_id") @db.Uuid
+  workspaceId     String   @map("workspace_id") @db.Uuid
+  targetVersionId String   @map("target_version_id") @db.Uuid
+  status          String
+  performedAt     DateTime @default(now()) @map("performed_at") @db.Timestamptz(6)
+
+  @@index([subscriptionId])
+  @@map("billing_compatibility_checks")
+}
+
+model BillingCompatibilityFinding {
+  id           String   @id @default(uuid()) @db.Uuid
+  checkId      String   @map("check_id") @db.Uuid
+  featureCode  String   @map("feature_code")
+  currentUsage Decimal  @map("current_usage") @db.Decimal(24, 6)
+  targetLimit  Decimal? @map("target_limit") @db.Decimal(24, 6)
+  severity     String
+  actionPolicy String   @map("action_policy")
+
+  @@index([checkId])
+  @@map("billing_compatibility_findings")
+}
+
+model BillingInvoice {
+  id               String    @id @default(uuid()) @db.Uuid
+  workspaceId      String    @map("workspace_id") @db.Uuid
+  billingAccountId String    @map("billing_account_id") @db.Uuid
+  subscriptionId   String?   @map("subscription_id") @db.Uuid
+  quoteId          String?   @unique @map("quote_id") @db.Uuid
+  number           String?   @unique
+  kind             String
+  issuedAt         DateTime? @map("issued_at") @db.Timestamptz(6)
+  dueAt            DateTime? @map("due_at") @db.Timestamptz(6)
+  periodStart      DateTime? @map("period_start") @db.Timestamptz(6)
+  periodEnd        DateTime? @map("period_end") @db.Timestamptz(6)
+  currency         String
+  subtotal         Decimal   @db.Decimal(20, 4)
+  discount         Decimal   @default(0) @db.Decimal(20, 4)
+  tax              Decimal   @default(0) @db.Decimal(20, 4)
+  total            Decimal   @db.Decimal(20, 4)
+  paid             Decimal   @default(0) @db.Decimal(20, 4)
+  refunded         Decimal   @default(0) @db.Decimal(20, 4)
+  status           String    @default("DRAFT")
+  legalOwner       Json      @default("{}") @map("legal_owner")
+  version          Int       @default(1)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, status])
+  @@index([billingAccountId])
+  @@index([subscriptionId, kind])
+  @@map("billing_invoices")
+}
+
+model BillingInvoiceLine {
+  id                  String  @id @default(uuid()) @db.Uuid
+  invoiceId           String  @map("invoice_id") @db.Uuid
+  description         String
+  quantity            Decimal @db.Decimal(24, 6)
+  unitPrice           Decimal @map("unit_price") @db.Decimal(20, 4)
+  discountBasisPoints Int     @default(0) @map("discount_basis_points")
+  discountAmount      Decimal @default(0) @map("discount_amount") @db.Decimal(20, 4)
+  tax                 Decimal @default(0) @db.Decimal(20, 4)
+  subtotal            Decimal @db.Decimal(20, 4)
+  kind                String
+
+  @@index([invoiceId])
+  @@map("billing_invoice_lines")
+}
+
+model BillingProviderEvent {
+  id              String    @id @default(uuid()) @db.Uuid
+  provider        String
+  providerEventId String    @map("provider_event_id")
+  payloadDigest   String    @map("payload_digest")
+  signatureState  String    @map("signature_state")
+  kind            String?
+  transactionRef  String?   @map("transaction_ref")
+  result          String?
+  receivedAt      DateTime  @default(now()) @map("received_at") @db.Timestamptz(6)
+  processedAt     DateTime? @map("processed_at") @db.Timestamptz(6)
+
+  @@unique([provider, providerEventId])
+  @@index([provider, receivedAt])
+  @@map("billing_provider_events")
+}
+
+model BillingPaymentAttempt {
+  id             String   @id @default(uuid()) @db.Uuid
+  workspaceId    String   @map("workspace_id") @db.Uuid
+  invoiceId      String   @map("invoice_id") @db.Uuid
+  provider       String
+  idempotencyKey String   @map("idempotency_key")
+  requestHash    String   @map("request_hash")
+  amount         Decimal  @db.Decimal(20, 4)
+  currency       String
+  transactionRef String?  @map("transaction_ref")
+  checkoutUrl    String?  @map("checkout_url")
+  status         String   @default("CREATED")
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([workspaceId, idempotencyKey])
+  @@index([provider, transactionRef])
+  @@index([status, createdAt])
+  @@map("billing_payment_attempts")
+}
+
+model BillingPayment {
+  id                    String   @id @default(uuid()) @db.Uuid
+  workspaceId           String   @map("workspace_id") @db.Uuid
+  invoiceId             String   @map("invoice_id") @db.Uuid
+  attemptId             String?  @map("attempt_id") @db.Uuid
+  provider              String
+  providerTransactionId String   @map("provider_transaction_id")
+  amount                Decimal  @db.Decimal(20, 4)
+  currency              String
+  status                String
+  occurredAt            DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  @@unique([provider, providerTransactionId])
+  @@index([invoiceId])
+  @@index([occurredAt])
+  @@map("billing_payments")
+}
+
+model BillingRefund {
+  id                String    @id @default(uuid()) @db.Uuid
+  workspaceId       String    @map("workspace_id") @db.Uuid
+  paymentId         String    @map("payment_id") @db.Uuid
+  amount            Decimal   @db.Decimal(20, 4)
+  currency          String
+  reason            String
+  status            String    @default("PENDING")
+  providerRefundRef String?   @map("provider_refund_ref")
+  idempotencyKey    String    @unique @map("idempotency_key")
+  requestHash       String    @map("request_hash")
+  approvalId        String?   @map("approval_id") @db.Uuid
+  requestedBy       String    @map("requested_by") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  completedAt       DateTime? @map("completed_at") @db.Timestamptz(6)
+
+  @@index([paymentId])
+  @@index([createdAt])
+  @@map("billing_refunds")
+}
+
+model BillingUsageMeter {
+  id              String   @id @default(uuid()) @db.Uuid
+  workspaceId     String   @map("workspace_id") @db.Uuid
+  entitlementCode String   @map("entitlement_code")
+  windowStart     DateTime @map("window_start") @db.Timestamptz(6)
+  windowEnd       DateTime @map("window_end") @db.Timestamptz(6)
+  limitValue      Decimal? @map("limit_value") @db.Decimal(24, 6)
+  spent           Decimal  @default(0) @db.Decimal(24, 6)
+  reserved        Decimal  @default(0) @db.Decimal(24, 6)
+  overage         Decimal  @default(0) @db.Decimal(24, 6)
+  version         Int      @default(1)
+
+  @@unique([workspaceId, entitlementCode, windowStart])
+  @@map("billing_usage_meters")
+}
+
+model BillingUsageReservation {
+  id                  String    @id @default(uuid()) @db.Uuid
+  workspaceId         String    @map("workspace_id") @db.Uuid
+  meterId             String    @map("meter_id") @db.Uuid
+  operationKey        String    @map("operation_key")
+  sourceModule        String    @map("source_module")
+  estimate            Decimal   @db.Decimal(24, 6)
+  overageUnits        Decimal   @default(0) @map("overage_units") @db.Decimal(24, 6)
+  actual              Decimal?  @db.Decimal(24, 6)
+  status              String    @default("RESERVED")
+  creditReservationId String?   @map("credit_reservation_id") @db.Uuid
+  expiresAt           DateTime  @map("expires_at") @db.Timestamptz(6)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  finishedAt          DateTime? @map("finished_at") @db.Timestamptz(6)
+
+  @@unique([workspaceId, meterId, operationKey])
+  @@index([status, expiresAt])
+  @@map("billing_usage_reservations")
+}
+
+model BillingUsageEvent {
+  id            String   @id @default(uuid()) @db.Uuid
+  workspaceId   String   @map("workspace_id") @db.Uuid
+  meterId       String   @map("meter_id") @db.Uuid
+  reservationId String?  @map("reservation_id") @db.Uuid
+  eventKey      String   @unique @map("event_key")
+  quantity      Decimal  @db.Decimal(24, 6)
+  sourceModule  String   @map("source_module")
+  sourceRef     String   @map("source_ref")
+  occurredAt    DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, occurredAt])
+  @@map("billing_usage_events")
+}
+
+model BillingOveragePolicy {
+  id                   String   @id @default(uuid()) @db.Uuid
+  workspaceId          String   @map("workspace_id") @db.Uuid
+  code                 String
+  enabled              Boolean  @default(false)
+  rate                 Decimal  @db.Decimal(20, 6)
+  currency             String
+  hardCap              Decimal  @map("hard_cap") @db.Decimal(24, 6)
+  acceptedPriceVersion String   @map("accepted_price_version")
+  acceptanceRef        String   @map("acceptance_ref")
+  acceptedBy           String   @map("accepted_by") @db.Uuid
+  version              Int      @default(1)
+  updatedAt            DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([workspaceId, code])
+  @@map("billing_overage_policies")
+}
+
+model BillingOverageRate {
+  id        String   @id @default(uuid()) @db.Uuid
+  code      String
+  version   String
+  rate      Decimal  @db.Decimal(20, 6)
+  currency  String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([code, version, currency])
+  @@map("billing_overage_rates")
+}
+
+model BillingCreditAccount {
+  id            String   @id @default(uuid()) @db.Uuid
+  workspaceId   String   @map("workspace_id") @db.Uuid
+  creditType    String   @map("credit_type")
+  unit          String   @default("CREDIT")
+  policyVersion Int      @default(1) @map("policy_version")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([workspaceId, creditType])
+  @@map("billing_credit_accounts")
+}
+
+model BillingCreditGrant {
+  id                String    @id @default(uuid()) @db.Uuid
+  accountId         String    @map("account_id") @db.Uuid
+  source            String
+  sourceRef         String    @map("source_ref")
+  initialUnits      Decimal   @map("initial_units") @db.Decimal(24, 6)
+  remainingUnits    Decimal   @map("remaining_units") @db.Decimal(24, 6)
+  heldUnits         Decimal   @default(0) @map("held_units") @db.Decimal(24, 6)
+  status            String    @default("ACTIVE")
+  eligibleScenarios Json      @default("[]") @map("eligible_scenarios")
+  grantedAt         DateTime  @default(now()) @map("granted_at") @db.Timestamptz(6)
+  expiresAt         DateTime? @map("expires_at") @db.Timestamptz(6)
+
+  @@unique([accountId, sourceRef])
+  @@index([accountId, status, expiresAt])
+  @@map("billing_credit_grants")
+}
+
+model BillingCreditLedgerEntry {
+  id            String   @id @default(uuid()) @db.Uuid
+  accountId     String   @map("account_id") @db.Uuid
+  grantId       String?  @map("grant_id") @db.Uuid
+  eventKey      String   @unique @map("event_key")
+  entryType     String   @map("entry_type")
+  quantity      Decimal  @db.Decimal(24, 6)
+  relatedRunRef String?  @map("related_run_ref")
+  reason        String?
+  occurredAt    DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  @@index([accountId, occurredAt])
+  @@map("billing_credit_ledger_entries")
+}
+
+model BillingCreditReservation {
+  id            String   @id @default(uuid()) @db.Uuid
+  accountId     String   @map("account_id") @db.Uuid
+  workspaceId   String   @map("workspace_id") @db.Uuid
+  runId         String   @map("run_id")
+  operationKey  String   @map("operation_key")
+  scenario      String
+  allocations   Json
+  reservedUnits Decimal  @map("reserved_units") @db.Decimal(24, 6)
+  consumedUnits Decimal? @map("consumed_units") @db.Decimal(24, 6)
+  status        String   @default("RESERVED")
+  expiresAt     DateTime @map("expires_at") @db.Timestamptz(6)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([accountId, operationKey])
+  @@index([status, expiresAt])
+  @@map("billing_credit_reservations")
+}
+
+model BillingTopupProduct {
+  id            String   @id @default(uuid()) @db.Uuid
+  code          String   @unique
+  name          String
+  creditType    String   @default("AI") @map("credit_type")
+  units         Decimal  @db.Decimal(24, 6)
+  price         Decimal  @db.Decimal(20, 4)
+  currency      String
+  expiresInDays Int?     @map("expires_in_days")
+  active        Boolean  @default(true)
+  version       Int      @default(1)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("billing_topup_products")
+}
+
+model BillingRecoveryCase {
+  id                String    @id @default(uuid()) @db.Uuid
+  subscriptionId    String    @map("subscription_id") @db.Uuid
+  workspaceId       String    @map("workspace_id") @db.Uuid
+  invoiceId         String?   @map("invoice_id") @db.Uuid
+  failureReasonCode String    @map("failure_reason_code")
+  startedAt         DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
+  graceUntil        DateTime  @map("grace_until") @db.Timestamptz(6)
+  status            String    @default("OPEN")
+  attempts          Int       @default(0)
+  resolvedAt        DateTime? @map("resolved_at") @db.Timestamptz(6)
+
+  @@index([status, graceUntil])
+  @@index([subscriptionId])
+  @@map("billing_recovery_cases")
+}
+
+model BillingDunningAction {
+  id             String   @id @default(uuid()) @db.Uuid
+  caseId         String   @map("case_id") @db.Uuid
+  kind           String
+  scheduledAt    DateTime @map("scheduled_at") @db.Timestamptz(6)
+  channel        String
+  deliveryState  String   @default("SCHEDULED") @map("delivery_state")
+  providerRef    String?  @map("provider_ref")
+  idempotencyKey String   @unique @map("idempotency_key")
+
+  @@index([deliveryState, scheduledAt])
+  @@map("billing_dunning_actions")
+}
+
+model BillingServiceContinuity {
+  id                 String   @id @default(uuid()) @db.Uuid
+  workspaceId        String   @map("workspace_id") @db.Uuid
+  feature            String
+  existingReadPolicy String   @map("existing_read_policy")
+  newWritePolicy     String   @map("new_write_policy")
+  effectiveAt        DateTime @map("effective_at") @db.Timestamptz(6)
+
+  @@unique([workspaceId, feature])
+  @@map("billing_service_continuity")
+}
+
+model BillingPartnerPriceSnapshot {
+  id                  String   @id @default(uuid()) @db.Uuid
+  quoteId             String   @unique @map("quote_id") @db.Uuid
+  partnerId           String   @map("partner_id") @db.Uuid
+  partnerRelationId   String   @map("partner_relation_id") @db.Uuid
+  ruleId              String?  @map("rule_id")
+  ruleVersion         Int      @map("rule_version")
+  basePrice           Decimal  @map("base_price") @db.Decimal(20, 4)
+  discountBasisPoints Int      @map("discount_basis_points")
+  discountAmount      Decimal  @map("discount_amount") @db.Decimal(20, 4)
+  finalAmount         Decimal  @map("final_amount") @db.Decimal(20, 4)
+  currency            String
+  calculatedAt        DateTime @default(now()) @map("calculated_at") @db.Timestamptz(6)
+
+  @@index([partnerId])
+  @@map("billing_partner_price_snapshots")
+}
+
+model BillingPartnerTransaction {
+  id               String   @id @default(uuid()) @db.Uuid
+  workspaceId      String   @map("workspace_id") @db.Uuid
+  payerAccountId   String   @map("payer_account_id") @db.Uuid
+  partnerId        String?  @map("partner_id") @db.Uuid
+  invoiceId        String   @unique @map("invoice_id") @db.Uuid
+  amount           Decimal  @db.Decimal(20, 4)
+  currency         String
+  relationSnapshot Json     @map("commercial_relation_snapshot")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([partnerId, createdAt])
+  @@index([workspaceId])
+  @@map("billing_partner_transactions")
+}
+
+model BillingPartnerCreditAdjustment {
+  id              String   @id @default(uuid()) @db.Uuid
+  transactionId   String   @map("transaction_id") @db.Uuid
+  relatedRefundId String?  @unique @map("related_refund_id") @db.Uuid
+  adjustmentType  String   @map("adjustment_type")
+  amount          Decimal  @db.Decimal(20, 4)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("billing_partner_credit_adjustments")
+}
+
+model BillingPayerTransition {
+  id             String   @id @default(uuid()) @db.Uuid
+  subscriptionId String   @map("subscription_id") @db.Uuid
+  fromAccountId  String?  @map("from_account_id") @db.Uuid
+  toAccountId    String   @map("to_account_id") @db.Uuid
+  consentRef     String   @map("customer_owner_consent_ref")
+  approvalId     String   @unique @map("approval_id") @db.Uuid
+  requestedBy    String   @map("requested_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([subscriptionId])
+  @@map("billing_payer_transitions")
+}
+
+model BillingReconciliationRun {
+  id                 String    @id @default(uuid()) @db.Uuid
+  providerId         String    @map("provider_id")
+  period             String
+  runScope           String    @default("FULL") @map("run_scope")
+  cursor             String?
+  status             String    @default("QUEUED")
+  discrepanciesCount Int       @default(0) @map("discrepancies_count")
+  requestedBy        String    @map("requested_by") @db.Uuid
+  startedAt          DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
+  completedAt        DateTime? @map("completed_at") @db.Timestamptz(6)
+
+  @@unique([providerId, period, runScope])
+  @@map("billing_reconciliation_runs")
+}
+
+model BillingReconciliationFinding {
+  id               String    @id @default(uuid()) @db.Uuid
+  runId            String    @map("run_id") @db.Uuid
+  findingKey       String    @map("finding_key")
+  providerEventRef String?   @map("provider_event_ref")
+  internalRef      String?   @map("internal_ref")
+  discrepancyType  String    @map("discrepancy_type")
+  severity         String
+  status           String    @default("OPEN")
+  details          Json      @default("{}")
+  resolution       String?
+  reason           String?
+  resolvedBy       String?   @map("resolved_by") @db.Uuid
+  resolvedAt       DateTime? @map("resolved_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([runId, findingKey])
+  @@index([status])
+  @@map("billing_reconciliation_findings")
+}
+
+model BillingMrrFact {
+  id                     String   @id @default(uuid()) @db.Uuid
+  workspaceId            String   @map("workspace_id") @db.Uuid
+  subscriptionId         String   @map("subscription_id") @db.Uuid
+  period                 String
+  effectivePlanVersionId String   @map("effective_plan_version_id") @db.Uuid
+  currency               String
+  mrrLocal               Decimal  @map("mrr_local") @db.Decimal(20, 4)
+  reportingCurrency      String   @map("reporting_currency")
+  fxRateSnapshot         Decimal  @map("fx_rate_snapshot") @db.Decimal(20, 10)
+  mrrReporting           Decimal  @map("mrr_reporting") @db.Decimal(20, 4)
+  partnerIdSnapshot      String?  @map("partner_id_snapshot") @db.Uuid
+  status                 String
+  sourceEventIds         Json     @default("[]") @map("source_event_ids")
+  formulaVersion         Int      @default(1) @map("formula_version")
+  computedAt             DateTime @default(now()) @map("computed_at") @db.Timestamptz(6)
+
+  @@unique([subscriptionId, period])
+  @@index([period])
+  @@map("billing_mrr_facts")
+}
+
+model BillingFxRate {
+  id        String   @id @default(uuid()) @db.Uuid
+  period    String
+  base      String
+  quote     String
+  rate      Decimal  @db.Decimal(20, 10)
+  createdBy String   @map("created_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([period, base, quote])
+  @@map("billing_fx_rates")
+}
+
+model BillingChangeApproval {
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String?   @map("workspace_id") @db.Uuid
+  action      String
+  payload     Json
+  payloadHash String    @map("payload_hash")
+  requesterId String    @map("requester_id") @db.Uuid
+  approverId  String?   @map("approver_id") @db.Uuid
+  status      String    @default("REQUESTED")
+  reason      String
+  decisionAt  DateTime? @map("decision_at") @db.Timestamptz(6)
+  consumedAt  DateTime? @map("consumed_at") @db.Timestamptz(6)
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, status])
+  @@map("billing_change_approvals")
+}
+
+model BillingCustomerPreference {
+  workspaceId          String   @id @map("workspace_id") @db.Uuid
+  invoiceDeliveryEmail String?  @map("invoice_delivery_email")
+  currency             String?
+  taxProfileVersion    Int      @default(1) @map("tax_profile_version")
+  version              Int      @default(1)
+  updatedAt            DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("billing_customer_preferences")
+}
