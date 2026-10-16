@@ -22,6 +22,17 @@
     "platform.jobs.retry",
     "platform.ops.manage",
     "platform.ops.read",
+    "platform.partner.application.approve",
+    "platform.partner.application.review",
+    "platform.partner.attribution.review",
+    "platform.partner.commissions.manage",
+    "platform.partner.discount.manage",
+    "platform.partner.lifecycle.manage",
+    "platform.partner.payout.approve",
+    "platform.partner.payout.reconcile",
+    "platform.partner.payout.record",
+    "platform.partner.query",
+    "platform.partner.transfer.approve",
     "platform.rateLimit.manage",
     "platform.settings.manageGlobal",
     "platform.support.request",
@@ -66,7 +77,21 @@
       "billing.reconciliation.run",
       "billing.recovery.manage",
       "billing.refund.approve",
-      "platform.billing.manage"
+      "platform.billing.manage",
+      "platform.partner.commissions.manage",
+      "platform.partner.payout.approve",
+      "platform.partner.payout.reconcile",
+      "platform.partner.payout.record"
+    ],
+    "PARTNER_ADMIN": [
+      "platform.partner.application.review",
+      "platform.partner.application.approve",
+      "platform.partner.discount.manage",
+      "platform.partner.attribution.review",
+      "platform.partner.transfer.approve",
+      "platform.partner.commissions.manage",
+      "platform.partner.lifecycle.manage",
+      "platform.partner.query"
     ]
   }
 }

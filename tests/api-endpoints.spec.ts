@@ -473,9 +473,16 @@ describe('Partners', () => {
   it('POST /partners/applications/[id]/approve is limited to platform admins', async () => {
     expectError(await api('POST', '/api/v1/partners/applications/[id]/approve', { token: ws.owner.token, params: { id: ctx.application.id } }), 403);
     const admin = await register('platform', 'entertabcrm.local');
+    // Decision D3: Platform Admin authority is an explicit platform role, not an email domain.
+    expectError(await api('POST', '/api/v1/partners/applications/[id]/approve', { token: admin.token, params: { id: ctx.application.id } }), 403);
+    const { prisma } = await import('@/src/server/prisma-client');
+    await prisma.platformRoleAssignment.create({ data: { userId: admin.userId, role: 'PLATFORM_ADMIN', permissions: ['platform.partner.application.approve', 'platform.partner.application.review'], mfaRequired: false } });
     const approved = await api('POST', '/api/v1/partners/applications/[id]/approve', { token: admin.token, params: { id: ctx.application.id } });
     expectOk(approved);
-    expectError(await api('POST', '/api/v1/partners/applications/[id]/approve', { token: admin.token, params: { id: ctx.application.id } }), 404);
+    // Same legacy key replays the original result instead of creating a second Partner.
+    const replay = await api('POST', '/api/v1/partners/applications/[id]/approve', { token: admin.token, params: { id: ctx.application.id } });
+    expectOk(replay);
+    expect(replay.data.partnerId).toBe(approved.data.partnerId);
   });
 });
 
@@ -1829,6 +1836,8 @@ describe('Cross-cutting behaviour', () => {
     'POST /api/v1/integrations/marketing/[[...path]]',
     // Final pack: signed SaaS billing provider webhooks.
     'POST /api/v1/webhooks/billing/[provider]',
+    // Final pack: public Partner application (always 202, rate limited, non-enumerating).
+    'POST /api/v1/public/partners/applications',
   ]);
 
   it('only the allow-listed public endpoints exist without a bearer token', async () => {

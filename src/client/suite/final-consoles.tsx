@@ -176,3 +176,59 @@ const billingAdmin: Section[] = [
 ];
 
 export const BillingConsole = () => <Console product="Billing" storageKey="suite-billing-session" sections={[...billing, ...billingAdmin]} />;
+
+/** Partner portal (Partner membership scope) + customer-side Partner controls + platform Partner administration. */
+const partnerPortal: Section[] = [
+  { title: 'My Partner organizations', list: { label: 'My Partners', path: '/partners/me', contextKey: 'partnerId' }, actions: [
+    { label: 'Apply to become a Partner', method: 'POST', path: '/public/partners/applications', fields: [{ name: 'firstName', required: true }, { name: 'lastName', required: true }, { name: 'email', required: true }, { name: 'phone', required: true, placeholder: '+201001234567' }, { name: 'partnerName', required: true }, { name: 'country', required: true, placeholder: 'EG' }, { name: 'website', placeholder: 'https://…' }, { name: 'businessDescription', type: 'textarea', required: true }, { name: 'termsAccepted', type: 'checkbox', required: true }, { name: 'privacyAccepted', type: 'checkbox', required: true }] },
+    { label: 'My applications', method: 'GET', path: '/partners/applications/me' },
+    { label: 'Accept invitation', method: 'POST', path: '/partners/invitations/accept', fields: [{ name: 'token', required: true }] },
+    { label: 'Dashboard', method: 'GET', path: '/partners/:partnerId/dashboard', query: [{ name: 'period', placeholder: '2026-10' }, { name: 'currency' }] },
+  ] },
+  { title: 'Team', actions: [
+    { label: 'Members', method: 'GET', path: '/partners/:partnerId/members', query: [{ name: 'search' }, { name: 'status', type: 'select', options: ['ACTIVE', 'SUSPENDED', 'REMOVED'] }] },
+    { label: 'Invite member', method: 'POST', path: '/partners/:partnerId/members/invitations', fields: [{ name: 'email', required: true }, { name: 'roleId', required: true }] },
+    { label: 'Change member', method: 'PATCH', path: '/partners/:partnerId/members/:memberId', fields: [ver, { name: 'roleId' }, { name: 'status', type: 'select', options: ['ACTIVE', 'SUSPENDED', 'REMOVED'] }], danger: true },
+    { label: 'Roles', method: 'GET', path: '/partners/:partnerId/roles' },
+    { label: 'Create custom role', method: 'POST', path: '/partners/:partnerId/roles', fields: [{ name: 'name', required: true }, { name: 'permissions', type: 'json', required: true, placeholder: '[{"code":"partner.workspace.read","scope":"OWN_RELATIONSHIPS"}]' }] },
+  ] },
+  { title: 'Customers', actions: [
+    { label: 'Customer workspaces', method: 'GET', path: '/partners/:partnerId/customer-workspaces', query: [{ name: 'search' }, { name: 'status', type: 'select', options: ['ACTIVE', 'ENDED'] }] },
+    { label: 'Provision customer workspace', method: 'POST', path: '/partners/:partnerId/customer-workspaces', fields: [{ name: 'customerUserId', required: true }, { name: 'workspaceName', required: true }, { name: 'idempotencyKey', required: true }], describe: 'The customer becomes the Workspace owner.' },
+    { label: 'Link existing workspace', method: 'POST', path: '/partners/:partnerId/workspaces/:workspaceId/relationship', fields: [{ name: 'customerOwnerConsentRef', required: true }] },
+    { label: 'End relationship', method: 'POST', path: '/partners/:partnerId/workspaces/:workspaceId/relationship/end', fields: [reason, { name: 'approvalRef', required: true }], danger: true },
+    { label: 'Request delegated access', method: 'POST', path: '/partners/:partnerId/access-requests', fields: [{ name: 'workspaceId', required: true }, { name: 'requestedPermissions', type: 'json', required: true, placeholder: '["crm.contact.read"]' }, { name: 'expiresAt', type: 'datetime', required: true }, reason] },
+    { label: 'My delegations', method: 'GET', path: '/partners/:partnerId/delegations' },
+    { label: 'Discounts', method: 'GET', path: '/partners/:partnerId/discounts' },
+  ] },
+  { title: 'Referrals & earnings', actions: [
+    { label: 'Create referral link', method: 'POST', path: '/partners/:partnerId/referral-links', fields: [{ name: 'campaignLabel', required: true }, { name: 'windowDays', type: 'number', required: true, defaultValue: '30' }] },
+    { label: 'Referral stats', method: 'GET', path: '/partners/:partnerId/referrals' },
+    { label: 'Commissions', method: 'GET', path: '/partners/:partnerId/commissions', query: [{ name: 'status' }, { name: 'period' }] },
+    { label: 'Request payout', method: 'POST', path: '/partners/:partnerId/payout-requests', fields: [{ name: 'commissionIds', type: 'json', required: true }, { name: 'idempotencyKey', required: true }] },
+    { label: 'Payouts', method: 'GET', path: '/partners/:partnerId/payouts' },
+    { label: 'Export report', method: 'POST', path: '/partners/:partnerId/reports/export', fields: [{ name: 'period', required: true }, { name: 'fields', type: 'json', placeholder: '["eligibleRevenue","commissionAccrued","payouts"]' }] },
+    { label: 'Download report', method: 'GET', path: '/partners/:partnerId/reports/:jobId/download' },
+  ] },
+  { title: 'Customer: Partner access (workspace)', actions: [
+    { label: 'Partner access grants', method: 'GET', path: '/workspaces/:workspaceId/partner-access' },
+    { label: 'Approve access', method: 'POST', path: '/workspaces/:workspaceId/partner-access/:grantId/approve', fields: [{ name: 'permissions', type: 'json', required: true }, { name: 'expiresAt', type: 'datetime', required: true }, ver] },
+    { label: 'Revoke access', method: 'POST', path: '/workspaces/:workspaceId/partner-access/:grantId/revoke', fields: [reason], danger: true },
+    { label: 'Request Partner transfer', method: 'POST', path: '/workspaces/:workspaceId/partner-transfer-requests', fields: [{ name: 'toPartnerId', required: true }, reason] },
+  ] },
+  { title: 'Platform: Partners', list: { label: 'Applications', path: '/platform/partner-applications', contextKey: 'applicationId' }, actions: [
+    { label: 'Approve application', method: 'POST', path: '/platform/partner-applications/:applicationId/approve', fields: [ver, { name: 'idempotencyKey', required: true }] },
+    { label: 'Reject application', method: 'POST', path: '/platform/partner-applications/:applicationId/reject', fields: [reason, ver], danger: true },
+    { label: 'Partners', method: 'GET', path: '/platform/partners', query: [{ name: 'search' }, { name: 'status', type: 'select', options: ['ACTIVE', 'SUSPENDED'] }, { name: 'country' }] },
+    { label: 'Add discount rule', method: 'POST', path: '/platform/partners/:partnerId/discount-rules', fields: [{ name: 'targetType', type: 'select', options: ['DEFAULT', 'CATEGORY', 'PRODUCT'], required: true }, { name: 'targetId' }, { name: 'basisPoints', type: 'number', required: true }, { name: 'validFrom', type: 'datetime', required: true }, { name: 'validUntil', type: 'datetime' }] },
+    { label: 'Suspend Partner', method: 'POST', path: '/platform/partners/:partnerId/suspend', fields: [reason, ver], danger: true },
+    { label: 'Reactivate Partner', method: 'POST', path: '/platform/partners/:partnerId/reactivate', fields: [reason] },
+    { label: 'Approve transfer', method: 'POST', path: '/platform/partner-transfers/:transferId/approve', fields: [{ name: 'decision', type: 'select', options: ['APPROVED', 'REJECTED'] }, reason] },
+    { label: 'Commission policy', method: 'POST', path: '/platform/partner-commission-policies', fields: [{ name: 'partnerId' }, { name: 'productCategory', type: 'select', options: ['SUBSCRIPTION', 'CREDITS', 'OTHER'], required: true }, { name: 'method', type: 'select', options: ['PERCENT', 'FIXED'], required: true }, { name: 'rate', type: 'number', required: true }, { name: 'currency', required: true }, { name: 'effectiveAt', type: 'datetime', required: true }] },
+    { label: 'Payout queue', method: 'GET', path: '/platform/partner-payouts', query: [{ name: 'status' }] },
+    { label: 'Approve payout', method: 'POST', path: '/platform/partner-payouts/:payoutId/approve', fields: [{ name: 'expectedAmount', required: true }, reason], danger: true },
+    { label: 'Record payment', method: 'POST', path: '/platform/partner-payouts/:payoutId/record-payment', fields: [{ name: 'externalReference', required: true }, { name: 'paidAt', type: 'datetime', required: true }, { name: 'amount', required: true }, { name: 'currency', required: true }], danger: true },
+  ] },
+];
+
+export const PartnerConsole = () => <Console product="Partner Program" storageKey="suite-partner-session" sections={partnerPortal} />;

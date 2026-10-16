@@ -6,6 +6,9 @@
   "search.admin",
   "search.confidential",
   "search.global",
+  "workspace.partner.transfer.request",
+  "workspace.partnerAccess.approve",
+  "workspace.partnerAccess.revoke",
   "workspace.settings.manage",
   "workspace.support.approve"
 ]

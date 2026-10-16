@@ -68,7 +68,12 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 - [x] 08 Payouts, finance approval, reconciliation — `partners/finance-service.ts` (locked claims + one-active-claim index, hold period, SoD approval w/ amount recheck, evidence-matched manual payment, failure keeps liability, reconciliation)
 - [x] 09 Suspension, deletion, restore, retention — `partners/governance-service.ts` (suspend revokes referral/discount/delegated authority w/o touching customer Workspaces, soft delete/restore, step-up purge = anonymization gated by legal holds + open obligations)
 - [x] 10 Partner portal dashboard, admin search, reports — `partners/governance-service.ts` (ledger-sourced scoped metrics, allowlisted admin query, sealed expiring exports re-authorized on download)
-- [~] Migration `202610190001_partner_program` (extends legacy partner tables, backfills, one-active-relation partial index, append-only triggers) written; services next
+- [x] Migration `202610190001_partner_program` (extends legacy partner tables + backfill, `partner_applications.user_id` nullable, one-active-relation partial index, append-only triggers)
+- [x] Routes `src/server/partners/routes.ts` → `public/partners/applications`, `partners/{me,applications/me,invitations/accept,[id]/[[...path]]}`, `platform/{partner-applications,partners,partner-payouts,partner-commission-policies,partner-commissions,partner-transfers}`, `workspaces/[id]/{partner-access,partner-transfer-requests}`, `internal/partners`; legacy `partners/applications/[id]/approve` now delegates to the platform-role-gated service (D3)
+- [x] Permissions: workspace `workspace.partnerAccess.*`, `workspace.partner.transfer.request`; platform bundle `PARTNER_ADMIN`; payout/commission grants in `BILLING_FINANCE`
+- [x] Jobs: `partner.maintenance` (expire grants/exports), `partner.report.export`; consumer `partner.commissions`
+- [x] Console `app/partners/page.tsx`
+- [x] `tests/api-endpoints.spec.ts` Partner approval case updated for D3 (platform role fixture; replay instead of 404) — NOT RUN
 
 ### 28-Knowledge-Base
 - [ ] 01 Spaces & hierarchy
@@ -105,6 +110,9 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 - D4 Audit append-only enforced by DB trigger; only FK `SET NULL` from owner hard-deletes may touch rows.
 - D5 No MFA provider exists in the repo: high-risk platform actions (break-glass, restore tests) require dual approval and fail closed with DEPENDENCY_UNAVAILABLE until `PLATFORM_MFA_VERIFIER` is configured.
 - D6 Existing `suite_retention_policies`/`suite_legal_holds` (Pack 1) stay module-scoped; platform-wide jurisdiction policies live in `platform_retention_policies`; legal holds are reused (added authority/release columns).
+- D7 Billing never auto-charges stored cards: no hosted payment-method setup capability exists in the repo adapters, so renewals issue invoices paid through hosted checkout; dunning is reminder-only (no duplicate charge risk). `/billing/payment-method/change` fails closed (503).
+- D8 Public Partner applications may precede signup (creating a User here would block the Auth signup flow): `partner_applications.user_id` is nullable; the applicant is linked by verified normalized email at approval, which requires an ACTIVE verified account.
+- D9 Partner delegated access is resolved inside `resolvePrincipal` only when no Workspace membership exists (`delegatedPrincipal`), so no `workspace_memberships` row is ever created for Partner staff.
 
 ## Verification log (non-test checks only)
 - 2026-10-16 `prisma validate` OK; `tsc --noEmit` exit 0 after Platform schema
