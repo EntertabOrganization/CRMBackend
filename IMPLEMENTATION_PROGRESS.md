@@ -40,13 +40,13 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 
 ### 31-Subscription-Billing
 - [x] 01 Plan catalog, immutable versions, entitlement resolution — `src/server/billing/catalog-service.ts`, `support.ts` (projection `billing_effective_entitlements` merged in `resolvePrincipal`; DB triggers keep published versions immutable)
-- [ ] 02 Trials & subscription lifecycle, renewals
-- [ ] 03 Upgrades/downgrades, proration, compatibility checks
-- [ ] 04 Billing accounts, invoices, provider payments, webhook reconciliation
-- [ ] 05 Usage reservations, quotas, overages
-- [ ] 06 Credit ledger, top-ups, expiration
-- [ ] 07 Dunning, 15-day grace, service continuity
-- [ ] 08 Partner pricing integration, payer vs beneficiary
+- [x] 02 Trials & subscription lifecycle, renewals — `subscription-service.ts` (fingerprinted 14-day trial, purchase→verified payment activation, renewal invoices, cancel at period end, lifecycle job)
+- [x] 03 Upgrades/downgrades, proration, compatibility checks — `subscription-service.ts` (immutable change quotes w/ fingerprint staleness check, compatibility findings, scheduled downgrades)
+- [x] 04 Billing accounts, invoices, provider payments, webhook reconciliation — `payment-service.ts` (Stripe/XPay/sandbox adapters reused from commercial, verified+deduped webhooks, partial payments, dual-control refunds)
+- [x] 05 Usage reservations, quotas, overages — `usage-service.ts` (`UsageService.reserve/settle/release`, row-locked meters, accepted overage caps, expired-reservation reconciliation)
+- [x] 06 Credit ledger, top-ups, expiration — `usage-service.ts` (plan-first earliest-expiry allocation FOR UPDATE, append-only ledger, top-up invoices, expiry, reversals)
+- [x] 07 Dunning, 15-day grace, service continuity — `lifecycleTick` (PAST_DUE→GRACE, reminder-only dunning, non-destructive expiry + continuity rows, late payment restores)
+- [x] 08 Partner pricing integration, payer vs beneficiary — `partner-billing.ts` (resolver seam for Partner module, quote snapshots, partner transactions + refund adjustments, owner-approved payer transition)
 - [ ] 09 Finance reconciliation, MRR/ARR reporting
 - [ ] 10 Billing admin, finance permissions, operational safety
 - [~] Migration `202610180001_subscription_billing` + models written (schema valid); permissions, routes, billing console screen next
