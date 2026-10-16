@@ -251,7 +251,7 @@ export class SitesPublishService {
     const scripts = preview ? [] : await tx.siteScript.findMany({ where: { id: { in: manifest.scripts }, status: 'APPROVED' } });
     const servedLocale = fallback ? defaultLanguage.locale : locale;
     return { siteId: site.id, releaseId: release.id, releaseNumber: release.releaseNumber, cacheKey: `${site.id}:${release.id}:${page.path}:${servedLocale}`,
-      html: { lang: servedLocale, dir: isRtl(servedLocale) ? 'rtl' : 'ltr' }, requestedLocale: locale, translationFallback: fallback,
+      html: { lang: servedLocale, dir: isRtl(servedLocale) ? 'rtl' : 'ltr' }, requestedLocale: locale, translationFallback: fallback, cookiePolicyVersion: manifest.cookiePolicyVersion,
       seo: { title: (revision.seo as { title?: string }).title ?? null, description: (revision.seo as { metaDescription?: string }).metaDescription ?? null, canonical: `https://${baseHost}${page.path === '/' ? '' : page.path}${fallback ? '' : `?lang=${servedLocale}`}`, robots: preview || !page.indexable ? 'noindex' : manifest.seo.robotsDefault, alternates: fallback ? [] : alternates },
       navigation: manifest.navigation.filter(n => n.locale === servedLocale), blocks,
       // Optional scripts load only for consented categories; NECESSARY is core delivery.

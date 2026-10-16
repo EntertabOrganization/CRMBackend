@@ -1,6 +1,6 @@
 # EntertabCRM Backend
 
-Next.js backend for authentication, CRM, automation, catalog, commercial operations, contact center, data integration, sales intelligence, and analytics.
+Next.js backend for authentication, CRM, automation, catalog, commercial operations, contact center, data integration, sales intelligence, analytics, and the business suite (Online Store, Marketing campaigns, HR & time tracking, Sites & landing pages).
 
 ## Repository layout
 
@@ -56,3 +56,13 @@ npm run test:all
 The endpoint audit discovers route files automatically, rejects missing coverage, and requires protected routes to be exercised using valid credentials.
 
 Files use a private durable `FILE_OBJECT_ROOT` volume shared by every worker. Configure the scanner/processing provider and schedule the authenticated `upload-processing`, `upload-cleanup` and `file-object-garbage` jobs regularly. Permanent purge commits metadata removal and cleanup intents together; the garbage worker deletes bytes after the last Version reference is removed. Provider configuration, scheduler contracts and retention behavior are documented in [FILES.md](src/server/collab/files/FILES.md).
+
+## Business suite (Online Store, Marketing, HR & Time, Sites)
+
+Specifications: `docs/Logic/TrueCRM_Commerce_Marketing_HR_Sites_Codex_Pack`. Domain code: `src/server/commerce/suite`, `src/server/marketing`, `src/server/hr`, `src/server/sites`, shared kernel/providers in `src/server/suite`.
+
+- Admin consoles: `/commerce`, `/marketing`, `/hr`, `/sites` (workspace sign-in; every action calls the documented REST contract).
+- Public surfaces: storefront and customer portal at `/store/<slug>`; published sites at `/s/<path>` resolved by verified host (`?host=` for platform previews).
+- Background work runs through `SuiteWorkers` (campaign schedules and delivery, ad audience sync, repeat-sale journeys, HR access revocation and anomaly detection, scheduled site releases).
+- External providers use `env:NAME` secret references (see `.env.example`). Only deterministic SANDBOX adapters are exercised by tests; live SES/SMTP/Twilio/WhatsApp/Meta, Google Ads, TLS issuance and the AI gateway require staging credentials.
+- Contract suites: `tests/modules/TrueCRM_Commerce_Marketing_HR_Sites_Codex_Pack`, bound to the application by `tests/support/truecrm-contract-adapter.ts` against the owned database `truecrm_suite_contract_test`.
