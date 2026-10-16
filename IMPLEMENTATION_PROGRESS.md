@@ -68,7 +68,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 - [ ] 08 Payouts, finance approval, reconciliation
 - [ ] 09 Suspension, deletion, restore, retention
 - [ ] 10 Partner portal dashboard, admin search, reports
-- [ ] Migration, permissions, routes, partner portal screen
+- [~] Migration `202610190001_partner_program` (extends legacy partner tables, backfills, one-active-relation partial index, append-only triggers) written; services next
 
 ### 28-Knowledge-Base
 - [ ] 01 Spaces & hierarchy

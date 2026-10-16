@@ -2986,6 +2986,15 @@ model PartnerApplication {
   businessDescription String                   @map("business_description")
   status              PartnerApplicationStatus @default(PENDING)
   isDeleted           Boolean                  @default(false) @map("is_deleted")
+  emailNormalized     String?                  @map("email_normalized")
+  termsVersion        String?                  @map("terms_version")
+  privacyVersion      String?                  @map("privacy_version")
+  decisionBy          String?                  @map("decision_by") @db.Uuid
+  decisionReason      String?                  @map("decision_reason")
+  decidedAt           DateTime?                @map("decided_at") @db.Timestamptz(6)
+  reviewFlags         Json                     @default("[]") @map("review_flags")
+  version             Int                      @default(1)
+  createdAt           DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
   user                User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("partner_applications")
@@ -3002,6 +3011,12 @@ model Partner {
   settings            Json                       @default("{}")
   meta                Json?
   isDeleted           Boolean                    @default(false) @map("is_deleted")
+  defaultDiscountBasisPoints Int                 @default(1000) @map("default_discount_basis_points")
+  sourceApplicationId String?                    @unique @map("source_application_id") @db.Uuid
+  version             Int                        @default(1)
+  createdAt           DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  deletedAt           DateTime?                  @map("deleted_at") @db.Timestamptz(6)
+  purgedAt            DateTime?                  @map("purged_at") @db.Timestamptz(6)
   memberships         PartnerMembership[]
   relations           PartnerWorkspaceRelation[]
   auditLogs           AuditLog[]
@@ -3014,6 +3029,10 @@ model PartnerRole {
   name        String
   isOwnerRole Boolean             @default(false) @map("is_owner_role")
   isDeleted   Boolean             @default(false) @map("is_deleted")
+  partnerId   String?             @map("partner_id") @db.Uuid
+  code        String              @default("CUSTOM")
+  protected   Boolean             @default(false)
+  version     Int                 @default(1)
   memberships PartnerMembership[]
 
   @@map("partner_roles")
@@ -3026,6 +3045,8 @@ model PartnerMembership {
   partnerRoleId String           @map("partner_role_id") @db.Uuid
   status        MembershipStatus @default(ACTIVE)
   isDeleted     Boolean          @default(false) @map("is_deleted")
+  joinedAt      DateTime         @default(now()) @map("joined_at") @db.Timestamptz(6)
+  version       Int              @default(1)
   partner       Partner          @relation(fields: [partnerId], references: [id], onDelete: Cascade)
   user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   partnerRole   PartnerRole      @relation(fields: [partnerRoleId], references: [id], onDelete: Restrict)
@@ -3039,10 +3060,19 @@ model PartnerWorkspaceRelation {
   partnerId   String    @map("partner_id") @db.Uuid
   workspaceId String    @map("workspace_id") @db.Uuid
   isDeleted   Boolean   @default(false) @map("is_deleted")
+  status              String    @default("ACTIVE")
+  sourcedByReferralId String?   @map("sourced_by_referral_id") @db.Uuid
+  createdByMemberId   String?   @map("created_by_member_id") @db.Uuid
+  consentRef          String?   @map("customer_owner_consent_ref")
+  startedAt           DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
+  endedAt             DateTime? @map("ended_at") @db.Timestamptz(6)
+  endReason           String?   @map("end_reason")
+  relationVersion     Int       @default(1) @map("relation_version")
   partner     Partner   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
-  @@unique([workspaceId, isDeleted])
+  @@index([workspaceId, status])
+  @@index([partnerId, status])
   @@map("partner_workspace_relations")
 }
 
@@ -9603,4 +9633,370 @@ model BillingCustomerPreference {
   updatedAt            DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("billing_customer_preferences")
+}
+
+// ---------------------------------------------------------------------------------------------
+// 32-Partner-Program (extends the Auth pack's partners/partner_* tables; Partner membership is never Workspace membership)
+// ---------------------------------------------------------------------------------------------
+model PartnerApprovalEvent {
+  id             String   @id @default(uuid()) @db.Uuid
+  applicationId  String   @map("application_id") @db.Uuid
+  decision       String
+  actorUserId    String   @map("actor_user_id") @db.Uuid
+  idempotencyKey String   @map("idempotency_key")
+  requestHash    String   @map("request_hash")
+  partnerId      String?  @map("partner_id") @db.Uuid
+  occurredAt     DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  @@unique([applicationId, idempotencyKey])
+  @@map("partner_approval_events")
+}
+model PartnerRolePermission {
+  id             String @id @default(uuid()) @db.Uuid
+  partnerRoleId  String @map("partner_role_id") @db.Uuid
+  permissionCode String @map("permission_code")
+  scope          String @default("PARTNER_ALL")
+  effect         String @default("ALLOW")
+
+  @@unique([partnerRoleId, permissionCode])
+  @@map("partner_role_permissions")
+}
+model PartnerInvitation {
+  id         String    @id @default(uuid()) @db.Uuid
+  partnerId  String    @map("partner_id") @db.Uuid
+  emailHash  String    @map("email_hash")
+  roleId     String    @map("role_id") @db.Uuid
+  tokenHash  String    @unique @map("token_hash")
+  status     String    @default("PENDING")
+  invitedBy  String    @map("invited_by") @db.Uuid
+  acceptedBy String?   @map("accepted_by") @db.Uuid
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([partnerId, status])
+  @@map("partner_invitations")
+}
+model PartnerDiscountRule {
+  id              String    @id @default(uuid()) @db.Uuid
+  partnerId       String    @map("partner_id") @db.Uuid
+  targetType      String    @map("target_type")
+  targetId        String?   @map("target_id")
+  basisPoints     Int       @map("basis_points")
+  priorityVersion Int       @map("priority_version")
+  validFrom       DateTime  @map("valid_from") @db.Timestamptz(6)
+  validUntil      DateTime? @map("valid_until") @db.Timestamptz(6)
+  status          String    @default("ACTIVE")
+  approvedBy      String    @map("approved_by") @db.Uuid
+  version         Int       @default(1)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([partnerId, targetType, status])
+  @@map("partner_discount_rules")
+}
+model PartnerDiscountVersion {
+  id            String   @id @default(uuid()) @db.Uuid
+  partnerId     String   @map("partner_id") @db.Uuid
+  version       Int
+  rulesSnapshot Json     @map("immutable_rules_snapshot")
+  effectiveFrom DateTime @default(now()) @map("effective_from") @db.Timestamptz(6)
+
+  @@unique([partnerId, version])
+  @@map("partner_discount_versions")
+}
+model PartnerPriceAudit {
+  id          String   @id @default(uuid()) @db.Uuid
+  partnerId   String   @map("partner_id") @db.Uuid
+  action      String
+  oldRuleHash String?  @map("old_rule_hash")
+  newRuleHash String?  @map("new_rule_hash")
+  actorId     String   @map("actor_id") @db.Uuid
+  occurredAt  DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  @@index([partnerId])
+  @@map("partner_price_audit")
+}
+model PartnerWorkspaceProvisioning {
+  id                 String   @id @default(uuid()) @db.Uuid
+  partnerId          String   @map("partner_id") @db.Uuid
+  initiatingMemberId String   @map("initiating_member_id") @db.Uuid
+  customerUserId     String   @map("customer_user_id") @db.Uuid
+  workspaceName      String   @map("workspace_name")
+  workspaceId        String?  @map("workspace_id") @db.Uuid
+  idempotencyKey     String   @map("idempotency_key")
+  requestHash        String   @map("request_hash")
+  status             String   @default("PENDING")
+  errorCode          String?  @map("error_code")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([partnerId, idempotencyKey])
+  @@map("partner_workspace_provisioning")
+}
+model PartnerWorkspaceAccess {
+  id                      String    @id @default(uuid()) @db.Uuid
+  partnerId               String    @map("partner_id") @db.Uuid
+  workspaceId             String    @map("workspace_id") @db.Uuid
+  granteeUserId           String?   @map("grantee_user_id") @db.Uuid
+  grantScope              String    @default("READ_ONLY") @map("grant_scope")
+  permissionCodes         Json      @map("permission_codes")
+  status                  String    @default("REQUESTED")
+  reason                  String
+  requestedBy             String    @map("requested_by") @db.Uuid
+  grantedByCustomerUserId String?   @map("granted_by_customer_user_id") @db.Uuid
+  expiresAt               DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt               DateTime? @map("revoked_at") @db.Timestamptz(6)
+  version                 Int       @default(1)
+  createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, status])
+  @@index([partnerId, status])
+  @@map("partner_workspace_access")
+}
+model PartnerAccessEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  grantId    String   @map("grant_id") @db.Uuid
+  action     String
+  actorId    String?  @map("actor_id") @db.Uuid
+  reason     String?
+  occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  @@index([grantId])
+  @@map("partner_access_events")
+}
+model PartnerReferralLink {
+  id                    String    @id @default(uuid()) @db.Uuid
+  partnerId             String    @map("partner_id") @db.Uuid
+  codeHash              String    @unique @map("code_hash")
+  publicCode            String    @unique @map("public_code")
+  campaignLabel         String    @map("campaign_label")
+  attributionWindowDays Int       @map("attribution_window_days")
+  modelVersion          Int       @default(1) @map("model_version")
+  status                String    @default("ACTIVE")
+  createdBy             String    @map("created_by") @db.Uuid
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  revokedAt             DateTime? @map("revoked_at") @db.Timestamptz(6)
+
+  @@index([partnerId, status])
+  @@map("partner_referral_links")
+}
+model PartnerReferralTouch {
+  id           String   @id @default(uuid()) @db.Uuid
+  partnerId    String   @map("partner_id") @db.Uuid
+  codeId       String   @map("code_id") @db.Uuid
+  visitorRef   String   @map("visitor_ref")
+  consentScope String   @map("consent_scope")
+  observedAt   DateTime @default(now()) @map("observed_at") @db.Timestamptz(6)
+
+  @@index([visitorRef, observedAt])
+  @@index([partnerId, observedAt])
+  @@map("partner_referral_touches")
+}
+model PartnerReferralAttribution {
+  id            String    @id @default(uuid()) @db.Uuid
+  workspaceId   String    @map("workspace_id") @db.Uuid
+  partnerId     String    @map("partner_id") @db.Uuid
+  sourceTouchId String?   @map("source_touch_id") @db.Uuid
+  modelVersion  Int       @map("model_version")
+  effectiveAt   DateTime  @map("effective_at") @db.Timestamptz(6)
+  status        String    @default("PROPOSED")
+  disputeReason String?   @map("dispute_reason")
+  reviewedBy    String?   @map("reviewed_by") @db.Uuid
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, status])
+  @@index([partnerId, status])
+  @@map("partner_referral_attributions")
+}
+model PartnerRelationTransfer {
+  id                  String    @id @default(uuid()) @db.Uuid
+  workspaceId         String    @map("workspace_id") @db.Uuid
+  fromPartnerId       String?   @map("from_partner_id") @db.Uuid
+  toPartnerId         String    @map("to_partner_id") @db.Uuid
+  reason              String
+  requestedBy         String    @map("requested_by") @db.Uuid
+  customerOwnerConsent String?  @map("customer_owner_consent")
+  platformApprovalBy  String?   @map("platform_approval_by") @db.Uuid
+  status              String    @default("PENDING")
+  decidedAt           DateTime? @map("decided_at") @db.Timestamptz(6)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, status])
+  @@map("partner_relation_transfers")
+}
+model PartnerCommissionPolicy {
+  id              String   @id @default(uuid()) @db.Uuid
+  partnerId       String?  @map("partner_id") @db.Uuid
+  productCategory String   @map("product_category")
+  method          String
+  fixedAmount     Decimal? @map("fixed_amount") @db.Decimal(20, 4)
+  basisPoints     Int?     @map("basis_points")
+  currency        String
+  eligibilityRule Json     @default("{}") @map("eligibility_rule")
+  effectiveFrom   DateTime @map("effective_from") @db.Timestamptz(6)
+  version         Int      @default(1)
+  createdBy       String   @map("created_by") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([partnerId, productCategory, effectiveFrom])
+  @@map("partner_commission_policies")
+}
+model PartnerCommission {
+  id                   String   @id @default(uuid()) @db.Uuid
+  partnerId            String   @map("partner_id") @db.Uuid
+  workspaceId          String   @map("workspace_id") @db.Uuid
+  billingTransactionId String   @map("billing_transaction_id") @db.Uuid
+  policyId             String   @map("policy_id") @db.Uuid
+  policyVersion        Int      @map("policy_version")
+  policySnapshot       Json     @map("policy_snapshot")
+  eligibleBase         Decimal  @map("eligible_base") @db.Decimal(20, 4)
+  commissionAmount     Decimal  @map("commission_amount") @db.Decimal(20, 4)
+  reversedAmount       Decimal  @default(0) @map("reversed_amount") @db.Decimal(20, 4)
+  paidAmount           Decimal  @default(0) @map("paid_amount") @db.Decimal(20, 4)
+  currency             String
+  status               String   @default("ELIGIBLE")
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([billingTransactionId, policyId, partnerId])
+  @@index([partnerId, status])
+  @@map("partner_commissions")
+}
+model PartnerCommissionLedger {
+  id           String   @id @default(uuid()) @db.Uuid
+  commissionId String   @map("commission_id") @db.Uuid
+  eventKey     String   @unique @map("event_key")
+  type         String
+  amount       Decimal  @db.Decimal(20, 4)
+  occurredAt   DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  @@index([commissionId])
+  @@map("partner_commission_ledger")
+}
+model PartnerPayoutBatch {
+  id               String    @id @default(uuid()) @db.Uuid
+  partnerId        String    @map("partner_id") @db.Uuid
+  period           String
+  amount           Decimal   @db.Decimal(20, 4)
+  currency         String
+  status           String    @default("SUBMITTED")
+  requestedBy      String    @map("requested_by") @db.Uuid
+  approvedBy       String?   @map("approved_by") @db.Uuid
+  idempotencyKey   String    @map("idempotency_key")
+  requestHash      String    @map("request_hash")
+  paymentProvider  String?   @map("payment_provider")
+  paymentReference String?   @map("payment_reference")
+  paidAt           DateTime? @map("paid_at") @db.Timestamptz(6)
+  failureReason    String?   @map("failure_reason")
+  attempt          Int       @default(1)
+  version          Int       @default(1)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([partnerId, idempotencyKey])
+  @@unique([paymentProvider, paymentReference])
+  @@index([partnerId, status])
+  @@map("partner_payout_batches")
+}
+model PartnerPayoutItem {
+  id            String  @id @default(uuid()) @db.Uuid
+  payoutBatchId String  @map("payout_batch_id") @db.Uuid
+  commissionId  String  @map("commission_id") @db.Uuid
+  settledAmount Decimal @map("settled_amount") @db.Decimal(20, 4)
+  active        Boolean @default(true)
+
+  @@unique([commissionId, payoutBatchId])
+  @@map("partner_payout_items")
+}
+model PartnerPayoutEvent {
+  id          String   @id @default(uuid()) @db.Uuid
+  payoutId    String   @map("payout_id") @db.Uuid
+  action      String
+  actorId     String?  @map("actor_id") @db.Uuid
+  externalRef String?  @map("external_ref")
+  occurredAt  DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  @@index([payoutId])
+  @@map("partner_payout_events")
+}
+model PartnerPayoutReconciliation {
+  id          String   @id @default(uuid()) @db.Uuid
+  payoutId    String   @unique @map("payout_id") @db.Uuid
+  evidenceRef String   @map("evidence_ref")
+  status      String
+  difference  Decimal  @db.Decimal(20, 4)
+  checkedBy   String   @map("checked_by") @db.Uuid
+  checkedAt   DateTime @default(now()) @map("checked_at") @db.Timestamptz(6)
+
+  @@map("partner_payout_reconciliation")
+}
+model PartnerLifecycleCase {
+  id          String   @id @default(uuid()) @db.Uuid
+  partnerId   String   @map("partner_id") @db.Uuid
+  operation   String
+  reason      String
+  status      String   @default("APPLIED")
+  actorId     String   @map("actor_id") @db.Uuid
+  approvalRef String?  @map("approval_ref")
+  occurredAt  DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  @@index([partnerId, occurredAt])
+  @@map("partner_lifecycle_cases")
+}
+model PartnerAccessInvalidation {
+  id            String   @id @default(uuid()) @db.Uuid
+  partnerId     String   @map("partner_id") @db.Uuid
+  scope         String
+  version       Int
+  invalidatedAt DateTime @default(now()) @map("invalidated_at") @db.Timestamptz(6)
+
+  @@index([partnerId])
+  @@map("partner_access_invalidations")
+}
+model PartnerRetentionRef {
+  id          String  @id @default(uuid()) @db.Uuid
+  partnerId   String  @map("partner_id") @db.Uuid
+  legalHoldId String? @map("legal_hold_id") @db.Uuid
+  policyId    String? @map("policy_id") @db.Uuid
+
+  @@index([partnerId])
+  @@map("partner_retention_refs")
+}
+model PartnerAnalyticsFact {
+  id                String   @id @default(uuid()) @db.Uuid
+  partnerId         String   @map("partner_id") @db.Uuid
+  period            String
+  currency          String
+  workspacesReferred Int     @default(0) @map("workspaces_referred")
+  eligibleRevenue   Decimal  @default(0) @map("eligible_revenue") @db.Decimal(20, 4)
+  discounts         Decimal  @default(0) @db.Decimal(20, 4)
+  commissionAccrual Decimal  @default(0) @map("commission_accrual") @db.Decimal(20, 4)
+  payouts           Decimal  @default(0) @db.Decimal(20, 4)
+  reportingVersion  Int      @default(1) @map("reporting_version")
+  computedAt        DateTime @default(now()) @map("computed_at") @db.Timestamptz(6)
+
+  @@unique([partnerId, period, currency])
+  @@map("partner_analytics_facts")
+}
+model PartnerDashboardPreference {
+  id           String   @id @default(uuid()) @db.Uuid
+  partnerId    String   @map("partner_id") @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  savedFilters Json     @default("{}") @map("saved_filters")
+  visibility   String   @default("PRIVATE")
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([partnerId, userId])
+  @@map("partner_dashboard_preferences")
+}
+model PartnerReportExport {
+  id            String    @id @default(uuid()) @db.Uuid
+  partnerId     String    @map("partner_id") @db.Uuid
+  requesterId   String    @map("requester_id") @db.Uuid
+  scopeHash     String    @map("scope_hash")
+  request       Json
+  status        String    @default("QUEUED")
+  outputSealed  String?   @map("output_sealed")
+  expiresAt     DateTime  @map("expires_at") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([partnerId, requesterId])
+  @@map("partner_report_exports")
 }
