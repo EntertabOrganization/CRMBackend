@@ -101,7 +101,9 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 - [x] 08 External MCP & OAuth (advanced) — `ai/external-service.ts` (hashed client secrets, exact https redirects, PKCE S256 codes, rotating refresh, per-call re-resolution of grant/membership/permission/entitlement, filtered tool inventory, writes wait for in-app exact-args approval, instant revoke)
 - [x] 09 Governance, evaluation, feedback — `ai/governance-service.ts` (run-scoped redacted feedback, built-in adversarial eval suite scoring injection/tool/JSON/tenancy without storing outputs, findings lifecycle incl. scenario disable, append-only policy versions)
 - [x] 10 Domain assistance & media — `ai/domain-service.ts` (transcription via scanned-file re-check + sealed transcript, schema-validated extraction proposals applied only through legacy CRM `updateRecord` with expected version, draft-only content scenarios, images via Files scan/publish with quarantine + review)
-- [~] Migration `202610210001_ai_copilot` (32 tables, append-only usage/policy, immutable published prompts, provider catalog seed) written; services next
+- [x] Migration `202610210001_ai_copilot` (32 tables, append-only usage/policy, immutable published prompts, provider catalog seed)
+- [x] Routes `ai/routes.ts` → `app/api/v1/{ai,platform/ai,internal/ai,mcp}/[[...path]]` (public `POST /api/v1/ai/oauth/token`; MCP bearer-auth `GET /mcp/tools`, `POST /mcp/execute-tool`), `ai/permission-catalog.json` wired into `permissions.ts` + `seed-config.js`, platform `ai.providers.manage` added to PLATFORM_ADMIN bundle, AI jobs imported in `platform/register.ts`; scenario `site.copy` now requires existing `sites.ai.generate`
+- [ ] Console `app/ai/page.tsx`
 
 ### Final
 - [ ] Move `docs/.../Testing` to `tests/modules/TrueCRM_Final_Modules_Codex_Pack/` with fail-closed adapter stub (no test runs)

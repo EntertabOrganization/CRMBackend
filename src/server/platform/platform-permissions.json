@@ -1,6 +1,7 @@
 {
   "comment": "Platform-scope grants live in platform_role_assignments, never in Workspace roles. Bundles are defaults for Script/Seeding/GrantPlatformRole.js.",
   "permissions": [
+    "ai.providers.manage",
     "billing.credits.adjust",
     "billing.plan.manage",
     "billing.plan.override",
@@ -55,7 +56,8 @@
       "platform.ops.read",
       "platform.rateLimit.manage",
       "platform.settings.manageGlobal",
-      "retention.manage"
+      "retention.manage",
+      "ai.providers.manage"
     ],
     "SUPPORT_AGENT": [
       "platform.support.request",

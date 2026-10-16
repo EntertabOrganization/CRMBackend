@@ -16,3 +16,8 @@ import '../partners/governance-service';
 import '../knowledge/index-service';
 import '../knowledge/article-service';
 import '../knowledge/exchange-service';
+// AI CoPilot: run/tool/purge/evaluation/transcription/image jobs and the Billing usage completion check.
+import '../ai/run-service';
+import '../ai/conversation-service';
+import '../ai/governance-service';
+import '../ai/domain-service';

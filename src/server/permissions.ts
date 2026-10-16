@@ -4,6 +4,7 @@ import businessSuitePermissions from './suite/permission-catalog.json';
 import finalPackPermissions from './platform/permission-catalog.json';
 import billingPermissions from './billing/permission-catalog.json';
 import knowledgePermissions from './knowledge/permission-catalog.json';
+import aiPermissions from './ai/permission-catalog.json';
 
 export const PERMISSION_CATALOG = [
   ...processPackPermissions,
@@ -11,6 +12,7 @@ export const PERMISSION_CATALOG = [
   ...finalPackPermissions,
   ...billingPermissions,
   ...knowledgePermissions,
+  ...aiPermissions,
   'workspace.read',
   'workspace.create',
   'workspace.update',

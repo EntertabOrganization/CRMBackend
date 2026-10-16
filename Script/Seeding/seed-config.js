@@ -12,6 +12,7 @@ const PERMISSIONS = [
   ...require('../../src/server/platform/permission-catalog.json'),
   ...require('../../src/server/billing/permission-catalog.json'),
   ...require('../../src/server/knowledge/permission-catalog.json'),
+  ...require('../../src/server/ai/permission-catalog.json'),
   'workspace.read',
   'workspace.create',
   'workspace.update',

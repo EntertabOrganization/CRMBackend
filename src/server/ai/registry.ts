@@ -22,7 +22,7 @@ export const SCENARIOS: Record<string, Scenario> = Object.fromEntries(([
   text('task.draft', 'tasks', 'task.create', 'Draft a task title and description from the request. This is a draft; it is not created.'),
   text('mail.draft', 'mail', 'ai.scenario.execute', 'Draft a professional email. It is a draft and is never sent automatically.'),
   text('calendar.draft', 'calendar', 'ai.scenario.execute', 'Draft meeting notes or an agenda from the request.'),
-  text('site.copy', 'sites', 'sites.site.update', 'Draft website copy. Publishing requires the Sites approval flow.'),
+  text('site.copy', 'sites', 'sites.ai.generate', 'Draft website copy. Publishing requires the Sites approval flow.'),
   text('marketing.copy', 'marketing', 'marketing.campaign.read', 'Draft campaign copy. Sending requires Marketing approval; never claim it was sent.'),
   text('document.draft', 'documents', 'ai.scenario.execute', 'Draft document content in plain text sections.'),
   text('hr.assist', 'hr', 'hr.employee.read_all', 'Help with HR policy questions without exposing private employee data.', { sensitive: true, classification: 'CONFIDENTIAL' }),
