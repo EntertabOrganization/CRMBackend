@@ -39,7 +39,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 - [x] Console `app/platform/page.tsx` (`src/client/suite/final-consoles.tsx`). Limitation: console cannot send `x-mfa-assertion`, so step-up actions (break-glass, restore test) only work via API.
 
 ### 31-Subscription-Billing
-- [ ] 01 Plan catalog, immutable versions, entitlement resolution
+- [x] 01 Plan catalog, immutable versions, entitlement resolution — `src/server/billing/catalog-service.ts`, `support.ts` (projection `billing_effective_entitlements` merged in `resolvePrincipal`; DB triggers keep published versions immutable)
 - [ ] 02 Trials & subscription lifecycle, renewals
 - [ ] 03 Upgrades/downgrades, proration, compatibility checks
 - [ ] 04 Billing accounts, invoices, provider payments, webhook reconciliation
@@ -49,7 +49,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 - [ ] 08 Partner pricing integration, payer vs beneficiary
 - [ ] 09 Finance reconciliation, MRR/ARR reporting
 - [ ] 10 Billing admin, finance permissions, operational safety
-- [ ] Migration, permissions, routes, billing console screen
+- [~] Migration `202610180001_subscription_billing` + models written (schema valid); permissions, routes, billing console screen next
 
 ### 32-Partner-Program
 - [ ] 01 Public applications, verification, atomic approval
