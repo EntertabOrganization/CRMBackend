@@ -66,3 +66,14 @@ Specifications: `docs/Logic/TrueCRM_Commerce_Marketing_HR_Sites_Codex_Pack`. Dom
 - Background work runs through `SuiteWorkers` (campaign schedules and delivery, ad audience sync, repeat-sale journeys, HR access revocation and anomaly detection, scheduled site releases).
 - External providers use `env:NAME` secret references (see `.env.example`). Only deterministic SANDBOX adapters are exercised by tests; live SES/SMTP/Twilio/WhatsApp/Meta, Google Ads, TLS issuance and the AI gateway require staging credentials.
 - Contract suites: `tests/modules/TrueCRM_Commerce_Marketing_HR_Sites_Codex_Pack`, bound to the application by `tests/support/truecrm-contract-adapter.ts` against the owned database `truecrm_suite_contract_test`.
+
+## Final modules (Platform Services, Subscription Billing, Partner Program, Knowledge Base, AI CoPilot)
+
+Specifications: `docs/Logic/TrueCRM_Final_Modules_Codex_Pack`. Domain code: `src/server/platform`, `src/server/billing`, `src/server/partners`, `src/server/knowledge`, `src/server/ai`. Migrations `202610180001_subscription_billing`, `202610190001_partner_program`, `202610200001_knowledge_base`, `202610210001_ai_copilot` and `202610170001_platform_services`.
+
+- Consoles: `/platform` (platform operators and Workspace settings), `/billing`, `/partners`, `/knowledge`, `/ai`.
+- Platform-scope access is granted explicitly through `platform_role_assignments` (`node Script/Seeding/GrantPlatformRole.js`), never through Workspace roles. Sensitive platform actions require a step-up MFA assertion verified with `PLATFORM_MFA_VERIFIER_SECRET`; they fail closed when it is unset.
+- Durable jobs, consumers and schedules run on PostgreSQL leases. They are registered in `src/server/platform/register.ts` and ticked by `PlatformWorkers` from `SuiteWorkers`.
+- Service-to-service endpoints under `/api/v1/internal/{billing,knowledge,ai}` require `INTERNAL_JOB_TOKEN`. Billing provider webhooks are signature-verified at `/api/v1/webhooks/billing/:provider`. External MCP clients use OAuth (PKCE) at `/api/v1/ai/oauth/token` and call `/api/v1/mcp/*`.
+- AI usage is charged through Billing credit reservations (`ai.credits`). Provider keys are vault references (`env:NAME`) or sealed BYOK keys. The SANDBOX provider requires `AI_SANDBOX_ENABLED=true` outside production.
+- Contract suites: `tests/modules/TrueCRM_Final_Modules_Codex_Pack`. These are fail-closed (`CONTRACT_NOT_WIRED`) until bound to the application. Implementation status is in `IMPLEMENTATION_PROGRESS.md` and the outstanding test work is in `TESTING_REMAINING.md`.

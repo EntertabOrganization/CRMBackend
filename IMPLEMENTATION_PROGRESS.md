@@ -104,10 +104,12 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 - [x] Migration `202610210001_ai_copilot` (32 tables, append-only usage/policy, immutable published prompts, provider catalog seed)
 - [x] Routes `ai/routes.ts` → `app/api/v1/{ai,platform/ai,internal/ai,mcp}/[[...path]]` (public `POST /api/v1/ai/oauth/token`; MCP bearer-auth `GET /mcp/tools`, `POST /mcp/execute-tool`), `ai/permission-catalog.json` wired into `permissions.ts` + `seed-config.js`, platform `ai.providers.manage` added to PLATFORM_ADMIN bundle, AI jobs imported in `platform/register.ts`; scenario `site.copy` now requires existing `sites.ai.generate`
 - [x] Console `app/ai/page.tsx` (`AiConsole` in `src/client/suite/final-consoles.tsx`: conversations, runs & tool approvals, drafts & media, configuration, external clients, governance)
+- [!] Not implemented by design/blocked: streaming token output (runs are async + polled); speaker diarization (flag recorded as unsupported); vector embeddings (Knowledge FTS retrieval only); real provider calls need credentials (only the non-production SANDBOX adapter works without them); image/transcription require a provider adapter that implements those capabilities
 
 ### Final
-- [ ] Move `docs/.../Testing` to `tests/modules/TrueCRM_Final_Modules_Codex_Pack/` with fail-closed adapter stub (no test runs)
-- [ ] README/.env.example updates, typecheck + build evidence, update `TESTING_REMAINING.md`
+- [x] Moved `docs/.../Testing` → `tests/modules/TrueCRM_Final_Modules_Codex_Pack/` unchanged (its `_harness/repository-adapter.ts` already fails closed with `CONTRACT_NOT_WIRED`); `_harness/test-globals.d.ts` excluded from root tsconfig (clashes with Jest types); not run
+- [x] README section, `.env.example` (all new Platform/Billing/Partner/Knowledge/AI variables), `TESTING_REMAINING.md` Pack 2 rewrite, `tests/modules/README.md`
+- [ ] Final verification evidence: typecheck, prisma validate, build
 
 ## Decisions / conflicts log
 - D1 No Redis/BullMQ in repo: durable jobs/outbox dispatch run on PostgreSQL leases (`FOR UPDATE SKIP LOCKED`), matching existing workers. Redis transport is a deployment add-on, not required for correctness (spec 30/02 AC05).

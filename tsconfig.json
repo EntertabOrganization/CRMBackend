@@ -44,6 +44,7 @@
     "node_modules",
     "src/modules",
     "tests/auth-api.e2e-spec.ts",
-    "tests/auth-module.spec.ts"
+    "tests/auth-module.spec.ts",
+    "tests/modules/TrueCRM_Final_Modules_Codex_Pack/_harness/test-globals.d.ts"
   ]
 }
