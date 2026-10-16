@@ -98,7 +98,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 - [x] 05 Tool registry, approvals, business actions — `registry.ts` tools → owning Knowledge services; `run-service.ts` (deny-by-default proposals + security findings, exact args-hash approvals, HIGH_WRITE never ALWAYS, claim-once execution re-checking live permission/grant)
 - [x] 06 Async runs, retries, fallback, cancellation — `run-service.ts` (idempotent submit, durable claim, transient retry w/ backoff, approved fallback, UNKNOWN outcome never resent, best-effort cancel, retry of transient failures only)
 - [x] 07 Usage, costs, BYOK, credit consumption (via Billing) — Billing `UsageService` reserve/settle/release on `ai.credits`, append-only `ai_usage_records` w/ pricing snapshot, BYOK tracked w/o credits, budget hard cap under lock, completion check for expired reservations
-- [ ] 08 External MCP & OAuth (advanced)
+- [x] 08 External MCP & OAuth (advanced) — `ai/external-service.ts` (hashed client secrets, exact https redirects, PKCE S256 codes, rotating refresh, per-call re-resolution of grant/membership/permission/entitlement, filtered tool inventory, writes wait for in-app exact-args approval, instant revoke)
 - [ ] 09 Governance, evaluation, feedback
 - [ ] 10 Domain assistance & media
 - [~] Migration `202610210001_ai_copilot` (32 tables, append-only usage/policy, immutable published prompts, provider catalog seed) written; services next
