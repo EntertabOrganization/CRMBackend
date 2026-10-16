@@ -16,7 +16,8 @@ const GLOBAL_SCOPE = '00000000-0000-0000-0000-000000000000';
 /** Declared, schema-validated settings documents. Unknown keys are rejected (strictObject); no script-valued config. */
 const SETTING_SCHEMAS = {
   workspace: z.strictObject({ defaultLocale: locale, defaultTimezone: ianaTimezone, defaultCurrency: z.string().regex(/^[A-Z]{3}$/), dateFormat: z.enum(DATE_FORMATS),
-    weekStartsOn: z.number().int().min(0).max(6), fiscalYearStartMonth: z.number().int().min(1).max(12) }).partial(),
+    weekStartsOn: z.number().int().min(0).max(6), fiscalYearStartMonth: z.number().int().min(1).max(12),
+    jurisdiction: z.string().regex(/^[A-Z]{2}(-[A-Z0-9]{1,3})?$/) }).partial(),
   platform: z.strictObject({ defaultLocale: locale, supportedLocales: z.array(locale).min(1), defaultTimezone: ianaTimezone, maintenanceBanner: z.string().max(300).nullable(),
     trialDays: z.number().int().min(0).max(90), graceDays: z.number().int().min(0).max(90) }).partial(),
 } as const;
