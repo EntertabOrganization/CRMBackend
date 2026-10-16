@@ -60,10 +60,10 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 ### 32-Partner-Program
 - [x] 01 Public applications, verification, atomic approval — `src/server/partners/program-service.ts` (non-enumerating 202 submit, duplicate-org flags, idempotent locked approval creating Partner+roles+owner membership; applicant linked by verified email)
 - [x] 02 Partner memberships, fixed roles, scoped permissions — `program-service.ts`, `support.ts` (hashed invitations, last-owner guard, allowlisted custom roles, `partnerActor` 404 for non-members)
-- [ ] 03 Discounts & price rules (basis points)
-- [ ] 04 Customer workspace provisioning, single active relationship
+- [x] 03 Discounts & price rules (basis points) — `commercial-service.ts` (`resolveDiscount` registered as Billing's resolver; product>category>default precedence, versioned snapshots + price audit)
+- [x] 04 Customer workspace provisioning, single active relationship — `commercial-service.ts` (idempotent provisioning through legacy `createOwnedWorkspace` via `runStateUnit`, customer is owner; owner-consented link; non-destructive end)
 - [ ] 05 Delegated workspace access & revocation
-- [ ] 06 Referral codes, attribution, transfer
+- [x] 06 Referral codes, attribution, transfer — `commercial-service.ts` (hashed codes, consent-gated hashed touches, `attributeWorkspace` w/ self-referral + dispute checks, owner-consented transfer applied atomically on platform approval). Note: no signup hook calls `attributeWorkspace` yet (needs Sites/signup visitor token wiring)
 - [ ] 07 Commission accrual ledger & reversals
 - [ ] 08 Payouts, finance approval, reconciliation
 - [ ] 09 Suspension, deletion, restore, retention

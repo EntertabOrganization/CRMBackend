@@ -226,7 +226,7 @@ export class BillingFinanceService {
   // ------------------------------------------------------------------ 10 approvals, overrides, audit, preferences
   /** Change approvals (REQUESTED -> APPROVED|REJECTED|EXPIRED) bound to an exact payload hash. */
   async requestApproval(actor: { userId: string }, scope: { workspaceId: string | null }, raw: unknown, requestId: string) {
-    const input = z.strictObject({ action: z.enum(['REFUND', 'ENTITLEMENT_OVERRIDE', 'CREDIT_ADJUSTMENT', 'PAYER_TRANSITION']), payload: z.record(z.string(), z.unknown()), reason: z.string().trim().min(5).max(1000) }).parse(raw);
+    const input = z.strictObject({ action: z.enum(['REFUND', 'ENTITLEMENT_OVERRIDE', 'CREDIT_ADJUSTMENT', 'PAYER_TRANSITION', 'PARTNER_LINK']), payload: z.record(z.string(), z.unknown()), reason: z.string().trim().min(5).max(1000) }).parse(raw);
     return this.db.$transaction(async tx => {
       const row = await tx.billingChangeApproval.create({ data: { workspaceId: scope.workspaceId, action: input.action, payload: input.payload as Prisma.InputJsonValue, payloadHash: approvalHash(input.payload), requesterId: actor.userId, reason: input.reason, expiresAt: new Date(Date.now() + 72 * 3600000) } });
       await billingAudit(tx, { workspaceId: scope.workspaceId, actorId: actor.userId, actorType: scope.workspaceId ? 'USER' : 'PLATFORM', action: 'BILLING_APPROVAL_REQUESTED', resourceType: 'BillingChangeApproval', resourceId: row.id, after: { action: input.action, reason: input.reason }, requestId });
@@ -236,7 +236,7 @@ export class BillingFinanceService {
   async requestPlatformApproval(actor: PlatformPrincipal, raw: unknown, requestId: string) { requirePlatform(actor, 'platform.billing.manage'); return this.requestApproval(actor, { workspaceId: null }, raw, requestId); }
   async requestWorkspaceApproval(actor: Principal, raw: unknown, requestId: string) {
     requirePermission(actor, 'billing.account.manage');
-    const parsed = z.object({ action: z.literal('PAYER_TRANSITION') }).passthrough().parse(raw);
+    const parsed = z.object({ action: z.enum(['PAYER_TRANSITION', 'PARTNER_LINK']) }).passthrough().parse(raw);
     return this.requestApproval(actor, { workspaceId: actor.workspaceId }, parsed, requestId);
   }
   /** Platform approvals: a different platform user decides, with step-up MFA (separation of duties). */
