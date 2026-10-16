@@ -99,7 +99,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 - [x] 06 Async runs, retries, fallback, cancellation — `run-service.ts` (idempotent submit, durable claim, transient retry w/ backoff, approved fallback, UNKNOWN outcome never resent, best-effort cancel, retry of transient failures only)
 - [x] 07 Usage, costs, BYOK, credit consumption (via Billing) — Billing `UsageService` reserve/settle/release on `ai.credits`, append-only `ai_usage_records` w/ pricing snapshot, BYOK tracked w/o credits, budget hard cap under lock, completion check for expired reservations
 - [x] 08 External MCP & OAuth (advanced) — `ai/external-service.ts` (hashed client secrets, exact https redirects, PKCE S256 codes, rotating refresh, per-call re-resolution of grant/membership/permission/entitlement, filtered tool inventory, writes wait for in-app exact-args approval, instant revoke)
-- [ ] 09 Governance, evaluation, feedback
+- [x] 09 Governance, evaluation, feedback — `ai/governance-service.ts` (run-scoped redacted feedback, built-in adversarial eval suite scoring injection/tool/JSON/tenancy without storing outputs, findings lifecycle incl. scenario disable, append-only policy versions)
 - [ ] 10 Domain assistance & media
 - [~] Migration `202610210001_ai_copilot` (32 tables, append-only usage/policy, immutable published prompts, provider catalog seed) written; services next
 
