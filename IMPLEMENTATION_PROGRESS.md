@@ -11,105 +11,26 @@ Branch: `main`. Conventions to reuse: PackRouter + Next catch-all routes (`src/s
 permission catalog `src/server/suite/permission-catalog.json`, Prisma schema + new versioned migration per module,
 client kit `src/client/suite/kit.tsx` for consoles.
 
-Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNTESTED) · `[!]` blocked (reason given).
+Completed code-written entries were removed on 2026-10-16 at the user's request; deferred tests have not passed. Outstanding verification remains in `TESTING_REMAINING.md`.
+
+Status legend: `[ ]` unfinished; `[~]` in progress; `[!]` blocked or unsupported (reason given).
 
 ## Order (required by pack): 30 → 31 → 32 → 28 → 29
 
-### 0. Setup
-- [x] Pull latest `main` (contains Pack 1 + new pack `081eaa4`)
-- [x] `TESTING_REMAINING.md` written for Pack 1 and Pack 2
-- [x] Read all Shared-Contracts and record conflicts/decisions below
-- [x] Inventory existing platform pieces to reuse (outbox, audit, idempotency, rate limit, jobs, notifications, search, Partner from Auth pack)
-
 ### 30-Platform-Services
-- [x] 01 Outbox & domain event contract — `src/server/platform/events-service.ts` (dispatcher, receipts, DLQ, replay); kernel `src/server/platform/kernel.ts`; router `src/server/platform/http.ts`
-- [x] 02 Jobs, schedules, retries, dead letter — `PlatformJobService` in `events-service.ts`
-- [x] 03 Notifications, preferences, mandatory notices, delivery — `src/server/platform/notifications-service.ts` + live-access registry `access.ts`
-- [x] 04 Realtime hints & presence — `realtime-service.ts` (signed token, SSE hints w/ live ACL + auth cache version, in-process presence)
-- [x] 05 Global search, recents, favorites — `search-service.ts` + `search-sources.ts` (PostgreSQL FTS, projector consumer, reindex job)
-- [x] 06 Audit query, security events, support access grants — `governance-service.ts` (customer-approved read-only grants, dual-approved break-glass w/ step-up + review)
-- [x] 07 Platform settings, feature flags, locale, numbering sequences — `config-service.ts` (schema-validated settings docs, guarded flags + `requireFeature`, IANA/BCP47 validation, atomic `allocateNumber`)
-- [x] 08 Rate limits, idempotency records, safe caching — `governance-service.ts` (`enforceRateLimit`, policy admin, idempotency metadata, cache invalidation)
-- [x] 09 Retention policies, portability exports, privacy requests, legal holds — `privacy-service.ts` + module hooks `privacy-hooks.ts` (checkpointed resumable job, sealed 7-day export, holds via `suite_legal_holds`, `assertProductionReady`)
-- [x] 10 Health/readiness, observability, backup & restore records — `ops-service.ts` (redacting structured logger, metrics snapshot schedule + alert rules, recovery plans, step-up restore tests via external runner)
-- [x] Migration `202610170001_platform_services` + Prisma models (schema valid, typecheck OK)
-- [x] Routes `src/server/platform/routes.ts` → `app/api/v1/{platform,me,search}/[[...path]]`, `platform/realtime/stream` (SSE), `internal/numbering/next`, `health/live`, `workspaces/current/settings`, `workspaces/[id]/{support-access,privacy-requests,legal-holds,activation-readiness}`
-- [x] Permissions: workspace catalog `src/server/platform/permission-catalog.json` (in `permissions.ts` + seed); platform grants `platform-permissions.json` + `Script/Seeding/GrantPlatformRole.js`
-- [x] Workers: `src/server/platform/workers.ts` (schedules, outbox dispatch, jobs, notification delivery) ticked from `SuiteWorkers`
-- [x] Console `app/platform/page.tsx` (`src/client/suite/final-consoles.tsx`). Limitation: console cannot send `x-mfa-assertion`, so step-up actions (break-glass, restore test) only work via API.
+- [ ] Platform console MFA: `src/client/suite/final-consoles.tsx` and `kit.tsx` cannot send `x-mfa-assertion`; emergency access and restore-test actions currently require direct API calls.
 
 ### 31-Subscription-Billing
-- [x] 01 Plan catalog, immutable versions, entitlement resolution — `src/server/billing/catalog-service.ts`, `support.ts` (projection `billing_effective_entitlements` merged in `resolvePrincipal`; DB triggers keep published versions immutable)
-- [x] 02 Trials & subscription lifecycle, renewals — `subscription-service.ts` (fingerprinted 14-day trial, purchase→verified payment activation, renewal invoices, cancel at period end, lifecycle job)
-- [x] 03 Upgrades/downgrades, proration, compatibility checks — `subscription-service.ts` (immutable change quotes w/ fingerprint staleness check, compatibility findings, scheduled downgrades)
-- [x] 04 Billing accounts, invoices, provider payments, webhook reconciliation — `payment-service.ts` (Stripe/XPay/sandbox adapters reused from commercial, verified+deduped webhooks, partial payments, dual-control refunds)
-- [x] 05 Usage reservations, quotas, overages — `usage-service.ts` (`UsageService.reserve/settle/release`, row-locked meters, accepted overage caps, expired-reservation reconciliation)
-- [x] 06 Credit ledger, top-ups, expiration — `usage-service.ts` (plan-first earliest-expiry allocation FOR UPDATE, append-only ledger, top-up invoices, expiry, reversals)
-- [x] 07 Dunning, 15-day grace, service continuity — `lifecycleTick` (PAST_DUE→GRACE, reminder-only dunning, non-destructive expiry + continuity rows, late payment restores)
-- [x] 08 Partner pricing integration, payer vs beneficiary — `partner-billing.ts` (resolver seam for Partner module, quote snapshots, partner transactions + refund adjustments, owner-approved payer transition)
-- [x] 09 Finance reconciliation, MRR/ARR reporting — `finance-service.ts` (cursor-resumable reconciliation job, findings + verified repair, period MRR facts w/ FX snapshots, scoped revenue/usage reports)
-- [x] 10 Billing admin, finance permissions, operational safety — `finance-service.ts` (payload-hash approvals w/ separation of duties, step-up overrides, scoped billing audit, preferences; payment-method change fails closed: no hosted setup adapter)
-- [x] Migration `202610180001_subscription_billing` (partial unique live-subscription index, append-only ledger + published-plan immutability triggers)
-- [x] Routes `src/server/billing/routes.ts` → `app/api/v1/billing/[[...path]]`, `platform/billing/[[...path]]`, `internal/billing/[[...path]]` (service token), `webhooks/billing/[provider]` (signed)
-- [x] Permissions `src/server/billing/permission-catalog.json` (+ seed); platform grants in `platform-permissions.json` (bundle `BILLING_FINANCE`)
-- [x] Jobs: `billing.lifecycle` (5 min), `billing.usage.maintenance` (5 min), `billing.mrr.daily`, `billing.reconciliation` (registered via `platform/register.ts`)
-- [x] Integration: `resolvePrincipal` merges `billing_effective_entitlements`; quota aliases `sitesLimit`/`commerceStoreLimit`/`hrEmployeeLimit` feed Pack 1 checks
-- [x] Console `app/billing/page.tsx`
-- [!] Blocked on external setup (not code): Stripe/XPay SaaS credentials (`BILLING_STRIPE_*`, `BILLING_XPAY_*`); hosted payment-method setup flow (no adapter capability, endpoint fails closed 503); tax engine (tax is 0 on quotes until a tax policy provider exists)
+- [!] Stripe/XPay SaaS credentials remain external prerequisites (`BILLING_STRIPE_*`, `BILLING_XPAY_*`). Hosted payment-method setup also needs adapter implementation (endpoint currently fails closed with 503); tax calculation needs policy/provider integration (quote tax is currently always 0). Credentials alone do not complete these code gaps.
 
 ### 32-Partner-Program
-- [x] 01 Public applications, verification, atomic approval — `src/server/partners/program-service.ts` (non-enumerating 202 submit, duplicate-org flags, idempotent locked approval creating Partner+roles+owner membership; applicant linked by verified email)
-- [x] 02 Partner memberships, fixed roles, scoped permissions — `program-service.ts`, `support.ts` (hashed invitations, last-owner guard, allowlisted custom roles, `partnerActor` 404 for non-members)
-- [x] 03 Discounts & price rules (basis points) — `commercial-service.ts` (`resolveDiscount` registered as Billing's resolver; product>category>default precedence, versioned snapshots + price audit)
-- [x] 04 Customer workspace provisioning, single active relationship — `commercial-service.ts` (idempotent provisioning through legacy `createOwnedWorkspace` via `runStateUnit`, customer is owner; owner-consented link; non-destructive end)
-- [x] 05 Delegated workspace access & revocation — `access-service.ts` (`delegatedPrincipal` fallback in `resolvePrincipal`: Partner membership ∩ active unexpired customer grant; read-only default, no self-grant/broadening, instant revoke + cache bump, expiry sweeper)
-- [x] 06 Referral codes, attribution, transfer — `commercial-service.ts` (hashed codes, consent-gated hashed touches, `attributeWorkspace` w/ self-referral + dispute checks, owner-consented transfer applied atomically on platform approval). Note: no signup hook calls `attributeWorkspace` yet (needs Sites/signup visitor token wiring)
-- [x] 07 Commission accrual ledger & reversals — `partners/finance-service.ts` (outbox consumer on BILLING_INVOICE_PAID / BILLING_PARTNER_TRANSACTION_RECONCILED, versioned policies, unique accrual, proportional append-only reversals/adjustments)
-- [x] 08 Payouts, finance approval, reconciliation — `partners/finance-service.ts` (locked claims + one-active-claim index, hold period, SoD approval w/ amount recheck, evidence-matched manual payment, failure keeps liability, reconciliation)
-- [x] 09 Suspension, deletion, restore, retention — `partners/governance-service.ts` (suspend revokes referral/discount/delegated authority w/o touching customer Workspaces, soft delete/restore, step-up purge = anonymization gated by legal holds + open obligations)
-- [x] 10 Partner portal dashboard, admin search, reports — `partners/governance-service.ts` (ledger-sourced scoped metrics, allowlisted admin query, sealed expiring exports re-authorized on download)
-- [x] Migration `202610190001_partner_program` (extends legacy partner tables + backfill, `partner_applications.user_id` nullable, one-active-relation partial index, append-only triggers)
-- [x] Routes `src/server/partners/routes.ts` → `public/partners/applications`, `partners/{me,applications/me,invitations/accept,[id]/[[...path]]}`, `platform/{partner-applications,partners,partner-payouts,partner-commission-policies,partner-commissions,partner-transfers}`, `workspaces/[id]/{partner-access,partner-transfer-requests}`, `internal/partners`; legacy `partners/applications/[id]/approve` now delegates to the platform-role-gated service (D3)
-- [x] Permissions: workspace `workspace.partnerAccess.*`, `workspace.partner.transfer.request`; platform bundle `PARTNER_ADMIN`; payout/commission grants in `BILLING_FINANCE`
-- [x] Jobs: `partner.maintenance` (expire grants/exports), `partner.report.export`; consumer `partner.commissions`
-- [x] Console `app/partners/page.tsx`
-- [x] `tests/api-endpoints.spec.ts` Partner approval case updated for D3 (platform role fixture; replay instead of 404) — NOT RUN
+- [ ] Referral signup integration: no signup hook calls `PartnerCommercialService.attributeWorkspace` in `src/server/partners/commercial-service.ts`; Sites/signup visitor-token wiring remains unfinished.
 
 ### 28-Knowledge-Base
-- [x] 01 Spaces & hierarchy — `knowledge/space-service.ts`, `support.ts` (live ACL engine space∩article∩shares, closure paths, cycle-safe locked moves w/ ACL re-evaluation, leak-free tree)
-- [x] 02 Article editor & revisions — `knowledge/article-service.ts` (whitelisted plain-text block schema + safety scan, stable anchors, REVISION_CONFLICT on stale base, idempotent autosave, batched audit, revert=new revision, File ACL intersection)
-- [x] 03 ACL, sharing, external guests — `knowledge/access-service.ts` (ACL replace capped by grantor level, deny-wins, version+outbox+audit, member shares, hashed single-use guest tokens → signed session re-checked per read, instant revoke)
-- [x] 04 Review, publish, acknowledgement — `article-service.ts` (exact-revision approvals expiring on change, two-person rule, idempotent publish w/ safety/file/space checks, self-only idempotent acks, overdue review job)
-- [x] 05 Search, AI indexing, citations — `knowledge/index-service.ts` (platform search source + live access resolver, outbox AI indexer for current published revision only, `retrieveKnowledge` re-checks ACL/revision/space policy/classification, exact-revision citations)
-- [x] 06 Import/export, templates — `knowledge/exchange-service.ts` (MIME/extension-checked Markdown/HTML/DOCX parsers → inert blocks, preview w/ collisions, cursor-resumable row import, ACL-filtered sealed exports re-authorized at download, templates)
-- [x] 07 Archive, trash (30-day), retention, moves — `article-service.ts` (subtree recycle w/ tombstones, restore to prior status + slug collision 409, purge gated by window + legal hold, sanitized tombstone row)
-- [x] 08 Knowledge UI & analytics — `knowledge/insight-service.ts` (query-time visible favorites/recents, deduped read events, identity-free scoped analytics with documented definitions, review queue) + console `app/knowledge/page.tsx`
-- [x] Migration `202610200001_knowledge_base` (26 tables, sibling-slug index, FTS index, immutable revisions/lifecycle triggers)
-- [x] Routes `src/server/knowledge/routes.ts` → `app/api/v1/knowledge/[[...path]]`, `public/knowledge/[[...path]]` (guest accept/read), `internal/knowledge/[[...path]]` (retrieve)
-- [x] Permissions `src/server/knowledge/permission-catalog.json` (+ seed); jobs/consumers registered via `platform/register.ts`
-- [x] Console `app/knowledge/page.tsx`
 - [!] Not implemented by design/blocked: real-time collaborative co-editing (spec marks it advanced phase; Core V1 optimistic concurrency done); vector embeddings provider (FTS only, `embeddingRef` reserved); guest invitation email delivery uses the returned one-time token (no mail provider wired to Knowledge)
 
 ### 29-AI-CoPilot
-- [x] 01 Provider connections, model catalog, routing — `ai/providers.ts` (fixed-host adapters, sealed BYOK/vault refs, failure classes), `ai/config-service.ts` (versioned catalog, validated routes), `run-service.ts#eligibleCandidates` (classification/region/capability/status per candidate)
-- [x] 02 Scenarios, prompt versions, assistants — `ai/registry.ts` (server scenario registry, injection guard prompt), `config-service.ts` (sensitive opt-in needs module admin, immutable published prompts pinned per run, assistants + non-authorizing behavior roles)
-- [x] 03 Conversations, messages, retention — `ai/conversation-service.ts` (owner-only 404s, sealed bodies, no-history threads keep only run/usage evidence, idempotent sends → one run, cursor history, legal-hold-aware async purge, sealed re-authorized export)
-- [x] 04 Context builder, permission-filtered retrieval, citations — `run-service.ts#buildContext` (Knowledge via live-checked `retrieveKnowledge`, files via `readCleanFile`, CRM via access resolver; budget truncation keeps provenance; citations re-checked on read)
-- [x] 05 Tool registry, approvals, business actions — `registry.ts` tools → owning Knowledge services; `run-service.ts` (deny-by-default proposals + security findings, exact args-hash approvals, HIGH_WRITE never ALWAYS, claim-once execution re-checking live permission/grant)
-- [x] 06 Async runs, retries, fallback, cancellation — `run-service.ts` (idempotent submit, durable claim, transient retry w/ backoff, approved fallback, UNKNOWN outcome never resent, best-effort cancel, retry of transient failures only)
-- [x] 07 Usage, costs, BYOK, credit consumption (via Billing) — Billing `UsageService` reserve/settle/release on `ai.credits`, append-only `ai_usage_records` w/ pricing snapshot, BYOK tracked w/o credits, budget hard cap under lock, completion check for expired reservations
-- [x] 08 External MCP & OAuth (advanced) — `ai/external-service.ts` (hashed client secrets, exact https redirects, PKCE S256 codes, rotating refresh, per-call re-resolution of grant/membership/permission/entitlement, filtered tool inventory, writes wait for in-app exact-args approval, instant revoke)
-- [x] 09 Governance, evaluation, feedback — `ai/governance-service.ts` (run-scoped redacted feedback, built-in adversarial eval suite scoring injection/tool/JSON/tenancy without storing outputs, findings lifecycle incl. scenario disable, append-only policy versions)
-- [x] 10 Domain assistance & media — `ai/domain-service.ts` (transcription via scanned-file re-check + sealed transcript, schema-validated extraction proposals applied only through legacy CRM `updateRecord` with expected version, draft-only content scenarios, images via Files scan/publish with quarantine + review)
-- [x] Migration `202610210001_ai_copilot` (32 tables, append-only usage/policy, immutable published prompts, provider catalog seed)
-- [x] Routes `ai/routes.ts` → `app/api/v1/{ai,platform/ai,internal/ai,mcp}/[[...path]]` (public `POST /api/v1/ai/oauth/token`; MCP bearer-auth `GET /mcp/tools`, `POST /mcp/execute-tool`), `ai/permission-catalog.json` wired into `permissions.ts` + `seed-config.js`, platform `ai.providers.manage` added to PLATFORM_ADMIN bundle, AI jobs imported in `platform/register.ts`; scenario `site.copy` now requires existing `sites.ai.generate`
-- [x] Console `app/ai/page.tsx` (`AiConsole` in `src/client/suite/final-consoles.tsx`: conversations, runs & tool approvals, drafts & media, configuration, external clients, governance)
 - [!] Not implemented by design/blocked: streaming token output (runs are async + polled); speaker diarization (flag recorded as unsupported); vector embeddings (Knowledge FTS retrieval only); real provider calls need credentials (only the non-production SANDBOX adapter works without them); image/transcription require a provider adapter that implements those capabilities
-
-### Final
-- [x] Moved `docs/.../Testing` → `tests/modules/TrueCRM_Final_Modules_Codex_Pack/` unchanged (its `_harness/repository-adapter.ts` already fails closed with `CONTRACT_NOT_WIRED`); `_harness/test-globals.d.ts` excluded from root tsconfig (clashes with Jest types); not run
-- [x] README section, `.env.example` (all new Platform/Billing/Partner/Knowledge/AI variables), `TESTING_REMAINING.md` Pack 2 rewrite, `tests/modules/README.md`
-- [x] Final verification evidence (2026-10-16, working tree at this commit): `npm run typecheck` exit 0; `prisma validate` (placeholder DATABASE_URL) exit 0 "schema is valid"; `npm run build` exit 0, 87 pages, routes `/ai`, `/api/v1/{ai,platform/ai,internal/ai,mcp}/[[...path]]` built; one pre-existing warning (`@nestjs/common` file-type validator import, unrelated to this pack). **No tests run** (by user instruction) — see `TESTING_REMAINING.md`.
 
 ## Decisions / conflicts log
 - D1 No Redis/BullMQ in repo: durable jobs/outbox dispatch run on PostgreSQL leases (`FOR UPDATE SKIP LOCKED`), matching existing workers. Redis transport is a deployment add-on, not required for correctness (spec 30/02 AC05).
@@ -122,7 +43,8 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 - D8 Public Partner applications may precede signup (creating a User here would block the Auth signup flow): `partner_applications.user_id` is nullable; the applicant is linked by verified normalized email at approval, which requires an ACTIVE verified account.
 - D9 Partner delegated access is resolved inside `resolvePrincipal` only when no Workspace membership exists (`delegatedPrincipal`), so no `workspace_memberships` row is ever created for Partner staff.
 
-## Verification log (non-test checks only)
+## Verification log (non-test checks only; historical, not rerun during cleanup)
+- Historical verification evidence (2026-10-16, implementation tree before this cleanup): `npm run typecheck` exit 0; `prisma validate` (placeholder DATABASE_URL) exit 0 "schema is valid"; `npm run build` exit 0, 87 pages, routes `/ai`, `/api/v1/{ai,platform/ai,internal/ai,mcp}/[[...path]]` built; one pre-existing warning (`@nestjs/common` file-type validator import, unrelated to this pack). **No tests run** (by user instruction) — see `TESTING_REMAINING.md`.
 - 2026-10-16 `prisma validate` OK; `tsc --noEmit` exit 0 after Platform schema
 - 2026-10-16 `tsc --noEmit` exit 0 after access/notifications/realtime/search/governance services
 - 2026-10-16 `tsc --noEmit` exit 0 after Platform routes/permissions/workers/console
