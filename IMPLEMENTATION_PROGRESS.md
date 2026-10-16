@@ -49,7 +49,13 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 - [x] 08 Partner pricing integration, payer vs beneficiary — `partner-billing.ts` (resolver seam for Partner module, quote snapshots, partner transactions + refund adjustments, owner-approved payer transition)
 - [x] 09 Finance reconciliation, MRR/ARR reporting — `finance-service.ts` (cursor-resumable reconciliation job, findings + verified repair, period MRR facts w/ FX snapshots, scoped revenue/usage reports)
 - [x] 10 Billing admin, finance permissions, operational safety — `finance-service.ts` (payload-hash approvals w/ separation of duties, step-up overrides, scoped billing audit, preferences; payment-method change fails closed: no hosted setup adapter)
-- [~] Migration `202610180001_subscription_billing` + models written (schema valid); permissions, routes, billing console screen next
+- [x] Migration `202610180001_subscription_billing` (partial unique live-subscription index, append-only ledger + published-plan immutability triggers)
+- [x] Routes `src/server/billing/routes.ts` → `app/api/v1/billing/[[...path]]`, `platform/billing/[[...path]]`, `internal/billing/[[...path]]` (service token), `webhooks/billing/[provider]` (signed)
+- [x] Permissions `src/server/billing/permission-catalog.json` (+ seed); platform grants in `platform-permissions.json` (bundle `BILLING_FINANCE`)
+- [x] Jobs: `billing.lifecycle` (5 min), `billing.usage.maintenance` (5 min), `billing.mrr.daily`, `billing.reconciliation` (registered via `platform/register.ts`)
+- [x] Integration: `resolvePrincipal` merges `billing_effective_entitlements`; quota aliases `sitesLimit`/`commerceStoreLimit`/`hrEmployeeLimit` feed Pack 1 checks
+- [x] Console `app/billing/page.tsx`
+- [!] Blocked on external setup (not code): Stripe/XPay SaaS credentials (`BILLING_STRIPE_*`, `BILLING_XPAY_*`); hosted payment-method setup flow (no adapter capability, endpoint fails closed 503); tax engine (tax is 0 on quotes until a tax policy provider exists)
 
 ### 32-Partner-Program
 - [ ] 01 Public applications, verification, atomic approval

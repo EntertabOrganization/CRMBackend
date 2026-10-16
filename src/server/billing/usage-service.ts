@@ -2,6 +2,7 @@ import { Prisma, type PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { AppError } from '../errors';
 import { requirePermission, type Principal } from '../process-platform/context';
+import { registerJob, registerSchedule } from '../platform/events-service';
 import { emitEvent, notFound, pageQuery, paged, requirePlatform, requireStepUp, type PlatformPrincipal } from '../platform/kernel';
 import { createQuote, issueInvoiceForQuote, registerInvoiceEffect, consumeApproval } from './payment-service';
 import { assertServiceIdentity, billingAudit, D, effectiveEntitlements, liveSubscription, monthOf, units, ZERO, type DbClient, type Tx } from './support';
@@ -359,3 +360,9 @@ export class BillingUsageService {
     });
   }
 }
+
+registerJob({ type: 'billing.usage.maintenance', ownerModule: 'billing', maxAttempts: 3, async run() {
+  const { prisma } = await import('../prisma-client');
+  return { reservations: await reconcileExpiredReservations(prisma), credits: await expireCredits(prisma) };
+} });
+registerSchedule({ name: 'billing.usage.maintenance', ownerModule: 'billing', jobType: 'billing.usage.maintenance', intervalMinutes: 5 });

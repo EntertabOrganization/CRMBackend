@@ -94,3 +94,85 @@ const platformAdmin: Section[] = [
 ];
 
 export const PlatformConsole = () => <Console product="Platform" storageKey="suite-platform-session" sections={[...platformWorkspace, ...platformAdmin]} />;
+
+/** Workspace billing: plans, subscription lifecycle, invoices/payments, usage & credits, recovery. */
+const billing: Section[] = [
+  { title: 'Plans & subscription', actions: [
+    { label: 'Available plans', method: 'GET', path: '/billing/plans', query: [{ name: 'currency', placeholder: 'USD' }, { name: 'period', type: 'select', options: ['MONTHLY', 'YEARLY'] }] },
+    { label: 'Current subscription', method: 'GET', path: '/billing/subscriptions/current' },
+    { label: 'Effective entitlements', method: 'GET', path: '/billing/workspaces/current/entitlements' },
+    { label: 'Start 14-day trial', method: 'POST', path: '/billing/subscriptions/trial', fields: [{ name: 'planVersionId', required: true }], describe: 'No payment method needed; no automatic charge.' },
+    { label: 'Buy plan (quote + invoice)', method: 'POST', path: '/billing/subscriptions', fields: [{ name: 'planVersionId', required: true }, { name: 'priceId', required: true }, { name: 'payerAccountId', required: true }, { name: 'idempotencyKey', required: true }] },
+    { label: 'Subscription history', method: 'GET', path: '/billing/subscriptions/history' },
+    { label: 'Entitlement history', method: 'GET', path: '/billing/subscriptions/:subscriptionId/entitlement-history' },
+    { label: 'Cancel at period end', method: 'POST', path: '/billing/subscriptions/:subscriptionId/cancel', fields: [{ name: 'atPeriodEnd', type: 'checkbox', defaultValue: 'true' }, reason], danger: true },
+    { label: 'Reactivate', method: 'POST', path: '/billing/subscriptions/:subscriptionId/reactivate' },
+    { label: 'Renew now (issue invoice)', method: 'POST', path: '/billing/subscriptions/:subscriptionId/renew' },
+  ] },
+  { title: 'Plan change', actions: [
+    { label: 'Quote plan change', method: 'POST', path: '/billing/subscriptions/:subscriptionId/change-quotes', fields: [{ name: 'targetPlanVersionId', required: true }, { name: 'targetPriceId' }, { name: 'requestedTiming', type: 'select', options: ['IMMEDIATE', 'AT_RENEWAL'] }], describe: 'Shows proration and compatibility findings before you commit.' },
+    { label: 'Confirm change', method: 'POST', path: '/billing/subscriptions/:subscriptionId/change', fields: [{ name: 'quoteId', required: true }, { name: 'idempotencyKey', required: true }] },
+    { label: 'Compatibility check', method: 'GET', path: '/billing/compatibility-checks/:checkId' },
+    { label: 'Cancel scheduled change', method: 'POST', path: '/billing/subscriptions/:subscriptionId/scheduled-change/cancel', danger: true },
+  ] },
+  { title: 'Invoices & payments', list: { label: 'Invoices', path: '/billing/invoices', contextKey: 'invoiceId' }, actions: [
+    { label: 'Invoice detail', method: 'GET', path: '/billing/invoices/:invoiceId' },
+    { label: 'Billing accounts', method: 'GET', path: '/billing/accounts' },
+    { label: 'Create billing account', method: 'POST', path: '/billing/accounts', fields: [{ name: 'payerType', type: 'select', options: ['CUSTOMER', 'PARTNER'] }, { name: 'partnerId' }, { name: 'billingCurrency', required: true, defaultValue: 'USD' }, { name: 'legalIdentity', type: 'json', required: true, placeholder: '{"legalName":"Acme LLC","country":"EG"}' }] },
+    { label: 'Pay (hosted checkout)', method: 'POST', path: '/billing/payment-attempts', fields: [{ name: 'quoteId', required: true }, { name: 'providerId', type: 'select', options: ['stripe', 'xpay', 'sandbox'], required: true }, { name: 'idempotencyKey', required: true }], describe: 'Activation happens only after the provider confirms payment.' },
+    { label: 'Refresh payment status', method: 'POST', path: '/billing/payment-attempts/:attemptId/refresh' },
+    { label: 'Request payer change approval', method: 'POST', path: '/billing/approvals', fields: [{ name: 'action', defaultValue: 'PAYER_TRANSITION', required: true }, { name: 'payload', type: 'json', required: true, placeholder: '{"subscriptionId":"…","newPayerAccountId":"…"}' }, reason] },
+    { label: 'Owner: decide approval', method: 'POST', path: '/billing/approvals/:approvalId/decision', fields: [{ name: 'decision', type: 'select', options: ['APPROVED', 'REJECTED'], required: true }, reason] },
+    { label: 'Transition payer', method: 'POST', path: '/billing/accounts/transition-payer', fields: [{ name: 'subscriptionId', required: true }, { name: 'newPayerAccountId', required: true }, { name: 'customerOwnerConsentRef', required: true }, { name: 'approvalRef', required: true }], danger: true },
+    { label: 'Partner transactions', method: 'GET', path: '/billing/partner-transactions' },
+  ] },
+  { title: 'Usage & credits', actions: [
+    { label: 'Usage meters', method: 'GET', path: '/billing/usage', query: [{ name: 'meterCode' }, { name: 'period', placeholder: '2026-10' }] },
+    { label: 'Accept overage price & cap', method: 'POST', path: '/billing/overage-policies', fields: [{ name: 'code', required: true }, { name: 'acceptedLimit', required: true }, { name: 'acceptedPriceVersion', required: true }, { name: 'enabled', type: 'checkbox', defaultValue: 'true' }] },
+    { label: 'Credit balance', method: 'GET', path: '/billing/credits/balance' },
+    { label: 'Credit ledger', method: 'GET', path: '/billing/credits/ledger', query: [{ name: 'from', type: 'datetime' }, { name: 'to', type: 'datetime' }] },
+    { label: 'Top-up products', method: 'GET', path: '/billing/credits/products' },
+    { label: 'Top-up quote', method: 'POST', path: '/billing/credits/topup-quote', fields: [{ name: 'productId', required: true }, { name: 'amount', type: 'number', defaultValue: '1' }, { name: 'payerAccountId', required: true }] },
+    { label: 'Buy top-up', method: 'POST', path: '/billing/credits/topup-purchase', fields: [{ name: 'quoteId', required: true }, { name: 'payerAccountId', required: true }, { name: 'idempotencyKey', required: true }] },
+  ] },
+  { title: 'Recovery & reports', actions: [
+    { label: 'Recovery case', method: 'GET', path: '/billing/subscriptions/:subscriptionId/recovery-case' },
+    { label: 'Retry payment', method: 'POST', path: '/billing/subscriptions/:subscriptionId/retry-payment' },
+    { label: 'Revenue report', method: 'GET', path: '/billing/reports/revenue', query: [{ name: 'period', required: true, placeholder: '2026-10' }, { name: 'currency' }] },
+    { label: 'Usage report', method: 'GET', path: '/billing/reports/usage', query: [{ name: 'period', required: true, placeholder: '2026-10' }] },
+    { label: 'Billing audit', method: 'GET', path: '/billing/admin/audit', query: [{ name: 'entityId' }] },
+    { label: 'Billing preferences', method: 'GET', path: '/billing/preferences' },
+    { label: 'Update preferences', method: 'PATCH', path: '/billing/preferences', fields: [{ name: 'expectedVersion', type: 'number', required: true, defaultValue: '0' }, { name: 'invoiceDeliveryEmail' }, { name: 'currency' }] },
+  ] },
+];
+
+/** Platform billing administration (catalog, finance, reconciliation, overrides). */
+const billingAdmin: Section[] = [
+  { title: 'Catalog (platform)', list: { label: 'Plans', path: '/platform/billing/plans', contextKey: 'planId' }, actions: [
+    { label: 'Entitlement definitions', method: 'GET', path: '/platform/billing/definitions' },
+    { label: 'Create plan', method: 'POST', path: '/platform/billing/plans', fields: [{ name: 'code', required: true }, { name: 'name', required: true }] },
+    { label: 'Create plan version (draft)', method: 'POST', path: '/platform/billing/plans/:planId/versions', fields: [{ name: 'entitlements', type: 'json', required: true, placeholder: '{"sites":true,"sites.max":3,"ai":true,"ai.credits":1000}' }, { name: 'prices', type: 'json', required: true, placeholder: '[{"currency":"USD","amount":"49.00","period":"MONTHLY"}]' }, { name: 'trialDays', type: 'number' }] },
+    { label: 'Publish version (immutable)', method: 'POST', path: '/platform/billing/plan-versions/:versionId/publish', danger: true },
+    { label: 'Retire version', method: 'POST', path: '/platform/billing/plan-versions/:versionId/retire', danger: true },
+    { label: 'Create top-up product', method: 'POST', path: '/platform/billing/topup-products', fields: [{ name: 'code', required: true }, { name: 'name', required: true }, { name: 'units', required: true }, { name: 'price', required: true }, { name: 'currency', required: true }, { name: 'expiresInDays', type: 'number' }] },
+    { label: 'Publish overage rate', method: 'POST', path: '/platform/billing/overage-rates', fields: [{ name: 'code', required: true }, { name: 'version', required: true }, { name: 'rate', required: true }, { name: 'currency', required: true }] },
+  ] },
+  { title: 'Finance (platform)', actions: [
+    { label: 'Payments', method: 'GET', path: '/platform/billing/payments', query: [{ name: 'workspaceId' }] },
+    { label: 'Revenue', method: 'GET', path: '/platform/billing/revenue', query: [{ name: 'period', required: true }, { name: 'currency' }, { name: 'workspaceId' }] },
+    { label: 'Start reconciliation', method: 'POST', path: '/platform/billing/reconciliations', fields: [{ name: 'providerId', type: 'select', options: ['stripe', 'xpay', 'sandbox'], required: true }, { name: 'period', required: true, placeholder: '2026-10' }] },
+    { label: 'Reconciliation run', method: 'GET', path: '/platform/billing/reconciliations/:runId' },
+    { label: 'Findings', method: 'GET', path: '/platform/billing/reconciliations/:runId/findings' },
+    { label: 'Resolve finding', method: 'POST', path: '/platform/billing/reconciliations/findings/:findingId/resolve', fields: [{ name: 'resolution', type: 'select', options: ['INVESTIGATING', 'APPLY_VERIFIED_PAYMENT', 'NO_ACTION_REQUIRED', 'IGNORED'], required: true }, reason] },
+    { label: 'Publish FX rate', method: 'POST', path: '/platform/billing/fx-rates', fields: [{ name: 'period', required: true }, { name: 'base', required: true }, { name: 'quote', required: true }, { name: 'rate', required: true }] },
+    { label: 'Compute MRR facts', method: 'POST', path: '/platform/billing/mrr', fields: [{ name: 'period', required: true }, { name: 'reportingCurrency', required: true, defaultValue: 'USD' }] },
+    { label: 'Approvals', method: 'GET', path: '/platform/billing/approvals' },
+    { label: 'Request approval', method: 'POST', path: '/platform/billing/approvals', fields: [{ name: 'action', type: 'select', options: ['REFUND', 'ENTITLEMENT_OVERRIDE', 'CREDIT_ADJUSTMENT'], required: true }, { name: 'payload', type: 'json', required: true }, reason] },
+    { label: 'Decide approval', method: 'POST', path: '/platform/billing/approvals/:approvalId/decision', fields: [{ name: 'decision', type: 'select', options: ['APPROVED', 'REJECTED'], required: true }, reason] },
+    { label: 'Refund payment', method: 'POST', path: '/billing/refunds', fields: [{ name: 'paymentId', required: true }, { name: 'amount', required: true }, reason, { name: 'idempotencyKey', required: true }, { name: 'approvalId' }], danger: true },
+    { label: 'Entitlement override', method: 'POST', path: '/platform/billing/overrides', fields: [{ name: 'workspaceId', required: true }, { name: 'feature', required: true }, { name: 'value', type: 'json', required: true }, reason, { name: 'expiresAt', type: 'datetime', required: true }, { name: 'approvalId', required: true }], danger: true },
+    { label: 'Credit adjustment', method: 'POST', path: '/platform/billing/credits/adjust', fields: [{ name: 'workspaceId', required: true }, { name: 'kind', type: 'select', options: ['GRANT', 'REVERSE'], required: true }, { name: 'units', required: true }, { name: 'grantId' }, reason, { name: 'approvalId', required: true }], danger: true },
+  ] },
+];
+
+export const BillingConsole = () => <Console product="Billing" storageKey="suite-billing-session" sections={[...billing, ...billingAdmin]} />;

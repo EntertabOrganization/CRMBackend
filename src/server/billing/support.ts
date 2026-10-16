@@ -86,6 +86,7 @@ export const BUILTIN_DEFINITIONS: DefinitionSeed[] = [
   { code: 'ai.credits', valueType: 'DECIMAL', defaultValue: 0, quotaKind: 'CREDIT', description: 'Plan-included AI credits per period (credit-ledger backed)' },
   { code: 'api.requests.monthly', valueType: 'INTEGER', defaultValue: 0, quotaKind: 'USAGE', description: 'Public API requests per billing period' },
 ];
+const LEGACY_QUOTA_ALIASES: Record<string, string> = { 'sites.max': 'sitesLimit', 'commerce.stores.max': 'commerceStoreLimit', 'hr.employees.max': 'hrEmployeeLimit' };
 export async function ensureDefinitions(db: DbClient) {
   const count = await db.billingEntitlementDefinition.count();
   if (count >= BUILTIN_DEFINITIONS.length) return;
@@ -132,6 +133,8 @@ export async function recomputeEntitlements(tx: Tx, workspaceId: string, cause: 
     if (before[def.code] === true && values[def.code] === false) { values[def.code + 'ExpiredAt'] = new Date().toISOString(); values[def.code + 'GraceDays'] = 0; }
     else if (values[def.code] === false && before[def.code + 'ExpiredAt']) { values[def.code + 'ExpiredAt'] = before[def.code + 'ExpiredAt']; values[def.code + 'GraceDays'] = 0; }
   }
+  // Aliases for quota keys already enforced by Pack 1 modules (Sites/Commerce/HR); null = unlimited, so no alias.
+  for (const [code, alias] of Object.entries(LEGACY_QUOTA_ALIASES)) if (typeof values[code] === 'number') values[alias] = values[code];
   values.billingStatus = sub?.status ?? 'NONE';
   const saved = await tx.billingEffectiveEntitlement.upsert({ where: { workspaceId }, create: { workspaceId, values: values as Prisma.InputJsonValue, sourceSubscriptionId: sub?.id ?? null },
     update: { values: values as Prisma.InputJsonValue, sourceSubscriptionId: sub?.id ?? null, version: { increment: 1 }, computedAt: new Date() } });

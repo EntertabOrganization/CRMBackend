@@ -1,13 +1,72 @@
 {
   "comment": "Platform-scope grants live in platform_role_assignments, never in Workspace roles. Bundles are defaults for Script/Seeding/GrantPlatformRole.js.",
   "permissions": [
-    "featureflag.manage", "platform.audit.read", "platform.backup.restoreTest", "platform.breakglass.approve", "platform.breakglass.invoke",
-    "platform.cache.invalidate", "platform.events.inspect", "platform.events.replay", "platform.jobs.cancel", "platform.jobs.inspect", "platform.jobs.retry",
-    "platform.ops.manage", "platform.ops.read", "platform.rateLimit.manage", "platform.settings.manageGlobal", "platform.support.request", "retention.manage"
+    "billing.credits.adjust",
+    "billing.plan.manage",
+    "billing.plan.override",
+    "billing.reconciliation.review",
+    "billing.reconciliation.run",
+    "billing.recovery.manage",
+    "billing.refund.approve",
+    "featureflag.manage",
+    "platform.audit.read",
+    "platform.backup.restoreTest",
+    "platform.billing.manage",
+    "platform.breakglass.approve",
+    "platform.breakglass.invoke",
+    "platform.cache.invalidate",
+    "platform.events.inspect",
+    "platform.events.replay",
+    "platform.jobs.cancel",
+    "platform.jobs.inspect",
+    "platform.jobs.retry",
+    "platform.ops.manage",
+    "platform.ops.read",
+    "platform.rateLimit.manage",
+    "platform.settings.manageGlobal",
+    "platform.support.request",
+    "retention.manage"
   ],
   "bundles": {
-    "PLATFORM_ADMIN": ["featureflag.manage", "platform.audit.read", "platform.breakglass.approve", "platform.cache.invalidate", "platform.events.inspect", "platform.events.replay", "platform.jobs.cancel", "platform.jobs.inspect", "platform.jobs.retry", "platform.ops.manage", "platform.ops.read", "platform.rateLimit.manage", "platform.settings.manageGlobal", "retention.manage"],
-    "SUPPORT_AGENT": ["platform.support.request", "platform.breakglass.invoke", "platform.audit.read"],
-    "SRE": ["platform.ops.read", "platform.ops.manage", "platform.backup.restoreTest", "platform.events.inspect", "platform.jobs.inspect"]
+    "PLATFORM_ADMIN": [
+      "billing.plan.manage",
+      "featureflag.manage",
+      "platform.audit.read",
+      "platform.billing.manage",
+      "platform.breakglass.approve",
+      "platform.cache.invalidate",
+      "platform.events.inspect",
+      "platform.events.replay",
+      "platform.jobs.cancel",
+      "platform.jobs.inspect",
+      "platform.jobs.retry",
+      "platform.ops.manage",
+      "platform.ops.read",
+      "platform.rateLimit.manage",
+      "platform.settings.manageGlobal",
+      "retention.manage"
+    ],
+    "SUPPORT_AGENT": [
+      "platform.support.request",
+      "platform.breakglass.invoke",
+      "platform.audit.read"
+    ],
+    "SRE": [
+      "platform.ops.read",
+      "platform.ops.manage",
+      "platform.backup.restoreTest",
+      "platform.events.inspect",
+      "platform.jobs.inspect"
+    ],
+    "BILLING_FINANCE": [
+      "billing.credits.adjust",
+      "billing.plan.manage",
+      "billing.plan.override",
+      "billing.reconciliation.review",
+      "billing.reconciliation.run",
+      "billing.recovery.manage",
+      "billing.refund.approve",
+      "platform.billing.manage"
+    ]
   }
 }

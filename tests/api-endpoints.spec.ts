@@ -1827,6 +1827,8 @@ describe('Cross-cutting behaviour', () => {
     'POST /api/v1/integrations/payments/[[...path]]',
     'POST /api/v1/integrations/shipping/[[...path]]',
     'POST /api/v1/integrations/marketing/[[...path]]',
+    // Final pack: signed SaaS billing provider webhooks.
+    'POST /api/v1/webhooks/billing/[provider]',
   ]);
 
   it('only the allow-listed public endpoints exist without a bearer token', async () => {

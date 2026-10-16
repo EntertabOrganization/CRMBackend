@@ -1,0 +1,16 @@
+[
+  "billing.account.manage",
+  "billing.credits.purchase",
+  "billing.credits.read",
+  "billing.finance.read",
+  "billing.invoice.readWorkspace",
+  "billing.overage.manage",
+  "billing.payment.manage",
+  "billing.planChange.approve",
+  "billing.planChange.request",
+  "billing.subscription.cancel",
+  "billing.subscription.change",
+  "billing.subscription.purchase",
+  "billing.subscription.retryOwn",
+  "workspace.billing.readUsage"
+]
