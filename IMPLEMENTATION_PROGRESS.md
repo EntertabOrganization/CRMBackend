@@ -76,7 +76,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 - [x] `tests/api-endpoints.spec.ts` Partner approval case updated for D3 (platform role fixture; replay instead of 404) — NOT RUN
 
 ### 28-Knowledge-Base
-- [ ] 01 Spaces & hierarchy
+- [x] 01 Spaces & hierarchy — `knowledge/space-service.ts`, `support.ts` (live ACL engine space∩article∩shares, closure paths, cycle-safe locked moves w/ ACL re-evaluation, leak-free tree)
 - [ ] 02 Article editor & revisions
 - [ ] 03 ACL, sharing, external guests
 - [ ] 04 Review, publish, acknowledgement
