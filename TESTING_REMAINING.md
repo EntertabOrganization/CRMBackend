@@ -55,7 +55,7 @@ Order required by the pack:
 - [ ] **29-AI-CoPilot** — 10 specs + e2e. Code: `src/server/ai/*`. Use `AI_SANDBOX_ENABLED=true` with a SANDBOX connection and route; credit cases need a Billing credit grant on the test Workspace. Domain/media cases (10) need a scanned audio file and the Files scanner fixture.
 - [ ] **CrossModule** — `tests/modules/TrueCRM_Final_Modules_Codex_Pack/CrossModule/cross-module.e2e-spec.ts`
 - [ ] Apply migrations `202610170001_platform_services` through `202610210001_ai_copilot` to a disposable DB (`prisma migrate deploy` against an owned test database only), then rerun the Pack 1 suites as regression.
-- [ ] `npm run build` with the final tree, if it was not recorded as passing in `IMPLEMENTATION_PROGRESS.md`.
+- [x] `npm run build` passed on the final implementation tree (exit 0, recorded in `IMPLEMENTATION_PROGRESS.md`); rerun after test wiring.
 
 ### `tests/api-endpoints.spec.ts` changes made for Pack 2 (verify)
 - The admin fixture now also receives a `platformRoleAssignment` (Prisma) because Partner approval moved to platform roles. The legacy approve expectation is now an idempotent replay instead of a 404.

@@ -109,7 +109,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 ### Final
 - [x] Moved `docs/.../Testing` → `tests/modules/TrueCRM_Final_Modules_Codex_Pack/` unchanged (its `_harness/repository-adapter.ts` already fails closed with `CONTRACT_NOT_WIRED`); `_harness/test-globals.d.ts` excluded from root tsconfig (clashes with Jest types); not run
 - [x] README section, `.env.example` (all new Platform/Billing/Partner/Knowledge/AI variables), `TESTING_REMAINING.md` Pack 2 rewrite, `tests/modules/README.md`
-- [ ] Final verification evidence: typecheck, prisma validate, build
+- [x] Final verification evidence (2026-10-16, working tree at this commit): `npm run typecheck` exit 0; `prisma validate` (placeholder DATABASE_URL) exit 0 "schema is valid"; `npm run build` exit 0, 87 pages, routes `/ai`, `/api/v1/{ai,platform/ai,internal/ai,mcp}/[[...path]]` built; one pre-existing warning (`@nestjs/common` file-type validator import, unrelated to this pack). **No tests run** (by user instruction) — see `TESTING_REMAINING.md`.
 
 ## Decisions / conflicts log
 - D1 No Redis/BullMQ in repo: durable jobs/outbox dispatch run on PostgreSQL leases (`FOR UPDATE SKIP LOCKED`), matching existing workers. Redis transport is a deployment add-on, not required for correctness (spec 30/02 AC05).
