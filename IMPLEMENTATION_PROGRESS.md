@@ -101,7 +101,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 - [ ] 08 External MCP & OAuth (advanced)
 - [ ] 09 Governance, evaluation, feedback
 - [ ] 10 Domain assistance & media
-- [ ] Migration, permissions, routes, CoPilot screen
+- [~] Migration `202610210001_ai_copilot` (32 tables, append-only usage/policy, immutable published prompts, provider catalog seed) written; services next
 
 ### Final
 - [ ] Move `docs/.../Testing` to `tests/modules/TrueCRM_Final_Modules_Codex_Pack/` with fail-closed adapter stub (no test runs)

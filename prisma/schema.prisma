@@ -10377,3 +10377,517 @@ model KnowledgeReviewAssignment {
   @@index([workspaceId, currentState, dueAt])
   @@map("knowledge_review_assignments")
 }
+
+// ---------------------------------------------------------------------------------------------
+// 29-AI-CoPilot (Billing owns credits; AI stores usage evidence. Tools call owning domain services only.)
+// ---------------------------------------------------------------------------------------------
+model AiProvider {
+  id             String  @id @default(uuid()) @db.Uuid
+  code           String  @unique
+  name           String
+  adapterVersion Int     @default(1) @map("adapter_version")
+  active         Boolean @default(true)
+
+  @@map("ai_providers")
+}
+model AiProviderConnection {
+  id                     String    @id @default(uuid()) @db.Uuid
+  workspaceId            String?   @map("workspace_id") @db.Uuid
+  providerId             String    @map("provider_id") @db.Uuid
+  ownerScope             String    @map("owner_scope")
+  label                  String
+  vaultSecretRef         String?   @map("vault_secret_ref")
+  secretSealed           String?   @map("secret_sealed")
+  secretFingerprint      String?   @map("secret_fingerprint")
+  endpoint               String?
+  region                 String
+  status                 String    @default("UNVERIFIED")
+  allowedClassifications Json      @default("[\"PUBLIC\",\"INTERNAL\"]") @map("allowed_classifications")
+  costResponsibility     String    @map("cost_responsibility")
+  verifiedAt             DateTime? @map("verified_at") @db.Timestamptz(6)
+  lastError              String?   @map("last_error")
+  version                Int       @default(1)
+  createdBy              String    @map("created_by") @db.Uuid
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, status])
+  @@map("ai_provider_connections")
+}
+model AiModel {
+  id             String   @id @default(uuid()) @db.Uuid
+  providerId     String   @map("provider_id") @db.Uuid
+  modelKey       String   @map("model_key")
+  capabilities   Json
+  contextLimit   Int      @map("context_limit")
+  inputRate      Decimal  @map("input_rate") @db.Decimal(20, 8)
+  outputRate     Decimal  @map("output_rate") @db.Decimal(20, 8)
+  rateCurrency   String   @map("rate_currency")
+  catalogVersion Int      @default(1) @map("catalog_version")
+  regions        Json     @default("[]")
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([providerId, modelKey, catalogVersion])
+  @@map("ai_models")
+}
+model AiRoute {
+  id                     String   @id @default(uuid()) @db.Uuid
+  workspaceId            String?  @map("workspace_id") @db.Uuid
+  scenarioCode           String   @map("scenario_code")
+  priority               Int      @default(100)
+  connectionId           String   @map("provider_connection_id") @db.Uuid
+  modelId                String   @map("model_id") @db.Uuid
+  fallbackIds            Json     @default("[]") @map("fallback_rules")
+  allowedRegions         Json     @default("[]") @map("allowed_regions")
+  allowedClassifications Json     @default("[\"PUBLIC\",\"INTERNAL\"]") @map("allowed_classifications")
+  maxCost                Decimal? @map("max_cost") @db.Decimal(20, 6)
+  enabled                Boolean  @default(true)
+  version                Int      @default(1)
+  createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, scenarioCode, priority])
+  @@map("ai_routes")
+}
+model AiWorkspaceSetting {
+  workspaceId         String   @id @map("workspace_id") @db.Uuid
+  moduleEnabled       Boolean  @default(false) @map("module_enabled")
+  scenarioSettings    Json     @default("{}") @map("scenario_settings")
+  classificationRules Json     @default("{}") @map("classification_rules")
+  version             Int      @default(1)
+  updatedAt           DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("ai_workspace_settings")
+}
+model AiPromptTemplate {
+  id           String    @id @default(uuid()) @db.Uuid
+  scenarioCode String    @map("scenario_code")
+  scopeKey     String    @map("scope_key")
+  version      Int
+  content      String    @map("immutable_content")
+  contentHash  String    @map("content_hash")
+  status       String    @default("DRAFT")
+  createdBy    String    @map("created_by") @db.Uuid
+  publishedBy  String?   @map("published_by") @db.Uuid
+  publishedAt  DateTime? @map("published_at") @db.Timestamptz(6)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([scenarioCode, scopeKey, version])
+  @@map("ai_prompt_templates")
+}
+model AiBehaviorRole {
+  id                   String   @id @default(uuid()) @db.Uuid
+  workspaceId          String   @map("workspace_id") @db.Uuid
+  name                 String
+  behaviorInstructions String   @map("behavior_instructions")
+  guardrails           Json     @default("[]")
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("ai_roles")
+}
+model AiAssistant {
+  id                 String   @id @default(uuid()) @db.Uuid
+  workspaceId        String   @map("workspace_id") @db.Uuid
+  name               String
+  promptVersionId    String?  @map("prompt_version_id") @db.Uuid
+  allowedScenarios   Json     @map("allowed_scenarios")
+  allowedTools       Json     @default("[]") @map("allowed_tools")
+  retrievalProfileId String?  @map("retrieval_profile_id") @db.Uuid
+  behaviorRoleId     String?  @map("behavior_role_id") @db.Uuid
+  status             String   @default("ACTIVE")
+  version            Int      @default(1)
+  createdBy          String   @map("created_by") @db.Uuid
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, status])
+  @@map("ai_assistants")
+}
+model AiConversation {
+  id             String    @id @default(uuid()) @db.Uuid
+  workspaceId    String    @map("workspace_id") @db.Uuid
+  ownerUserId    String    @map("owner_user_id") @db.Uuid
+  assistantId    String?   @map("assistant_id") @db.Uuid
+  classification String    @default("INTERNAL")
+  retentionDays  Int?      @map("retention_days")
+  status         String    @default("ACTIVE")
+  deletionState  String?   @map("deletion_state")
+  noHistory      Boolean   @default(false) @map("no_history")
+  title          String    @default("")
+  lastMessageAt  DateTime? @map("last_message_at") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, ownerUserId, status])
+  @@map("ai_conversations")
+}
+model AiMessage {
+  id               String   @id @default(uuid()) @db.Uuid
+  conversationId   String   @map("conversation_id") @db.Uuid
+  workspaceId      String   @map("workspace_id") @db.Uuid
+  sender           String
+  bodySealed       String?  @map("body_encrypted_or_ref")
+  redactionState   String   @default("STORED") @map("redaction_state")
+  modelRunId       String?  @map("model_run_id") @db.Uuid
+  clientMessageKey String?  @map("client_message_key")
+  occurredAt       DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  @@unique([conversationId, clientMessageKey])
+  @@index([conversationId, occurredAt, id])
+  @@map("ai_messages")
+}
+model AiContextSnapshot {
+  id                     String   @id @default(uuid()) @db.Uuid
+  runId                  String   @unique @map("run_id") @db.Uuid
+  authorizedSourceHashes Json     @map("authorized_source_hashes")
+  modelRequestHash       String   @map("model_request_hash")
+  expiresAt              DateTime @map("expires_at") @db.Timestamptz(6)
+
+  @@map("ai_context_snapshots")
+}
+model AiRetrievalProfile {
+  id               String   @id @default(uuid()) @db.Uuid
+  workspaceId      String   @map("workspace_id") @db.Uuid
+  name             String
+  sourceTypes      Json     @map("source_types")
+  filterPolicy     Json     @default("{}") @map("filter_policy")
+  maxChunks        Int      @default(5) @map("max_chunks")
+  maxTokens        Int      @default(2000) @map("max_tokens")
+  citationRequired Boolean  @default(true) @map("citation_required")
+  version          Int      @default(1)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("ai_retrieval_profiles")
+}
+model AiRetrievalRun {
+  id          String   @id @default(uuid()) @db.Uuid
+  runId       String   @map("ai_run_id") @db.Uuid
+  profileId   String?  @map("profile_id") @db.Uuid
+  queryHash   String   @map("query_hash")
+  aclVersion  Int      @map("acl_version")
+  resultCount Int      @map("result_count")
+  state       String   @default("EMITTED")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([runId])
+  @@map("ai_retrieval_runs")
+}
+model AiSourceCitation {
+  id                        String   @id @default(uuid()) @db.Uuid
+  runId                     String   @map("ai_run_id") @db.Uuid
+  sourceType                String   @map("source_type")
+  sourceId                  String   @map("source_id")
+  sourceVersion             String   @map("source_version")
+  anchor                    String?
+  excerptHash               String   @map("excerpt_hash")
+  visibilitySnapshotVersion Int      @map("visibility_snapshot_version")
+  createdAt                 DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([runId])
+  @@map("ai_source_citations")
+}
+model AiToolPolicy {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  scenarioKey String   @default("*") @map("scenario_id")
+  toolCode    String   @map("tool_code")
+  roleScope   String?  @map("role_scope")
+  consentMode String   @map("consent_mode")
+  maxScope    Json     @default("{}") @map("max_scope")
+  enabled     Boolean  @default(true)
+  version     Int      @default(1)
+
+  @@unique([workspaceId, scenarioKey, toolCode])
+  @@map("ai_tool_policies")
+}
+model AiToolGrant {
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  toolCode    String    @map("tool_code")
+  scopeHash   String    @map("scope_hash")
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt   DateTime? @map("revoked_at") @db.Timestamptz(6)
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, userId, toolCode])
+  @@map("ai_tool_grants")
+}
+model AiToolCall {
+  id             String    @id @default(uuid()) @db.Uuid
+  runId          String    @map("run_id") @db.Uuid
+  workspaceId    String    @map("workspace_id") @db.Uuid
+  callIndex      Int       @map("call_index")
+  toolCode       String    @map("tool_code")
+  toolVersion    Int       @map("tool_version")
+  argumentsSealed String   @map("arguments_sealed")
+  argsHash       String    @map("validated_args_hash")
+  targetRef      String?   @map("target_ref")
+  status         String    @default("PROPOSED")
+  decisionActor  String?   @map("decision_actor") @db.Uuid
+  decisionMode   String?   @map("decision_mode")
+  grantId        String?   @map("grant_id") @db.Uuid
+  result         Json?
+  errorCode      String?   @map("error_code")
+  correlationId  String    @map("correlation_id")
+  expiresAt      DateTime  @map("expires_at") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  executedAt     DateTime? @map("executed_at") @db.Timestamptz(6)
+
+  @@unique([runId, callIndex])
+  @@index([workspaceId, status])
+  @@map("ai_tool_calls")
+}
+model AiRun {
+  id                 String    @id @default(uuid()) @db.Uuid
+  workspaceId        String    @map("workspace_id") @db.Uuid
+  requesterId        String    @map("requester_id") @db.Uuid
+  scenarioCode       String    @map("scenario_id")
+  scenarioVersion    Int       @map("scenario_version")
+  promptVersionId    String?   @map("prompt_version_id") @db.Uuid
+  assistantId        String?   @map("assistant_id") @db.Uuid
+  conversationId     String?   @map("conversation_id") @db.Uuid
+  routeId            String?   @map("route_id") @db.Uuid
+  routeVersion       Int?      @map("model_route_version")
+  status             String    @default("QUEUED")
+  classification     String    @default("INTERNAL")
+  inputHash          String    @map("input_hash")
+  inputSealed        String?   @map("input_sealed")
+  outputSealed       String?   @map("output_sealed")
+  outputValid        Boolean?  @map("output_valid")
+  idempotencyKey     String    @map("idempotency_key")
+  errorCode          String?   @map("error_code")
+  costMode           String?   @map("cost_mode")
+  usageReservationId String?   @map("usage_reservation_id") @db.Uuid
+  estimatedCredits   Decimal   @default(0) @map("estimated_credits") @db.Decimal(24, 6)
+  maxOutputTokens    Int       @default(1024) @map("max_output_tokens")
+  version            Int       @default(1)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  startedAt          DateTime? @map("started_at") @db.Timestamptz(6)
+  finishedAt         DateTime? @map("finished_at") @db.Timestamptz(6)
+  cancelRequestedAt  DateTime? @map("cancel_requested_at") @db.Timestamptz(6)
+
+  @@unique([workspaceId, requesterId, scenarioCode, idempotencyKey])
+  @@index([workspaceId, requesterId, status])
+  @@index([status, createdAt])
+  @@map("ai_runs")
+}
+model AiRunStep {
+  id                 String   @id @default(uuid()) @db.Uuid
+  runId              String   @map("run_id") @db.Uuid
+  stepKind           String   @map("step_kind")
+  attemptNo          Int      @map("attempt_no")
+  state              String
+  providerRequestId  String?  @map("provider_request_id")
+  modelId            String?  @map("model_id") @db.Uuid
+  connectionId       String?  @map("connection_id") @db.Uuid
+  region             String?
+  usageReservationId String?  @map("usage_reservation_id") @db.Uuid
+  errorCode          String?  @map("error_code")
+  occurredAt         DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  @@index([runId, attemptNo])
+  @@map("ai_run_steps")
+}
+model AiArtifact {
+  id           String   @id @default(uuid()) @db.Uuid
+  runId        String   @map("run_id") @db.Uuid
+  workspaceId  String   @map("workspace_id") @db.Uuid
+  fileId       String?  @map("file_id") @db.Uuid
+  artifactType String   @map("artifact_type")
+  mediaType    String?  @map("media_type")
+  safetyState  String   @map("safety_state")
+  reviewState  String   @default("DRAFT") @map("review_state")
+  contentSealed String? @map("content_sealed")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([runId])
+  @@map("ai_artifacts")
+}
+model AiUsageRecord {
+  id              String   @id @default(uuid()) @db.Uuid
+  workspaceId     String   @map("workspace_id") @db.Uuid
+  runId           String   @map("run_id") @db.Uuid
+  stepId          String?  @map("step_id") @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  scenarioCode    String   @map("scenario_code")
+  modelId         String   @map("model_id") @db.Uuid
+  connectionId    String   @map("provider_connection_id") @db.Uuid
+  costMode        String   @map("cost_mode")
+  inputTokens     Int      @map("input_tokens")
+  outputTokens    Int      @map("output_tokens")
+  cachedTokens    Int      @default(0) @map("cached_tokens")
+  estimated       Boolean  @default(false)
+  costAmount      Decimal  @map("cost_amount") @db.Decimal(20, 8)
+  costCurrency    String   @map("cost_currency")
+  credits         Decimal  @db.Decimal(24, 6)
+  pricingVersion  Int      @map("pricing_version")
+  billingEventKey String   @unique @map("billing_event_key")
+  occurredAt      DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, occurredAt])
+  @@map("ai_usage_records")
+}
+model AiWorkspaceBudget {
+  workspaceId     String   @id @map("workspace_id") @db.Uuid
+  currency        String
+  softAlertAmount Decimal? @map("soft_alert_amount") @db.Decimal(20, 4)
+  hardCapAmount   Decimal? @map("hard_cap_amount") @db.Decimal(20, 4)
+  resetPolicy     String   @default("MONTHLY") @map("reset_policy")
+  alertedPeriod   String?  @map("alerted_period")
+  version         Int      @default(1)
+
+  @@map("ai_workspace_budgets")
+}
+model AiExternalClient {
+  id               String   @id @default(uuid()) @db.Uuid
+  workspaceId      String   @map("workspace_id") @db.Uuid
+  name             String
+  clientType       String   @map("client_type")
+  publicClientId   String   @unique @map("public_client_id")
+  secretHash       String   @map("secret_hash")
+  redirectUris     Json     @map("redirect_uris")
+  allowedScenarios Json     @default("[]") @map("allowed_scenarios")
+  scopes           Json
+  status           String   @default("ACTIVE")
+  createdBy        String   @map("created_by") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, status])
+  @@map("ai_external_clients")
+}
+model AiExternalAuthCode {
+  id            String    @id @default(uuid()) @db.Uuid
+  clientId      String    @map("client_id") @db.Uuid
+  workspaceId   String    @map("workspace_id") @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  codeHash      String    @unique @map("code_hash")
+  codeChallenge String    @map("code_challenge")
+  redirectUri   String    @map("redirect_uri")
+  scopes        Json
+  toolIds       Json      @map("tool_ids")
+  expiresAt     DateTime  @map("expires_at") @db.Timestamptz(6)
+  usedAt        DateTime? @map("used_at") @db.Timestamptz(6)
+
+  @@map("ai_external_auth_codes")
+}
+model AiExternalGrant {
+  id                 String    @id @default(uuid()) @db.Uuid
+  workspaceId        String    @map("workspace_id") @db.Uuid
+  userId             String    @map("user_id") @db.Uuid
+  clientId           String    @map("client_id") @db.Uuid
+  scopes             Json
+  toolIds            Json      @map("tool_ids")
+  tokenFingerprint   String?   @unique @map("token_fingerprint")
+  refreshFingerprint String?   @unique @map("refresh_fingerprint")
+  accessExpiresAt    DateTime? @map("access_expires_at") @db.Timestamptz(6)
+  expiresAt          DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt          DateTime? @map("revoked_at") @db.Timestamptz(6)
+  version            Int       @default(1)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, userId])
+  @@map("ai_external_grants")
+}
+model AiExternalSession {
+  id             String    @id @default(uuid()) @db.Uuid
+  grantId        String    @map("grant_id") @db.Uuid
+  capabilityHash String    @map("capability_hash")
+  lastSeenAt     DateTime  @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+  revokedAt      DateTime? @map("revoked_at") @db.Timestamptz(6)
+
+  @@unique([grantId, capabilityHash])
+  @@map("ai_external_sessions")
+}
+model AiEvaluation {
+  id               String    @id @default(uuid()) @db.Uuid
+  workspaceId      String?   @map("workspace_id") @db.Uuid
+  scenarioCode     String    @map("scenario_id")
+  routeId          String?   @map("route_id") @db.Uuid
+  modelId          String?   @map("model_id") @db.Uuid
+  suiteId          String    @map("suite_id")
+  benchmarkVersion Int       @map("benchmark_version")
+  rubricVersion    Int       @map("rubric_version")
+  status           String    @default("QUEUED")
+  scoreJson        Json      @default("{}") @map("score_json")
+  requestedBy      String    @map("requested_by") @db.Uuid
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  finishedAt       DateTime? @map("finished_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, scenarioCode])
+  @@map("ai_evaluations")
+}
+model AiFeedback {
+  id              String   @id @default(uuid()) @db.Uuid
+  runId           String   @map("run_id") @db.Uuid
+  workspaceId     String   @map("workspace_id") @db.Uuid
+  submittedBy     String   @map("submitted_by") @db.Uuid
+  rating          Int
+  issueTags       Json     @default("[]") @map("issue_tags")
+  redactedComment String?  @map("redacted_comment")
+  occurredAt      DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  @@unique([runId, submittedBy])
+  @@map("ai_feedback")
+}
+model AiSecurityFinding {
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  runId       String?   @map("run_id") @db.Uuid
+  category    String
+  severity    String
+  status      String    @default("OPEN")
+  details     Json      @default("{}")
+  decision    String?
+  reason      String?
+  resolvedBy  String?   @map("resolved_by") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  resolvedAt  DateTime? @map("resolved_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, status])
+  @@map("ai_security_findings")
+}
+model AiPolicyVersion {
+  id                  String   @id @default(uuid()) @db.Uuid
+  scope               String
+  version             Int
+  classificationRules Json     @map("classification_rules_json")
+  activeFrom          DateTime @default(now()) @map("active_from") @db.Timestamptz(6)
+  createdBy           String   @map("created_by") @db.Uuid
+
+  @@unique([scope, version])
+  @@map("ai_policy_versions")
+}
+model AiTranscript {
+  id             String   @id @default(uuid()) @db.Uuid
+  workspaceId    String   @map("workspace_id") @db.Uuid
+  sourceFileId   String   @map("source_file_id") @db.Uuid
+  runId          String   @map("run_id") @db.Uuid
+  scenarioCode   String   @map("scenario_id")
+  language       String?
+  diarizationMeta Json?   @map("diarization_meta")
+  textSealed     String?  @map("text_sealed")
+  reviewStatus   String   @default("UNREVIEWED") @map("review_status")
+  createdBy      String   @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, sourceFileId])
+  @@map("ai_transcripts")
+}
+model AiExtraction {
+  id               String    @id @default(uuid()) @db.Uuid
+  workspaceId      String    @map("workspace_id") @db.Uuid
+  runId            String    @map("run_id") @db.Uuid
+  sourceRef        String    @map("source_ref")
+  targetType       String    @map("target_type")
+  targetId         String?   @map("target_id")
+  schemaVersion    Int       @map("schema_version")
+  proposedFields   Json      @map("proposed_fields_json")
+  validationStatus String    @map("validation_status")
+  state            String    @default("PROPOSED")
+  createdBy        String    @map("created_by") @db.Uuid
+  appliedBy        String?   @map("applied_by") @db.Uuid
+  appliedAt        DateTime? @map("applied_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, state])
+  @@map("ai_extractions")
+}
