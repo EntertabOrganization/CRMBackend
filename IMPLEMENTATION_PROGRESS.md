@@ -18,8 +18,8 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 ### 0. Setup
 - [x] Pull latest `main` (contains Pack 1 + new pack `081eaa4`)
 - [x] `TESTING_REMAINING.md` written for Pack 1 and Pack 2
-- [ ] Read all Shared-Contracts and record conflicts/decisions below
-- [ ] Inventory existing platform pieces to reuse (outbox, audit, idempotency, rate limit, jobs, notifications, search, Partner from Auth pack)
+- [x] Read all Shared-Contracts and record conflicts/decisions below
+- [x] Inventory existing platform pieces to reuse (outbox, audit, idempotency, rate limit, jobs, notifications, search, Partner from Auth pack)
 
 ### 30-Platform-Services
 - [ ] 01 Outbox & domain event contract (event envelope/versioning, dispatcher, consumer inbox dedupe)
@@ -32,7 +32,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 - [ ] 08 Rate limits, idempotency records, safe caching
 - [ ] 09 Retention policies, portability exports, privacy requests, legal holds
 - [ ] 10 Health/readiness, observability, backup & restore records
-- [ ] Migration, permissions, routes, admin console screen
+- [~] Migration `202610170001_platform_services` + Prisma models written (schema valid, typecheck OK); services/routes/screen next
 
 ### 31-Subscription-Billing
 - [ ] 01 Plan catalog, immutable versions, entitlement resolution
@@ -89,7 +89,12 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 - [ ] README/.env.example updates, typecheck + build evidence, update `TESTING_REMAINING.md`
 
 ## Decisions / conflicts log
-(record spec conflicts and choices here)
+- D1 No Redis/BullMQ in repo: durable jobs/outbox dispatch run on PostgreSQL leases (`FOR UPDATE SKIP LOCKED`), matching existing workers. Redis transport is a deployment add-on, not required for correctness (spec 30/02 AC05).
+- D2 `outbox_events.workspace_id` is NOT NULL in the existing schema; global Partner/Plan events go to new `platform_global_events` with the same envelope and dispatcher.
+- D3 Platform Admin was an email-domain check (`@entertabcrm.local`) in the Auth pack; replaced by `platform_role_assignments` (explicit platform.* grants). Platform roles never grant Workspace data access.
+- D4 Audit append-only enforced by DB trigger; only FK `SET NULL` from owner hard-deletes may touch rows.
+- D5 No MFA provider exists in the repo: high-risk platform actions (break-glass, restore tests) require dual approval and fail closed with DEPENDENCY_UNAVAILABLE until `PLATFORM_MFA_VERIFIER` is configured.
+- D6 Existing `suite_retention_policies`/`suite_legal_holds` (Pack 1) stay module-scoped; platform-wide jurisdiction policies live in `platform_retention_policies`; legal holds are reused (added authority/release columns).
 
 ## Verification log (non-test checks only)
-(command · date · result)
+- 2026-10-16 `prisma validate` OK; `tsc --noEmit` exit 0 after Platform schema
