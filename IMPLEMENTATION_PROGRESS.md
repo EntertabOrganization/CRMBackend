@@ -31,7 +31,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 - [x] 07 Platform settings, feature flags, locale, numbering sequences — `config-service.ts` (schema-validated settings docs, guarded flags + `requireFeature`, IANA/BCP47 validation, atomic `allocateNumber`; routes pending)
 - [x] 08 Rate limits, idempotency records, safe caching — `governance-service.ts` (`enforceRateLimit`, policy admin, idempotency metadata, cache invalidation; routes pending)
 - [x] 09 Retention policies, portability exports, privacy requests, legal holds — `privacy-service.ts` + module hooks `privacy-hooks.ts` (checkpointed resumable job, sealed 7-day export, holds via `suite_legal_holds`, `assertProductionReady`; routes pending)
-- [ ] 10 Health/readiness, observability, backup & restore records
+- [x] 10 Health/readiness, observability, backup & restore records — `ops-service.ts` (redacting structured logger, metrics snapshot schedule + alert rules, recovery plans, step-up restore tests via external runner; routes pending)
 - [~] Migration `202610170001_platform_services` + Prisma models written (schema valid, typecheck OK); services/routes/screen next
 
 ### 31-Subscription-Billing
