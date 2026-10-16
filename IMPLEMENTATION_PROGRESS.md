@@ -24,7 +24,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 ### 30-Platform-Services
 - [x] 01 Outbox & domain event contract — `src/server/platform/events-service.ts` (dispatcher, receipts, DLQ, replay); kernel `src/server/platform/kernel.ts`; router `src/server/platform/http.ts` (routes pending)
 - [x] 02 Jobs, schedules, retries, dead letter — `PlatformJobService` in `events-service.ts` (routes pending)
-- [ ] 03 Notifications, preferences, mandatory notices, delivery
+- [x] 03 Notifications, preferences, mandatory notices, delivery — `src/server/platform/notifications-service.ts` + live-access registry `access.ts` (routes pending)
 - [ ] 04 Realtime hints & presence (SSE invalidation hints, ACL re-check)
 - [ ] 05 Global search, recents, favorites (ACL-filtered, rebuildable index)
 - [ ] 06 Audit query, security events, support access grants
