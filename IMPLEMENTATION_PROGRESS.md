@@ -78,7 +78,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 ### 28-Knowledge-Base
 - [x] 01 Spaces & hierarchy — `knowledge/space-service.ts`, `support.ts` (live ACL engine space∩article∩shares, closure paths, cycle-safe locked moves w/ ACL re-evaluation, leak-free tree)
 - [x] 02 Article editor & revisions — `knowledge/article-service.ts` (whitelisted plain-text block schema + safety scan, stable anchors, REVISION_CONFLICT on stale base, idempotent autosave, batched audit, revert=new revision, File ACL intersection)
-- [ ] 03 ACL, sharing, external guests
+- [x] 03 ACL, sharing, external guests — `knowledge/access-service.ts` (ACL replace capped by grantor level, deny-wins, version+outbox+audit, member shares, hashed single-use guest tokens → signed session re-checked per read, instant revoke)
 - [x] 04 Review, publish, acknowledgement — `article-service.ts` (exact-revision approvals expiring on change, two-person rule, idempotent publish w/ safety/file/space checks, self-only idempotent acks, overdue review job)
 - [ ] 05 Search, AI indexing, citations
 - [ ] 06 Import/export, templates
