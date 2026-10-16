@@ -100,7 +100,7 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 - [x] 07 Usage, costs, BYOK, credit consumption (via Billing) — Billing `UsageService` reserve/settle/release on `ai.credits`, append-only `ai_usage_records` w/ pricing snapshot, BYOK tracked w/o credits, budget hard cap under lock, completion check for expired reservations
 - [x] 08 External MCP & OAuth (advanced) — `ai/external-service.ts` (hashed client secrets, exact https redirects, PKCE S256 codes, rotating refresh, per-call re-resolution of grant/membership/permission/entitlement, filtered tool inventory, writes wait for in-app exact-args approval, instant revoke)
 - [x] 09 Governance, evaluation, feedback — `ai/governance-service.ts` (run-scoped redacted feedback, built-in adversarial eval suite scoring injection/tool/JSON/tenancy without storing outputs, findings lifecycle incl. scenario disable, append-only policy versions)
-- [ ] 10 Domain assistance & media
+- [x] 10 Domain assistance & media — `ai/domain-service.ts` (transcription via scanned-file re-check + sealed transcript, schema-validated extraction proposals applied only through legacy CRM `updateRecord` with expected version, draft-only content scenarios, images via Files scan/publish with quarantine + review)
 - [~] Migration `202610210001_ai_copilot` (32 tables, append-only usage/policy, immutable published prompts, provider catalog seed) written; services next
 
 ### Final
