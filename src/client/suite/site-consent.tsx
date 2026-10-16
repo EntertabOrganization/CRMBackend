@@ -8,7 +8,8 @@ export function ConsentBanner({ siteId, policyVersion }: { siteId: string; polic
   async function choose(categories: string[]) {
     setError('');
     try {
-      const policy = await fetch(`/api/v1/public/sites/${siteId}/consent`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ visitorKey: visitorKey(), acceptedCategories: categories, policyVersion }) });
+      const referralCode = categories.includes('MARKETING') ? new URLSearchParams(location.search).get('ref') : null;
+      const policy = await fetch(`/api/v1/public/sites/${siteId}/consent`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ visitorKey: visitorKey(), acceptedCategories: categories, policyVersion, ...(referralCode ? { referralCode } : {}) }) });
       if (!policy.ok) throw new Error((await policy.json()).error?.message ?? 'Could not save your choice.');
       document.cookie = `site_consent=${categories.join(',')}; path=/; max-age=${180 * 86400}; samesite=lax`;
       setOpen(false); location.reload();

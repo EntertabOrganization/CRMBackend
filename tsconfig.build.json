@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["next-env.d.ts", ".next/types/**/*.ts", "app/**/*.ts", "app/**/*.tsx", "src/client/**/*.ts", "src/client/**/*.tsx", "src/server/**/*.ts", "tests/**/*.ts"],
+  "exclude": ["node_modules", ".next-dev", ".next-live", "src/modules", "tests/auth-api.e2e-spec.ts", "tests/auth-module.spec.ts", "tests/modules/TrueCRM_Final_Modules_Codex_Pack/_harness/test-globals.d.ts"]
+}

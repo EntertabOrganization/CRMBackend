@@ -31,7 +31,7 @@ export class AiConfigService {
 
   async providers() { return this.db.aiProvider.findMany({ where: { active: true }, orderBy: { code: 'asc' }, select: { id: true, code: true, name: true, adapterVersion: true } }); }
   async models(raw: unknown) {
-    const q = z.object({ capability: z.enum(['chat', 'json', 'transcription', 'image', 'tools']).optional() }).parse(raw);
+    const q = z.object({ capability: z.enum(['chat', 'json', 'transcription', 'image', 'embedding', 'tools']).optional() }).parse(raw);
     const rows = await this.db.aiModel.findMany({ where: { active: true }, orderBy: [{ providerId: 'asc' }, { modelKey: 'asc' }, { catalogVersion: 'desc' }] });
     const latest = rows.filter((m, i) => rows.findIndex(o => o.providerId === m.providerId && o.modelKey === m.modelKey) === i);
     return latest.filter(m => !q.capability || (m.capabilities as string[]).includes(q.capability));
@@ -39,7 +39,7 @@ export class AiConfigService {
   /** Model price changes create a new catalog version; historical usage keeps its pricing snapshot (01 rule 6). */
   async upsertModel(actor: PlatformPrincipal, raw: unknown, requestId: string) {
     requirePlatform(actor, 'ai.providers.manage');
-    const input = z.strictObject({ providerCode: z.string(), modelKey: z.string().regex(/^[a-zA-Z0-9._:\/-]{1,120}$/), capabilities: z.array(z.enum(['chat', 'json', 'transcription', 'image', 'tools'])).min(1), contextLimit: z.number().int().min(1024).max(10000000),
+    const input = z.strictObject({ providerCode: z.string(), modelKey: z.string().regex(/^[a-zA-Z0-9._:\/-]{1,120}$/), capabilities: z.array(z.enum(['chat', 'json', 'transcription', 'image', 'embedding', 'tools'])).min(1), contextLimit: z.number().int().min(1024).max(10000000),
       inputRate: z.string().regex(/^\d+(\.\d{1,8})?$/), outputRate: z.string().regex(/^\d+(\.\d{1,8})?$/), rateCurrency: z.string().regex(/^([A-Z]{3}|CREDIT)$/), regions: z.array(region).max(20).default([]) }).parse(raw);
     return this.db.$transaction(async tx => {
       const provider = await tx.aiProvider.findUnique({ where: { code: input.providerCode } }); if (!provider) throw notFound('Provider');

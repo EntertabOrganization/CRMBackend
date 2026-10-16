@@ -6,6 +6,7 @@ import { requirePermission, type Principal } from '../process-platform/context';
 import { allocateNumber } from '../platform/config-service';
 import { emitEvent, notFound, pageQuery, paged, requirePlatform, requireStepUp, securityEvent, type PlatformPrincipal } from '../platform/kernel';
 import { PlatformConfigService } from '../platform/config-service';
+import { quoteTax } from './tax-policy';
 import { partnerDiscount, recordPartnerTransaction, recordRefundAdjustment, snapshotPartnerPrice } from './partner-billing';
 import { billingAudit, billingProviders, currency, D, money, provider, QUOTE_TTL_MINUTES, ZERO, type Tx } from './support';
 
@@ -42,19 +43,21 @@ export async function createQuote(tx: Tx, input: { workspaceId: string; kind: 'P
   const net = Prisma.Decimal.max(ZERO, subtotal.sub(credits));
   const partner = await partnerDiscount(tx, { workspaceId: input.workspaceId, productId: input.productId, base: net, currency: input.currency });
   const discount = partner?.discountAmount ?? ZERO;
-  const total = money(net.sub(discount), input.currency);
+  const tax = await quoteTax(tx, input.payerAccountId, input.workspaceId, net.sub(discount), input.currency);
+  const total = money(net.sub(discount).add(tax.amount), input.currency);
   const quote = await tx.billingQuote.create({ data: { workspaceId: input.workspaceId, kind: input.kind, subscriptionId: input.subscriptionId ?? null, fromPlanVersionId: input.fromPlanVersionId ?? null, toPlanVersionId: input.toPlanVersionId ?? null,
     priceId: input.priceId ?? null, topupProductId: input.topupProductId ?? null, payerAccountId: input.payerAccountId, requestedTiming: input.requestedTiming ?? 'IMMEDIATE', effectiveAt: input.effectiveAt,
-    subtotal, credits, discount, tax: ZERO, total, currency: input.currency, lines: input.lines, priceFingerprint: sha({ ...input.fingerprint as object, partner: partner ? [partner.partnerId, partner.ruleId, partner.ruleVersion, partner.basisPoints] : null }),
+    subtotal, credits, discount, tax: tax.amount, total, currency: input.currency, lines: input.lines.map(line => ({ ...line, taxPolicy: tax.snapshot })), priceFingerprint: sha({ ...input.fingerprint as object, tax: tax.snapshot, partner: partner ? [partner.partnerId, partner.ruleId, partner.ruleVersion, partner.basisPoints] : null }),
     idempotencyKey: input.idempotencyKey ?? null, createdBy: input.createdBy ?? null, expiresAt: new Date(Date.now() + (input.ttlMinutes ?? QUOTE_TTL_MINUTES) * 60000) } });
   if (partner && discount.gt(0)) await snapshotPartnerPrice(tx, quote.id, partner);
   return quote;
 }
 /** Re-derives the fingerprint and rejects stale/expired quotes (03 AC03). */
-export async function assertQuoteFresh(tx: Tx, quote: { id: string; workspaceId: string; expiresAt: Date; priceFingerprint: string; status: string }, fingerprint: unknown, productId: string, base: Prisma.Decimal, cur: string) {
+export async function assertQuoteFresh(tx: Tx, quote: { id: string; workspaceId: string; payerAccountId: string; expiresAt: Date; priceFingerprint: string; status: string }, fingerprint: unknown, productId: string, base: Prisma.Decimal, cur: string) {
   if (quote.expiresAt <= new Date()) throw new AppError('INVALID_STATE_TRANSITION', 'Quote expired; request a new quote.', 409, { reason: 'QUOTE_EXPIRED' });
   const partner = await partnerDiscount(tx, { workspaceId: quote.workspaceId, productId, base, currency: cur });
-  const current = sha({ ...fingerprint as object, partner: partner ? [partner.partnerId, partner.ruleId, partner.ruleVersion, partner.basisPoints] : null });
+  const tax = await quoteTax(tx, quote.payerAccountId, quote.workspaceId, base.sub(partner?.discountAmount ?? ZERO), cur);
+  const current = sha({ ...fingerprint as object, tax: tax.snapshot, partner: partner ? [partner.partnerId, partner.ruleId, partner.ruleVersion, partner.basisPoints] : null });
   if (current !== quote.priceFingerprint) throw new AppError('INVALID_STATE_TRANSITION', 'Prices or plan changed since this quote; request a new quote.', 409, { reason: 'QUOTE_STALE' });
 }
 export async function issueInvoiceForQuote(tx: Tx, quoteId: string, extra: { periodStart?: Date | null; periodEnd?: Date | null; subscriptionId?: string | null } = {}) {
@@ -71,6 +74,7 @@ export async function issueInvoiceForQuote(tx: Tx, quoteId: string, extra: { per
     discountBasisPoints: snapshot?.discountBasisPoints ?? 0, discountAmount: ZERO } });
   if (quote.credits.gt(0)) await tx.billingInvoiceLine.create({ data: { invoiceId: invoice.id, kind: 'CREDIT', description: 'Unused time credit', quantity: D(1), unitPrice: quote.credits.neg(), subtotal: quote.credits.neg() } });
   if (quote.discount.gt(0)) await tx.billingInvoiceLine.create({ data: { invoiceId: invoice.id, kind: 'PARTNER_DISCOUNT', description: 'Partner discount', quantity: D(1), unitPrice: quote.discount.neg(), subtotal: quote.discount.neg(), discountBasisPoints: snapshot?.discountBasisPoints ?? 0, discountAmount: quote.discount } });
+  if (quote.tax.gt(0)) await tx.billingInvoiceLine.create({ data: { invoiceId: invoice.id, kind: 'TAX', description: 'Tax per issued quote policy', quantity: D(1), unitPrice: quote.tax, subtotal: quote.tax } });
   await tx.billingQuote.update({ where: { id: quote.id }, data: { status: 'INVOICED' } });
   await emitEvent(tx, { workspaceId: quote.workspaceId, eventType: 'BILLING_INVOICE_ISSUED', aggregateType: 'BillingInvoice', aggregateId: invoice.id, aggregateVersion: 1, actorType: 'SERVICE', payload: { kind: invoice.kind, total: invoice.total.toFixed(), currency: invoice.currency } });
   if (invoice.status === 'PAID') await onInvoicePaid(tx, invoice); // zero-total (e.g. fully credited) needs no payment

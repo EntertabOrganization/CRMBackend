@@ -4,7 +4,8 @@ import { z } from 'zod';
 import { AppError } from '../errors';
 import { requirePermission, resolvePrincipal, type Principal } from '../process-platform/context';
 import { visibleIds } from '../platform/access';
-import { enqueueJob, registerJob } from '../platform/events-service';
+import { enqueueJob, registerJob, registerSchedule } from '../platform/events-service';
+import { legalHoldActive } from '../platform/privacy-service';
 import { audit, emitEvent, notFound, paged, type Tx } from '../platform/kernel';
 import { decrypt, encrypt, entitled } from '../suite/kernel';
 import { readCleanFile } from '../suite/files-port';
@@ -111,7 +112,7 @@ async function pinnedPrompt(db: PrismaClient | Tx, workspaceId: string, code: st
  * Executes one run attempt durably: claim QUEUED→RUNNING, rebuild authority/context, call candidates (transient retry + approved
  * fallback), validate output, propose tools, settle usage via Billing exactly once. Terminal runs stay terminal (06 AC05).
  */
-async function executeRun(db: PrismaClient, runId: string) {
+export async function executeRun(db: PrismaClient, runId: string) {
   const claimed = await db.aiRun.updateMany({ where: { id: runId, status: 'QUEUED' }, data: { status: 'RUNNING', startedAt: new Date(), version: { increment: 1 } } });
   if (!claimed.count) return { skipped: true };
   const run = await db.aiRun.findUniqueOrThrow({ where: { id: runId } });
@@ -130,7 +131,7 @@ async function executeRun(db: PrismaClient, runId: string) {
         // Billing is the credit authority: settle actual (capped at the reservation), release the remainder (07 rules 1, AC02/AC03).
         if (run.usageReservationId) await UsageService.settle(tx, run.usageReservationId, Prisma.Decimal.min(credits, run.estimatedCredits), key, 'ai.run:' + run.id);
       } else if (run.usageReservationId) await UsageService.release(tx, run.usageReservationId, status);
-      const updated = await tx.aiRun.update({ where: { id: run.id }, data: { ...data, status, finishedAt: ['SUCCEEDED', 'FAILED', 'CANCELLED'].includes(status) ? new Date() : null, version: { increment: 1 } } });
+      const updated = await tx.aiRun.update({ where: { id: run.id }, data: { ...data, streamSealed: null, status, finishedAt: ['SUCCEEDED', 'FAILED', 'CANCELLED'].includes(status) ? new Date() : null, version: { increment: 1 } } });
       const eventType = status === 'SUCCEEDED' ? 'AI_RUN_SUCCEEDED' : status === 'FAILED' ? 'AI_RUN_FAILED' : status === 'CANCELLED' ? 'AI_RUN_CANCELLED' : 'AI_RUN_WAITING_APPROVAL';
       await emitEvent(tx, { workspaceId: run.workspaceId, eventType, aggregateType: 'AiRun', aggregateId: run.id, aggregateVersion: updated.version, actorType: 'SERVICE', payload: { scenario: run.scenarioCode, errorCode: updated.errorCode } });
       return updated;
@@ -175,9 +176,31 @@ async function executeRun(db: PrismaClient, runId: string) {
       try {
         const conn = await db.aiProviderConnection.findUniqueOrThrow({ where: { id: cand.connectionId } });
         if (conn.status !== 'CONNECTED') throw new ProviderFailure('PERMANENT', 'CONNECTION_SUSPENDED', 'Connection suspended.');
-        const result = await adapterFor(cand.providerCode).infer(connectionSecret(conn), conn.endpoint, { model: cand.modelKey, system, messages, maxTokens: run.maxOutputTokens, idempotencyKey: `${run.id}:${attempt}`, json: scenario.output === 'JSON' });
+        const noHistory = run.conversationId ? (await db.aiConversation.findUnique({ where: { id: run.conversationId } }))?.noHistory : false;
+        const streamable = scenario.output === 'TEXT' && !scenario.allowTools && sources.length === 0 && !noHistory;
+        let partial = '', lastFlush = 0;
+        await db.aiRun.update({ where: { id: run.id }, data: { streamSealed: null } });
+        const inference = async () => adapterFor(cand.providerCode).infer(connectionSecret(conn), conn.endpoint, { model: cand.modelKey, system, messages, maxTokens: run.maxOutputTokens, idempotencyKey: `${run.id}:${attempt}`, json: scenario.output === 'JSON',
+          ...(streamable ? { onDelta: async (delta: string) => {
+            partial += delta;
+            if (Date.now() - lastFlush < 200) return;
+            const freshActor = await resolvePrincipal(db, run.workspaceId, run.requesterId);
+            requirePermission(freshActor, 'ai.run.create'); requirePermission(freshActor, scenario.requiredPermission); entitled(freshActor, 'ai');
+            if ((await db.aiRun.findUniqueOrThrow({ where: { id: run.id } })).cancelRequestedAt) throw new ProviderFailure('UNKNOWN', 'STREAM_CANCELLED_AFTER_DISPATCH', 'Stream cancellation requested.');
+            const marker = partial.indexOf('<tool_call');
+            const open = partial.lastIndexOf('<');
+            const safeText = marker >= 0 ? partial.slice(0, marker) : open >= 0 && '<tool_call>'.startsWith(partial.slice(open)) ? partial.slice(0, open) : partial;
+            await db.aiRun.update({ where: { id: run.id }, data: { streamSealed: encrypt(safeText) } }); lastFlush = Date.now();
+          } } : {}) });
+        let result: import('./providers').InferResult;
+        if (scenario.capability === 'embedding') {
+          const adapter = adapterFor(cand.providerCode);
+          if (!adapter.embed) throw new ProviderFailure('PERMANENT', 'EMBEDDING_UNSUPPORTED', 'Approved provider does not support embeddings.');
+          const embedded = await adapter.embed(connectionSecret(conn), conn.endpoint, cand.modelKey, input.prompt);
+          result = { requestId: embedded.requestId, text: JSON.stringify({ modelId: cand.modelId, vector: embedded.vector }), finishReason: 'stop', usage: { inputTokens: embedded.inputTokens, outputTokens: 0, cachedTokens: 0 } };
+        } else result = await inference();
         await db.aiRunStep.update({ where: { id: step.id }, data: { state: 'SUCCEEDED', providerRequestId: result.requestId } });
-        const usage = { candidate: cand, inputTokens: result.usage.inputTokens || estimateTokens(system + JSON.stringify(messages)), outputTokens: result.usage.outputTokens || estimateTokens(result.text), cachedTokens: result.usage.cachedTokens, estimated: !result.usage.inputTokens, attempt, stepId: step.id };
+        const usage = { candidate: cand, inputTokens: result.usage.inputTokens || estimateTokens(system + JSON.stringify(messages)), outputTokens: scenario.capability === 'embedding' ? 0 : result.usage.outputTokens || estimateTokens(result.text), cachedTokens: result.usage.cachedTokens, estimated: !result.usage.inputTokens, attempt, stepId: step.id };
         return completeRun(db, actor, run, scenario, result.text, sources, allowedTools, assistant, usage, finish);
       } catch (error) {
         const f = error instanceof ProviderFailure ? error : new ProviderFailure('TRANSIENT', 'PROVIDER_UNAVAILABLE', 'Provider failed.');
@@ -295,6 +318,17 @@ async function settleWaitingRun(db: PrismaClient, runId: string) {
 }
 
 registerJob({ type: 'ai.run.execute', ownerModule: 'ai', maxAttempts: 3, async run(ctx) { const { prisma } = await import('../prisma-client'); return executeRun(prisma, String(ctx.payload.runId)); } });
+registerJob({ type: 'ai.stream.cleanup', ownerModule: 'ai', async run() {
+  const { prisma } = await import('../prisma-client');
+  const rows = await prisma.aiRun.findMany({ where: { streamSealed: { not: null }, startedAt: { lt: new Date(Date.now() - 15 * 60000) } }, take: 100 });
+  let cleared = 0;
+  for (const row of rows) {
+    if (await legalHoldActive(prisma, row.workspaceId, 'ai', row.id) || await legalHoldActive(prisma, row.workspaceId, 'ai', row.requesterId) || row.conversationId && await legalHoldActive(prisma, row.workspaceId, 'ai', row.conversationId)) continue;
+    cleared += (await prisma.aiRun.updateMany({ where: { id: row.id, startedAt: row.startedAt }, data: { streamSealed: null } })).count;
+  }
+  return { cleared };
+} });
+registerSchedule({ name: 'ai.stream.cleanup', ownerModule: 'ai', jobType: 'ai.stream.cleanup', intervalMinutes: 5 });
 registerJob({ type: 'ai.tool.execute', ownerModule: 'ai', maxAttempts: 3, async run(ctx) { const { prisma } = await import('../prisma-client'); return executeToolCall(prisma, String(ctx.payload.callId), ctx.payload.approverId ? String(ctx.payload.approverId) : null); } });
 /** Expired Billing reservations ask AI whether the run completed (reconcile-before-release, Billing 05 rule 3). */
 registerUsageCompletionCheck('ai', async (db, operationKey) => {
@@ -317,7 +351,7 @@ export class AiRunService {
     requirePermission(actor, 'ai.run.create'); entitled(actor, 'ai');
     const input = z.strictObject({ scenarioId: z.string().max(80), input: z.strictObject({ prompt: z.string().min(1).max(50000) }).passthrough(), contextRefs: z.array(z.strictObject({ type: z.enum(['drive.file', 'crm.contact']), id: z.uuid() })).max(10).default([]),
       idempotencyKey: z.string().min(8).max(200), assistantId: z.uuid().optional(), classification: z.enum(CLASSIFICATIONS).default('INTERNAL'), maxOutputTokens: z.number().int().min(16).max(16000).optional() }).parse(raw);
-    const scenario = SCENARIOS[input.scenarioId]; if (!scenario || scenario.capability !== 'chat') throw notFound('Scenario');
+    const scenario = SCENARIOS[input.scenarioId]; if (!scenario || !['chat', 'embedding'].includes(scenario.capability)) throw notFound('Scenario');
     requirePermission(actor, scenario.requiredPermission);
     const settings = await workspaceAiSettings(this.db, actor.workspaceId);
     if (!scenarioEnabled(settings, scenario.code, actor.roleId)) throw new AppError('PERMISSION_DENIED', 'This AI scenario is not enabled for your role.', 403);
@@ -335,7 +369,7 @@ export class AiRunService {
       const candidates = await eligibleCandidates(tx, actor.workspaceId, scenario, input.classification);
       if (!candidates.length) throw new AppError('BUSINESS_RULE_VIOLATION', 'No approved model route satisfies this scenario, classification and region policy.', 422, { reason: 'NO_ELIGIBLE_ROUTE' });
       const maxOut = input.maxOutputTokens ?? scenario.maxOutputTokens;
-      const estIn = estimateTokens(input.input.prompt) + 2000; // context allowance
+      const estIn = scenario.capability === 'embedding' ? Buffer.byteLength(input.input.prompt, 'utf8') : estimateTokens(input.input.prompt) + 2000; // context allowance
       // Reserve for the most expensive eligible candidate so a fallback can't overspend (06 AC04).
       const prices = candidates.map(c => ({ c, ...priceOf(c, estIn, maxOut) }));
       const worst = prices.reduce((m, p) => p.credits.gt(m.credits) ? p : m, prices[0]);

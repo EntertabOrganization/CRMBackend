@@ -5,11 +5,16 @@ import { AppError } from '../errors';
 import { requirePermission, type Principal } from '../process-platform/context';
 import { enforceRateLimit } from '../platform/governance-service';
 import { PlatformNotificationService } from '../platform/notifications-service';
+import { queueExternalEmail } from '../platform/external-email';
 import { assertVersion, audit, emitEvent, notFound } from '../platform/kernel';
 import { aclChanged, articleEvent, LEVELS, loadArticle, sha, type Content, type Level } from './support';
 
 const GUEST_DAYS = () => Number(process.env.KNOWLEDGE_GUEST_MAX_DAYS ?? 30), GUEST_SESSION_HOURS = 8;
-const guestSecret = () => process.env.KNOWLEDGE_GUEST_SECRET ?? process.env.JWT_ACCESS_SECRET ?? 'local-knowledge-guest-secret';
+const guestSecret = () => {
+  const secret = process.env.KNOWLEDGE_GUEST_SECRET ?? process.env.JWT_ACCESS_SECRET;
+  if (!secret && process.env.NODE_ENV === 'production') throw new AppError('DEPENDENCY_UNAVAILABLE', 'Guest session signing is not configured.', 503);
+  return secret ?? 'local-knowledge-guest-secret';
+};
 const signGuest = (body: string) => createHmac('sha256', guestSecret()).update(body).digest('base64url');
 const entry = z.strictObject({ principalType: z.enum(['USER', 'DEPARTMENT', 'PROJECT']), principalId: z.uuid(), level: z.enum(['VIEW', 'COMMENT', 'EDIT', 'MANAGE']), effect: z.enum(['ALLOW', 'DENY']).default('ALLOW'), expiresAt: z.iso.datetime({ offset: true }).nullable().default(null) });
 
@@ -85,10 +90,18 @@ export class KnowledgeAccessService {
       const inv = await tx.knowledgeGuestInvitation.create({ data: { workspaceId: actor.workspaceId, articleId: article.id, emailHash: sha(input.email.trim().toLowerCase()), tokenHash: sha(token), invitedBy: actor.userId, expiresAt } });
       await audit(tx, { workspaceId: actor.workspaceId, actorId: actor.userId, action: 'KNOWLEDGE_GUEST_INVITED', resourceType: 'KnowledgeGuestInvitation', resourceId: inv.id, after: { articleId: article.id, expiresAt }, requestId });
       await articleEvent(tx, article, 'KNOWLEDGE_GUEST_INVITED', actor.userId, { invitationId: inv.id });
-      return inv;
+      const origin = process.env.APP_URL;
+      let link: URL;
+      try {
+        link = new URL('/knowledge/guest', origin);
+        if (link.protocol !== 'https:' && !(process.env.NODE_ENV !== 'production' && ['localhost', '127.0.0.1'].includes(link.hostname))) throw new Error();
+      } catch { throw new AppError('DEPENDENCY_UNAVAILABLE', 'A trusted APP_URL is required for guest invitations.', 503); }
+      link.hash = new URLSearchParams({ token, email: input.email.trim().toLowerCase() }).toString();
+      const delivery = await queueExternalEmail(tx, { workspaceId: actor.workspaceId, resourceType: 'KnowledgeGuestInvitation', resourceId: inv.id, to: input.email.trim().toLowerCase(),
+        subject: 'Knowledge article invitation', body: 'You have been invited to read a Knowledge article. Open this link before ' + expiresAt.toISOString() + ':\n' + link.href });
+      return { ...inv, delivery };
     });
-    // Email delivery is the Notifications provider's job; the raw token is returned once for that hand-off and never stored.
-    return { id: invitation.id, status: invitation.status, expiresAt, deliveryToken: token };
+    return { id: invitation.id, status: invitation.status, expiresAt, deliveryStatus: 'QUEUED', ...invitation.delivery };
   }
   async revokeGuest(actor: Principal, id: string, invitationId: string, requestId: string) {
     return this.db.$transaction(async tx => {
@@ -100,11 +113,21 @@ export class KnowledgeAccessService {
       return { id: invitationId, status: 'REVOKED' }; // the next guest read re-checks status and fails immediately (AC02)
     });
   }
+  async guestDelivery(actor: Principal, id: string, invitationId: string) {
+    return this.db.$transaction(async tx => {
+      const { article } = await loadArticle(tx, actor, id, 'MANAGE', 'knowledge.guest.invite');
+      const inv = await tx.knowledgeGuestInvitation.findFirst({ where: { id: z.uuid().parse(invitationId), articleId: article.id, workspaceId: actor.workspaceId } });
+      if (!inv) throw notFound('Invitation');
+      const delivery = await tx.platformExternalEmail.findFirst({ where: { workspaceId: actor.workspaceId, resourceType: 'KnowledgeGuestInvitation', resourceId: inv.id }, orderBy: { createdAt: 'desc' }, select: { id: true, state: true, createdAt: true } });
+      return { invitationId: inv.id, status: inv.status, expiresAt: inv.expiresAt, delivery };
+    });
+  }
   /** Single activation by the recipient email; returns a short-lived signed guest session bound to the invitation. */
   async acceptGuest(raw: unknown, ip: string | null) {
     const input = z.strictObject({ token: z.string().min(20).max(200), email: z.email().max(254) }).parse(raw);
     await enforceRateLimit(this.db, 'knowledge.guest.accept', 'IP', ip ?? 'unknown', { requests: 10, windowSeconds: 600 });
     return this.db.$transaction(async tx => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'knowledge-guest-accept:' + sha(input.token)}))`;
       const inv = await tx.knowledgeGuestInvitation.findUnique({ where: { tokenHash: sha(input.token) } });
       const invalid = new AppError('VALIDATION_FAILED', 'Invitation is invalid or expired.', 400);
       if (!inv || inv.status !== 'PENDING' || inv.emailHash !== sha(input.email.trim().toLowerCase())) throw invalid;

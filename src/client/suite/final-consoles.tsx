@@ -64,8 +64,8 @@ const platformAdmin: Section[] = [
     { label: 'Audit query', method: 'GET', path: '/platform/admin/audit', query: [{ name: 'workspaceId' }, { name: 'resourceType' }, { name: 'action' }, { name: 'from', type: 'datetime' }, { name: 'to', type: 'datetime' }] },
     { label: 'Security events', method: 'GET', path: '/platform/admin/security-events', query: [{ name: 'eventType' }, { name: 'workspaceId' }] },
     { label: 'Request support access', method: 'POST', path: '/platform/admin/support-access', fields: [{ name: 'workspaceId', required: true }, { name: 'purpose', type: 'textarea', required: true }, { name: 'scope', type: 'json', required: true, placeholder: '["crm.contact.read"]' }, { name: 'expiresAt', type: 'datetime', required: true }] },
-    { label: 'Emergency access (break-glass)', method: 'POST', path: '/platform/admin/emergency-access', fields: [{ name: 'workspaceId', required: true }, { name: 'incidentRef', required: true }, { name: 'reason', type: 'textarea', required: true }, { name: 'scope', type: 'json', required: true }], danger: true },
-    { label: 'Second approval', method: 'POST', path: '/platform/admin/emergency-access/:sessionId/approve', danger: true },
+    { label: 'Emergency access (break-glass)', stepUp: true, method: 'POST', path: '/platform/admin/emergency-access', fields: [{ name: 'workspaceId', required: true }, { name: 'incidentRef', required: true }, { name: 'reason', type: 'textarea', required: true }, { name: 'scope', type: 'json', required: true }], danger: true },
+    { label: 'Second approval', stepUp: true, method: 'POST', path: '/platform/admin/emergency-access/:sessionId/approve', danger: true },
     { label: 'Post-incident review', method: 'POST', path: '/platform/admin/emergency-access/:sessionId/review', fields: [{ name: 'note', type: 'textarea', required: true }] },
   ] },
   { title: 'Configuration', actions: [
@@ -89,7 +89,7 @@ const platformAdmin: Section[] = [
     { label: 'Set alert rule', method: 'PUT', path: '/platform/admin/ops/alert-rules', fields: [{ name: 'metric', type: 'select', options: ['queue_lag', 'outbox_lag_seconds', 'search_lag', 'dead_letters', 'failed_jobs', 'notification_failures'], required: true }, { name: 'threshold', type: 'number', required: true }, { name: 'escalationTarget', required: true }, { name: 'enabled', type: 'checkbox', defaultValue: 'true' }] },
     { label: 'Recovery plans', method: 'GET', path: '/platform/admin/ops/recovery-plans' },
     { label: 'Set recovery plan', method: 'PUT', path: '/platform/admin/ops/recovery-plans', fields: [{ name: 'environment', required: true }, { name: 'backupProfileId', required: true }, { name: 'targetRpoMinutes', type: 'number', required: true }, { name: 'targetRtoMinutes', type: 'number', required: true }, { name: 'procedureRef', required: true }, { name: 'expectedVersion', type: 'number', defaultValue: '0' }] },
-    { label: 'Request restore test', method: 'POST', path: '/platform/admin/ops/restore-tests', fields: [{ name: 'backupId', required: true }, { name: 'isolatedEnvironment', required: true }, { name: 'planEnvironment' }], danger: true },
+    { label: 'Request restore test', stepUp: true, method: 'POST', path: '/platform/admin/ops/restore-tests', fields: [{ name: 'backupId', required: true }, { name: 'isolatedEnvironment', required: true }, { name: 'planEnvironment' }], danger: true },
   ] },
 ];
 
@@ -120,6 +120,8 @@ const billing: Section[] = [
     { label: 'Billing accounts', method: 'GET', path: '/billing/accounts' },
     { label: 'Create billing account', method: 'POST', path: '/billing/accounts', fields: [{ name: 'payerType', type: 'select', options: ['CUSTOMER', 'PARTNER'] }, { name: 'partnerId' }, { name: 'billingCurrency', required: true, defaultValue: 'USD' }, { name: 'legalIdentity', type: 'json', required: true, placeholder: '{"legalName":"Acme LLC","country":"EG"}' }] },
     { label: 'Pay (hosted checkout)', method: 'POST', path: '/billing/payment-attempts', fields: [{ name: 'quoteId', required: true }, { name: 'providerId', type: 'select', options: ['stripe', 'xpay', 'sandbox'], required: true }, { name: 'idempotencyKey', required: true }], describe: 'Activation happens only after the provider confirms payment.' },
+    { label: 'Set up payment method', method: 'POST', path: '/billing/payment-method/change', fields: [{ name: 'accountId', required: true }, { name: 'providerId', type: 'select', options: ['stripe', 'xpay'], required: true }, { name: 'idempotencyKey', required: true }], describe: 'Open the returned provider checkout link to save a payment method securely. Setup does not pay an invoice or enable automatic charges.' },
+    { label: 'Confirm payment-method setup', method: 'POST', path: '/billing/payment-method/setups/:setupId/refresh' },
     { label: 'Refresh payment status', method: 'POST', path: '/billing/payment-attempts/:attemptId/refresh' },
     { label: 'Request payer change approval', method: 'POST', path: '/billing/approvals', fields: [{ name: 'action', defaultValue: 'PAYER_TRANSITION', required: true }, { name: 'payload', type: 'json', required: true, placeholder: '{"subscriptionId":"…","newPayerAccountId":"…"}' }, reason] },
     { label: 'Owner: decide approval', method: 'POST', path: '/billing/approvals/:approvalId/decision', fields: [{ name: 'decision', type: 'select', options: ['APPROVED', 'REJECTED'], required: true }, reason] },
@@ -168,10 +170,10 @@ const billingAdmin: Section[] = [
     { label: 'Compute MRR facts', method: 'POST', path: '/platform/billing/mrr', fields: [{ name: 'period', required: true }, { name: 'reportingCurrency', required: true, defaultValue: 'USD' }] },
     { label: 'Approvals', method: 'GET', path: '/platform/billing/approvals' },
     { label: 'Request approval', method: 'POST', path: '/platform/billing/approvals', fields: [{ name: 'action', type: 'select', options: ['REFUND', 'ENTITLEMENT_OVERRIDE', 'CREDIT_ADJUSTMENT'], required: true }, { name: 'payload', type: 'json', required: true }, reason] },
-    { label: 'Decide approval', method: 'POST', path: '/platform/billing/approvals/:approvalId/decision', fields: [{ name: 'decision', type: 'select', options: ['APPROVED', 'REJECTED'], required: true }, reason] },
-    { label: 'Refund payment', method: 'POST', path: '/billing/refunds', fields: [{ name: 'paymentId', required: true }, { name: 'amount', required: true }, reason, { name: 'idempotencyKey', required: true }, { name: 'approvalId' }], danger: true },
-    { label: 'Entitlement override', method: 'POST', path: '/platform/billing/overrides', fields: [{ name: 'workspaceId', required: true }, { name: 'feature', required: true }, { name: 'value', type: 'json', required: true }, reason, { name: 'expiresAt', type: 'datetime', required: true }, { name: 'approvalId', required: true }], danger: true },
-    { label: 'Credit adjustment', method: 'POST', path: '/platform/billing/credits/adjust', fields: [{ name: 'workspaceId', required: true }, { name: 'kind', type: 'select', options: ['GRANT', 'REVERSE'], required: true }, { name: 'units', required: true }, { name: 'grantId' }, reason, { name: 'approvalId', required: true }], danger: true },
+    { label: 'Decide approval', stepUp: true, method: 'POST', path: '/platform/billing/approvals/:approvalId/decision', fields: [{ name: 'decision', type: 'select', options: ['APPROVED', 'REJECTED'], required: true }, reason] },
+    { label: 'Refund payment', stepUp: true, method: 'POST', path: '/billing/refunds', fields: [{ name: 'paymentId', required: true }, { name: 'amount', required: true }, reason, { name: 'idempotencyKey', required: true }, { name: 'approvalId' }], danger: true },
+    { label: 'Entitlement override', stepUp: true, method: 'POST', path: '/platform/billing/overrides', fields: [{ name: 'workspaceId', required: true }, { name: 'feature', required: true }, { name: 'value', type: 'json', required: true }, reason, { name: 'expiresAt', type: 'datetime', required: true }, { name: 'approvalId', required: true }], danger: true },
+    { label: 'Credit adjustment', stepUp: true, method: 'POST', path: '/platform/billing/credits/adjust', fields: [{ name: 'workspaceId', required: true }, { name: 'kind', type: 'select', options: ['GRANT', 'REVERSE'], required: true }, { name: 'units', required: true }, { name: 'grantId' }, reason, { name: 'approvalId', required: true }], danger: true },
   ] },
 ];
 
@@ -217,7 +219,7 @@ const partnerPortal: Section[] = [
     { label: 'Request Partner transfer', method: 'POST', path: '/workspaces/:workspaceId/partner-transfer-requests', fields: [{ name: 'toPartnerId', required: true }, reason] },
   ] },
   { title: 'Platform: Partners', list: { label: 'Applications', path: '/platform/partner-applications', contextKey: 'applicationId' }, actions: [
-    { label: 'Approve application', method: 'POST', path: '/platform/partner-applications/:applicationId/approve', fields: [ver, { name: 'idempotencyKey', required: true }] },
+    { label: 'Approve application', stepUp: true, method: 'POST', path: '/platform/partner-applications/:applicationId/approve', fields: [ver, { name: 'idempotencyKey', required: true }] },
     { label: 'Reject application', method: 'POST', path: '/platform/partner-applications/:applicationId/reject', fields: [reason, ver], danger: true },
     { label: 'Partners', method: 'GET', path: '/platform/partners', query: [{ name: 'search' }, { name: 'status', type: 'select', options: ['ACTIVE', 'SUSPENDED'] }, { name: 'country' }] },
     { label: 'Add discount rule', method: 'POST', path: '/platform/partners/:partnerId/discount-rules', fields: [{ name: 'targetType', type: 'select', options: ['DEFAULT', 'CATEGORY', 'PRODUCT'], required: true }, { name: 'targetId' }, { name: 'basisPoints', type: 'number', required: true }, { name: 'validFrom', type: 'datetime', required: true }, { name: 'validUntil', type: 'datetime' }] },
@@ -226,8 +228,8 @@ const partnerPortal: Section[] = [
     { label: 'Approve transfer', method: 'POST', path: '/platform/partner-transfers/:transferId/approve', fields: [{ name: 'decision', type: 'select', options: ['APPROVED', 'REJECTED'] }, reason] },
     { label: 'Commission policy', method: 'POST', path: '/platform/partner-commission-policies', fields: [{ name: 'partnerId' }, { name: 'productCategory', type: 'select', options: ['SUBSCRIPTION', 'CREDITS', 'OTHER'], required: true }, { name: 'method', type: 'select', options: ['PERCENT', 'FIXED'], required: true }, { name: 'rate', type: 'number', required: true }, { name: 'currency', required: true }, { name: 'effectiveAt', type: 'datetime', required: true }] },
     { label: 'Payout queue', method: 'GET', path: '/platform/partner-payouts', query: [{ name: 'status' }] },
-    { label: 'Approve payout', method: 'POST', path: '/platform/partner-payouts/:payoutId/approve', fields: [{ name: 'expectedAmount', required: true }, reason], danger: true },
-    { label: 'Record payment', method: 'POST', path: '/platform/partner-payouts/:payoutId/record-payment', fields: [{ name: 'externalReference', required: true }, { name: 'paidAt', type: 'datetime', required: true }, { name: 'amount', required: true }, { name: 'currency', required: true }], danger: true },
+    { label: 'Approve payout', stepUp: true, method: 'POST', path: '/platform/partner-payouts/:payoutId/approve', fields: [{ name: 'expectedAmount', required: true }, reason], danger: true },
+    { label: 'Record payment', stepUp: true, method: 'POST', path: '/platform/partner-payouts/:payoutId/record-payment', fields: [{ name: 'externalReference', required: true }, { name: 'paidAt', type: 'datetime', required: true }, { name: 'amount', required: true }, { name: 'currency', required: true }], danger: true },
   ] },
 ];
 
@@ -245,6 +247,7 @@ const knowledge: Section[] = [
     { label: 'AI indexing policy', method: 'POST', path: '/knowledge/spaces/:spaceId/ai-indexing', fields: [{ name: 'enabled', type: 'checkbox' }, { name: 'contentClassification', type: 'select', options: ['PUBLIC', 'INTERNAL', 'CONFIDENTIAL', 'RESTRICTED'], required: true }] },
   ] },
   { title: 'Articles', actions: [
+    { label: 'Collaborative editor', method: 'GET', path: '/knowledge/articles/:articleId/edit', navigate: true },
     { label: 'Create article', method: 'POST', path: '/knowledge/articles', fields: [{ name: 'spaceId', required: true }, { name: 'parentArticleId' }, { name: 'title', required: true }, { name: 'templateId' }] },
     { label: 'Open article', method: 'GET', path: '/knowledge/articles/:articleId', query: [{ name: 'view', type: 'select', options: ['published', 'draft'] }] },
     { label: 'Save draft', method: 'PUT', path: '/knowledge/articles/:articleId/draft', fields: [{ name: 'baseRevisionId', required: true }, ver, { name: 'title' }, { name: 'content', type: 'json', required: true, placeholder: '{"blocks":[{"type":"heading","level":1,"text":"Overview"},{"type":"paragraph","text":"…"}]}' }], describe: 'A stale base revision returns REVISION_CONFLICT; your text is not lost.' },
@@ -262,6 +265,7 @@ const knowledge: Section[] = [
     { label: 'Replace ACL', method: 'PUT', path: '/knowledge/articles/:articleId/access', fields: [{ name: 'expectedVersion', type: 'number', required: true, placeholder: 'ACL version' }, { name: 'entries', type: 'json', required: true, placeholder: '[{"principalType":"DEPARTMENT","principalId":"…","level":"VIEW"}]' }], danger: true },
     { label: 'Share with member', method: 'POST', path: '/knowledge/articles/:articleId/shares', fields: [{ name: 'recipientUserId', required: true }, { name: 'level', type: 'select', options: ['VIEW', 'COMMENT', 'EDIT'], required: true }, { name: 'expiresAt', type: 'datetime' }] },
     { label: 'Invite guest (view one article)', method: 'POST', path: '/knowledge/articles/:articleId/guest-invitations', fields: [{ name: 'email', required: true }, { name: 'expiresAt', type: 'datetime', required: true }] },
+    { label: 'Guest invitation delivery', method: 'GET', path: '/knowledge/articles/:articleId/guest-invitations/:invitationId/delivery' },
     { label: 'Revoke guest', method: 'DELETE', path: '/knowledge/articles/:articleId/guest-invitations/:invitationId', danger: true },
     { label: 'Shared with me', method: 'GET', path: '/knowledge/me/shared' },
   ] },
@@ -305,6 +309,7 @@ const ai: Section[] = [
     { label: 'Deletion status', method: 'GET', path: '/ai/conversations/:conversationId/deletion' },
   ] },
   { title: 'Runs & approvals', list: { label: 'My runs', path: '/ai/runs', contextKey: 'runId' }, actions: [
+    { label: 'Watch run', method: 'GET', path: '/ai/runs/:runId', navigate: true },
     { label: 'Run scenario', method: 'POST', path: '/ai/runs', fields: [{ name: 'scenarioId', required: true, placeholder: 'assistant.chat' }, { name: 'input', type: 'json', required: true, placeholder: '{"prompt":"..."}' }, idem, { name: 'contextRefs', type: 'json' }] },
     { label: 'Run status', method: 'GET', path: '/ai/runs/:runId' },
     { label: 'Citations', method: 'GET', path: '/ai/runs/:runId/citations' },
@@ -330,7 +335,7 @@ const ai: Section[] = [
   ] },
   { title: 'Configuration', actions: [
     { label: 'Providers', method: 'GET', path: '/ai/providers' },
-    { label: 'Models', method: 'GET', path: '/ai/models', query: [{ name: 'capability', type: 'select', options: ['chat', 'json', 'transcription', 'image', 'tools'] }] },
+    { label: 'Models', method: 'GET', path: '/ai/models', query: [{ name: 'capability', type: 'select', options: ['chat', 'json', 'transcription', 'image', 'embedding', 'tools'] }] },
     { label: 'Connections', method: 'GET', path: '/ai/provider-connections' },
     { label: 'Add BYOK connection', method: 'POST', path: '/ai/provider-connections', fields: [{ name: 'provider', type: 'select', options: ['OPENAI', 'AZURE_OPENAI', 'ANTHROPIC', 'GOOGLE_GEMINI', 'OPENROUTER'], required: true }, { name: 'label', required: true }, { name: 'region', required: true, placeholder: 'eu' }, { name: 'endpoint' }, { name: 'allowedClassifications', type: 'json', placeholder: '["PUBLIC","INTERNAL"]' }, { name: 'secretSubmission', type: 'json', required: true, placeholder: '{"mode":"BYOK","apiKey":"..."}' }], describe: 'The key is sealed and never shown again.' },
     { label: 'Verify connection', method: 'POST', path: '/ai/provider-connections/:connectionId/verify' },

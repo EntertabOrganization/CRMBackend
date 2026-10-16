@@ -16,6 +16,8 @@ import {
 import type { InMemoryStore } from './store';
 import { requireEmail, requireText } from './validation';
 import { WorkspaceService } from './workspace-service';
+import { createHash } from 'node:crypto';
+import { z } from 'zod';
 
 type AuthResult = SessionContext & {
   accessToken: string;
@@ -29,7 +31,8 @@ export class AuthService {
     private readonly google: GoogleAuthProvider,
   ) {}
 
-  async signup(input: { firstName: string; lastName: string; email: string; password: string }) {
+  async signup(input: { firstName: string; lastName: string; email: string; password: string; referral?: unknown }) {
+    const referral = z.strictObject({ visitorToken: z.string().regex(/^[A-Za-z0-9_-]{16,200}$/), consent: z.literal('ATTRIBUTION') }).optional().parse(input.referral);
     requireText(input.firstName, 'firstName');
     requireText(input.lastName, 'lastName');
     requireEmail(input.email);
@@ -46,7 +49,7 @@ export class AuthService {
       lastName: input.lastName.trim(),
       email,
       settings: {},
-      meta: null,
+      meta: referral ? { partnerReferralVisitorRef: createHash('sha256').update('visitor:' + referral.visitorToken).digest('hex') } : null,
       status: 'PENDING_VERIFICATION',
       emailVerifiedAt: null,
       isDeleted: false,

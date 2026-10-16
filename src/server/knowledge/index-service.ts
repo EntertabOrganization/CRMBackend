@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
+import { createKnowledgeEmbedding, semanticCandidates } from './embeddings';
 import { requirePermission, resolvePrincipal, type Principal } from '../process-platform/context';
 import { registerAccess } from '../platform/access';
 import { enqueueJob, registerConsumer, registerJob } from '../platform/events-service';
@@ -11,6 +12,11 @@ import { aclChanged, articleLevel, LEVELS, loadArticle, loadSpace, sha, type Con
 const CHUNK_CHARS = 1200;
 export const CLASSIFICATION_ORDER = ['PUBLIC', 'INTERNAL', 'CONFIDENTIAL', 'RESTRICTED'] as const;
 const rank = (c: string) => Math.max(0, CLASSIFICATION_ORDER.indexOf(c as (typeof CLASSIFICATION_ORDER)[number]));
+async function queueEmbeddings(tx: Tx, articleId: string, workspaceId: string, requestedBy: string | null) {
+  if (!requestedBy || !await tx.aiRoute.count({ where: { scenarioCode: 'knowledge.embedding', enabled: true, OR: [{ workspaceId }, { workspaceId: null }] } })) return;
+  const pending = await tx.knowledgeAiChunk.findMany({ where: { articleId, indexingStatus: 'ACTIVE', embeddingRef: null }, select: { id: true } });
+  for (const c of pending) await enqueueJob(tx, { type: 'knowledge.embedding', ownerModule: 'knowledge', workspaceId, payload: { chunkId: c.id, requestedBy }, idempotencyKey: 'embed:' + c.id });
+}
 /** Searchable text excludes file blocks/captions so attachment names never surface in snippets (05 rule 5). */
 function searchText(content: Content) {
   return content.blocks.filter(b => !('fileId' in b)).map(b => 'text' in b ? b.text : 'items' in b ? (b.items as Array<string | { text: string }>).map(i => typeof i === 'string' ? i : i.text).join('\n') : 'rows' in b ? b.rows.map(r => r.join(' ')).join('\n') : '').join('\n');
@@ -41,11 +47,12 @@ export async function indexArticle(tx: Tx, articleId: string) {
     if (stale.count) await emitEvent(tx, { workspaceId: article.workspaceId, eventType: 'KNOWLEDGE_INDEX_REMOVED', aggregateType: 'KnowledgeIndex', aggregateId: article.id, actorType: 'SERVICE', payload: { withdrawn: stale.count } });
     return 'WITHDRAWN';
   }
-  if (await tx.knowledgeAiChunk.count({ where: { revisionId: article.publishedRevisionId!, indexingStatus: 'ACTIVE' } })) return 'CURRENT';
+  if (await tx.knowledgeAiChunk.count({ where: { revisionId: article.publishedRevisionId!, indexingStatus: 'ACTIVE' } })) { await queueEmbeddings(tx, article.id, article.workspaceId, space!.aiPolicyApprovedBy); return 'CURRENT'; }
   const rev = await tx.knowledgeRevision.findUniqueOrThrow({ where: { id: article.publishedRevisionId! } });
   await tx.knowledgeAiChunk.deleteMany({ where: { revisionId: rev.id } });
   let n = 0;
   for (const c of chunks(rev.contentJson as Content)) await tx.knowledgeAiChunk.create({ data: { workspaceId: article.workspaceId, articleId, revisionId: rev.id, chunkNumber: n++, anchor: c.anchor, content: c.text, contentHash: sha(c.text), classification: space!.contentClassification } });
+  await queueEmbeddings(tx, article.id, article.workspaceId, space!.aiPolicyApprovedBy);
   await emitEvent(tx, { workspaceId: article.workspaceId, eventType: 'KNOWLEDGE_INDEX_COMPLETED', aggregateType: 'KnowledgeIndex', aggregateId: article.id, actorType: 'SERVICE', payload: { revisionId: rev.id, chunks: n } });
   return 'INDEXED';
 }
@@ -73,6 +80,24 @@ registerJob({ type: 'knowledge.reindex', ownerModule: 'knowledge', maxAttempts: 
   const { prisma } = await import('../prisma-client');
   return prisma.$transaction(tx => indexArticle(tx, String(ctx.payload.articleId)), { timeout: 60000 });
 } });
+registerJob({ type: 'knowledge.embedding', ownerModule: 'knowledge', maxAttempts: 8, async run(ctx) {
+  const { prisma } = await import('../prisma-client');
+  const chunk = await prisma.knowledgeAiChunk.findUnique({ where: { id: String(ctx.payload.chunkId) } });
+  if (!chunk || chunk.indexingStatus !== 'ACTIVE' || chunk.embeddingRef) return { skipped: true };
+  const actor = await resolvePrincipal(prisma, chunk.workspaceId, String(ctx.payload.requestedBy));
+  const { article } = await prisma.$transaction(tx => loadArticle(tx, actor, chunk.articleId, 'VIEW'));
+  const space = await prisma.knowledgeSpace.findUniqueOrThrow({ where: { id: article.spaceId } });
+  if (article.status !== 'PUBLISHED' || article.publishedRevisionId !== chunk.revisionId || space.status !== 'ACTIVE' || !space.aiIndexing || space.contentClassification !== chunk.classification) return { skipped: true };
+  const embedded = await createKnowledgeEmbedding(prisma, actor, chunk.content, chunk.classification as (typeof CLASSIFICATION_ORDER)[number], 'kb-chunk:' + chunk.id);
+  // Revocation or publication during the provider call must not reactivate a stale vector.
+  return prisma.$transaction(async tx => {
+    const { article: fresh } = await loadArticle(tx, actor, chunk.articleId, 'VIEW');
+    const currentSpace = await tx.knowledgeSpace.findUniqueOrThrow({ where: { id: fresh.spaceId } });
+    if (!currentSpace.aiIndexing || fresh.publishedRevisionId !== chunk.revisionId || fresh.status !== 'PUBLISHED' || currentSpace.status !== 'ACTIVE' || currentSpace.contentClassification !== chunk.classification) return { skipped: true };
+    await tx.knowledgeAiChunk.updateMany({ where: { id: chunk.id, indexingStatus: 'ACTIVE', embeddingRef: null }, data: { embeddingRef: embedded.runId } });
+    return { indexed: true, chunkId: chunk.id };
+  });
+} });
 
 export type RetrievedSnippet = { articleId: string; revisionId: string; anchor: string | null; snippet: string; title: string; citation: { sourceType: 'knowledge.article'; sourceId: string; version: string; anchor: string | null } };
 /**
@@ -82,11 +107,13 @@ export type RetrievedSnippet = { articleId: string; revisionId: string; anchor: 
 export async function retrieveKnowledge(db: PrismaClient, actor: Principal, query: string, opts: { limit: number; maxClassification?: string }) {
   if (!actor.grants.has('knowledge.search')) return [];
   const q = query.trim().slice(0, 500); if (!q) return [];
-  const candidates = await db.$queryRaw<{ id: string; article_id: string; revision_id: string; anchor: string | null; content: string; classification: string }[]>`
+  const lexical = await db.$queryRaw<{ id: string; article_id: string; revision_id: string; anchor: string | null; content: string; classification: string }[]>`
     SELECT id, article_id, revision_id, anchor, content, classification FROM knowledge_ai_chunks
     WHERE workspace_id = ${actor.workspaceId}::uuid AND indexing_status = 'ACTIVE' AND to_tsvector('simple', content) @@ plainto_tsquery('simple', ${q})
     ORDER BY ts_rank(to_tsvector('simple', content), plainto_tsquery('simple', ${q})) DESC, id LIMIT 200`;
   const max = rank(opts.maxClassification ?? 'INTERNAL'), out: RetrievedSnippet[] = [], decided = new Map<string, { ok: boolean; title: string }>();
+  const semantic = await semanticCandidates(db, actor, q, CLASSIFICATION_ORDER.slice(0, max + 1)).catch(() => []);
+  const candidates = [...new Map([...semantic, ...lexical].map(c => [c.id, c])).values()];
   for (const c of candidates) {
     if (out.length >= opts.limit) break;
     if (rank(c.classification) > max) continue;

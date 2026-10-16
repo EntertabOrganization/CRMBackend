@@ -4,6 +4,7 @@ import './search-sources';
 import './privacy-service';
 import './privacy-hooks';
 import './ops-service';
+import './external-email';
 // Subscription Billing jobs/schedules/invoice effects (composition root for workers).
 import '../billing/usage-service';
 import '../billing/subscription-service';

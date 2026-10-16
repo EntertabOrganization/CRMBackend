@@ -7,6 +7,7 @@ import { BillingPartnerService } from './partner-billing';
 import { BillingPaymentService } from './payment-service';
 import { BillingSubscriptionService } from './subscription-service';
 import { BillingUsageService } from './usage-service';
+import { refreshHostedSetup } from './hosted-setup';
 
 const catalog = new BillingCatalogService(prisma), subscriptions = new BillingSubscriptionService(prisma), payments = new BillingPaymentService(prisma);
 const usage = new BillingUsageService(prisma), partner = new BillingPartnerService(prisma), finance = new BillingFinanceService(prisma);
@@ -56,7 +57,7 @@ export const billingRouter = new SuiteRouter()
   // 07 recovery
   .workspace('GET', B + '/subscriptions/:id/recovery-case', c => subscriptions.recoveryCase(c.actor, c.params.id))
   .workspace('POST', B + '/subscriptions/:id/retry-payment', c => subscriptions.retryPayment(c.actor, c.params.id))
-  .workspace('POST', B + '/subscriptions/:id/update-payment-method', c => finance.paymentMethodChange(c.actor))
+  .workspace('POST', B + '/subscriptions/:id/update-payment-method', c => finance.paymentMethodChange(c.actor, c.body, c.requestId, c.params.id))
   .platform('POST', B + '/recovery/:id/resolve', c => subscriptions.resolveRecovery(c.actor, c.params.id, c.requestId))
   // 08 partner
   .workspace('GET', B + '/partner-transactions', c => partner.workspaceTransactions(c.actor, c.query))
@@ -67,7 +68,8 @@ export const billingRouter = new SuiteRouter()
   .workspace('GET', B + '/admin/audit', c => finance.workspaceAudit(c.actor, c.query))
   .workspace('GET', B + '/preferences', c => finance.preferences(c.actor))
   .workspace('PATCH', B + '/preferences', c => finance.updatePreferences(c.actor, c.body, c.requestId))
-  .workspace('POST', B + '/payment-method/change', c => finance.paymentMethodChange(c.actor))
+  .workspace('POST', B + '/payment-method/change', c => finance.paymentMethodChange(c.actor, c.body, c.requestId))
+  .workspace('POST', B + '/payment-method/setups/:id/refresh', c => refreshHostedSetup(prisma, c.actor, c.params.id, c.requestId))
   .workspace('POST', B + '/approvals', c => finance.requestWorkspaceApproval(c.actor, c.body, c.requestId), 201)
   .workspace('POST', B + '/approvals/:id/decision', c => finance.decideWorkspaceApproval(c.actor, c.params.id, c.body, c.requestId));
 

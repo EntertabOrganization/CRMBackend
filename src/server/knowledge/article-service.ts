@@ -1,14 +1,14 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { AppError } from '../errors';
-import { requirePermission, type Principal } from '../process-platform/context';
+import { command, requirePermission, resolvePrincipal, type Principal } from '../process-platform/context';
 import { cleanFile } from '../suite/files-port';
 import { registerJob, registerSchedule } from '../platform/events-service';
 import { PlatformConfigService } from '../platform/config-service';
 import { PlatformNotificationService } from '../platform/notifications-service';
 import { legalHoldActive } from '../platform/privacy-service';
 import { assertVersion, audit, notFound, paged } from '../platform/kernel';
-import { aclChanged, articleEvent, articleLevel, articleSlug, assertKnowledgeWrite, assignAnchors, fileIdsOf, LEVELS, listQuery, loadArticle, loadSpace, normalizeContent, rebuildPaths, subtreeIds, type Article, type Content, type Tx } from './support';
+import { BLOCK, aclChanged, articleEvent, articleLevel, articleSlug, assertKnowledgeWrite, assignAnchors, fileIdsOf, LEVELS, listQuery, loadArticle, loadSpace, normalizeContent, rebuildPaths, subtreeIds, type Article, type Content, type Tx } from './support';
 
 const AUDIT_BATCH_MS = 10 * 60000;
 const maxBytes = (actor: Principal) => typeof actor.entitlements?.knowledgeArticleMaxBytes === 'number' ? actor.entitlements.knowledgeArticleMaxBytes as number : 1_000_000;
@@ -48,6 +48,45 @@ async function lifecycleEvent(tx: Tx, a: Article, next: string, actorId: string,
 export class KnowledgeArticleService {
   constructor(private readonly db: PrismaClient) {}
 
+  /** Block operations merge across independent edits; concurrent edits to the same block require explicit conflict resolution. */
+  async collaborate(actor: Principal, id: string, raw: unknown, key: string | null, requestId: string) {
+    const input = z.strictObject({ baseRevisionId: z.uuid(), operations: z.array(z.discriminatedUnion('kind', [
+      z.strictObject({ kind: z.literal('REPLACE'), blockId: z.string().min(1).max(100), block: BLOCK }),
+      z.strictObject({ kind: z.literal('DELETE'), blockId: z.string().min(1).max(100) }),
+      z.strictObject({ kind: z.literal('INSERT_AFTER'), blockId: z.string().min(1).max(100).nullable(), block: BLOCK }),
+    ])).min(1).max(100) }).parse(raw);
+    return this.db.$transaction(async tx => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'knowledge-article:' + id}))`;
+      const currentActor = await resolvePrincipal(tx, actor.workspaceId, actor.userId);
+      const { article } = await loadArticle(tx, currentActor, id, 'EDIT', 'knowledge.article.edit'); assertKnowledgeWrite(currentActor);
+      if (['RECYCLED', 'PURGED', 'ARCHIVED'].includes(article.status)) throw new AppError('INVALID_STATE_TRANSITION', 'Article cannot be edited in its current state.', 409);
+      return command(tx, currentActor, 'KNOWLEDGE_COLLABORATIVE_EDIT', key, { id, ...input }, async () => {
+        const base = await tx.knowledgeRevision.findFirst({ where: { id: input.baseRevisionId, articleId: article.id, workspaceId: actor.workspaceId } });
+        const current = article.currentDraftRevisionId ? await tx.knowledgeRevision.findUnique({ where: { id: article.currentDraftRevisionId } }) : null;
+        if (!base || !current) throw notFound('Draft revision');
+        const identify = (r: typeof base) => (r.contentJson as Content).blocks.map((b, i) => ({ ...b, blockId: b.blockId ?? `${r.id}:${i}` }));
+        const baseline = identify(base), blocks = identify(current);
+        for (const op of input.operations) {
+          const old = baseline.find(b => b.blockId === op.blockId), index = blocks.findIndex(b => b.blockId === op.blockId);
+          if (op.kind !== 'INSERT_AFTER') {
+            if (!old || index < 0 || JSON.stringify(old) !== JSON.stringify(blocks[index])) throw new AppError('REVISION_CONFLICT', 'This block changed; reload and merge it explicitly.', 409, { blockId: op.blockId, currentRevisionId: current.id });
+            if (op.kind === 'DELETE') blocks.splice(index, 1);
+            else blocks[index] = { ...op.block, blockId: op.blockId };
+          } else {
+            if (op.blockId !== null && (!old || index < 0)) throw new AppError('REVISION_CONFLICT', 'Insertion anchor was removed.', 409, { currentRevisionId: current.id });
+            // Inserted block IDs are operation-specific; clients cannot overwrite another block by supplying its ID.
+            blocks.splice(op.blockId === null ? 0 : index + 1, 0, { ...op.block, blockId: crypto.randomUUID() });
+          }
+        }
+        const revision = await writeRevision(tx, currentActor, article, { content: { blocks }, title: article.title, sourceRevisionId: base.id, idempotencyKey: key });
+        const updated = await tx.knowledgeArticle.update({ where: { id: article.id }, data: { currentDraftRevisionId: revision.id, version: { increment: 1 } } });
+        await audit(tx, { workspaceId: actor.workspaceId, actorId: actor.userId, action: 'KNOWLEDGE_COLLABORATIVE_EDIT', resourceType: 'KnowledgeArticle', resourceId: article.id, after: { revisionId: revision.id, baseRevisionId: base.id, mergedOnto: current.id, operations: input.operations.length }, requestId });
+        await articleEvent(tx, updated, 'KNOWLEDGE_DRAFT_SAVED', actor.userId, { revisionId: revision.id });
+        return { revisionId: revision.id, version: updated.version, merged: current.id !== base.id };
+      });
+    }, { timeout: 60000 });
+  }
+
   async create(actor: Principal, raw: unknown, requestId: string) {
     requirePermission(actor, 'knowledge.article.create'); assertKnowledgeWrite(actor);
     const input = z.strictObject({ spaceId: z.uuid(), parentArticleId: z.uuid().optional(), title: z.string().trim().min(1).max(200), templateId: z.uuid().optional(), sortOrder: z.number().int().min(0).max(1000000).default(0) }).parse(raw);
@@ -82,7 +121,7 @@ export class KnowledgeArticleService {
       const sections = revision ? await tx.knowledgeSection.findMany({ where: { revisionId: revision.id }, orderBy: { order: 'asc' }, select: { anchor: true, headingLevel: true, title: true } }) : [];
       return { id: article.id, spaceId: article.spaceId, parentArticleId: article.parentArticleId, title: wantDraft ? article.title : revision?.title ?? article.title, slug: article.slug, status: article.status, version: article.version,
         myLevel: Object.keys(LEVELS)[level], publishedRevisionId: article.publishedRevisionId, currentDraftRevisionId: level >= LEVELS.EDIT ? article.currentDraftRevisionId : null,
-        revision: revision && { id: revision.id, versionNumber: revision.versionNumber, state: revision.state, occurredAt: revision.occurredAt, content: await viewerContent(tx, actor, revision.contentJson as Content) }, sections };
+        revision: revision && { id: revision.id, versionNumber: revision.versionNumber, state: revision.state, occurredAt: revision.occurredAt, content: await viewerContent(tx, actor, { blocks: (revision.contentJson as Content).blocks.map((b, i) => ({ ...b, blockId: b.blockId ?? `${revision.id}:${i}` })) }) }, sections };
     });
   }
   /**

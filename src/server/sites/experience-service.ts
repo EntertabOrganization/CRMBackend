@@ -11,6 +11,7 @@ import { BLOCK_DEFINITIONS, contentHash, isRtl, loadSite, locale, validateBlockT
 import { SitesContentService } from './content-service';
 import { SitesPublishService } from './publish-service';
 import { CommercePublicationService } from '../commerce/publication-service';
+import { PartnerCommercialService } from '../partners/commercial-service';
 
 const CATEGORIES = ['NECESSARY', 'ANALYTICS', 'MARKETING', 'CUSTOM'] as const;
 const FORBIDDEN_JS = [/\beval\s*\(/, /new\s+Function\s*\(/, /document\.cookie/, /localStorage|sessionStorage/, /indexedDB/, /XMLHttpRequest/, /\bimport\s*\(/, /importScripts/, /\.innerHTML\s*=/, /document\.write/, /Authorization|Bearer\s/i, /\/api\/v1\//, /postMessage\([^)]*\*\s*\)/];
@@ -239,7 +240,7 @@ export class SitesExperienceService {
   }
   /** Public consent capture: pseudonymous visitor key, policy version, categories; independent of CRM marketing consent. */
   async consent(siteId: string, raw: unknown, client: string) {
-    const input = parse(z.strictObject({ visitorKey: z.string().regex(/^[A-Za-z0-9_-]{16,64}$/), acceptedCategories: z.array(z.enum(CATEGORIES)).max(4), policyVersion: z.number().int().positive() }), raw);
+    const input = parse(z.strictObject({ visitorKey: z.string().regex(/^[A-Za-z0-9_-]{16,64}$/), acceptedCategories: z.array(z.enum(CATEGORIES)).max(4), policyVersion: z.number().int().positive(), referralCode: z.string().min(8).max(64).optional() }), raw);
     checkRateLimit(client, { scope: 'sites.consent', limit: 60, windowMs: 60000 });
     return this.db.$transaction(async tx => {
       const site = await tx.site.findUnique({ where: { id: parse(uuid, siteId) } });
@@ -248,6 +249,7 @@ export class SitesExperienceService {
       if (policy.version !== input.policyVersion) throw new AppError('VERSION_CONFLICT', 'Consent policy changed; reload the banner.', 409);
       const accepted = [...new Set(['NECESSARY', ...input.acceptedCategories])];
       await tx.siteConsentPreference.create({ data: { workspaceId: site.workspaceId, siteId: site.id, visitorKey: sha256(input.visitorKey), consentVersion: policy.version, acceptedCategories: accepted } });
+      if (input.referralCode && accepted.includes('MARKETING')) await PartnerCommercialService.recordConsentedTouch(tx, input.referralCode, input.visitorKey);
       await systemEvent(tx, site.workspaceId, 'SITE', site.id, 'SITE_CONSENT_CHANGED', { categories: accepted, policyVersion: policy.version }, false);
       return { acceptedCategories: accepted, policyVersion: policy.version };
     });

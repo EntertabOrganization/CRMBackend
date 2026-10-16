@@ -1,3 +1,4 @@
+import { hostedPaymentSetup } from './hosted-setup';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { AppError } from '../errors';
@@ -321,13 +322,8 @@ export class BillingFinanceService {
       return saved;
     });
   }
-  /**
-   * Payment-method change must be provider-hosted tokenization (no PAN/CVV in TrueCRM). The current adapters expose no hosted
-   * setup session, so this fails closed and is recorded as an integration blocker (customers pay each invoice via hosted checkout).
-   */
-  async paymentMethodChange(actor: Principal) {
-    requirePermission(actor, 'billing.payment.manage');
-    await securityEvent(this.db, { workspaceId: actor.workspaceId, principalId: actor.userId, eventType: 'BILLING_PAYMENT_METHOD_CHANGE_UNAVAILABLE', risk: 'LOW' });
-    throw new AppError('DEPENDENCY_UNAVAILABLE', 'Hosted payment-method setup is not configured for the billing provider; pay invoices via hosted checkout.', 503);
+  /** Card details remain exclusively in the provider-hosted setup flow. */
+  async paymentMethodChange(actor: Principal, raw: unknown, requestId: string, subscriptionId?: string) {
+    return hostedPaymentSetup(this.db, actor, raw, requestId, subscriptionId);
   }
 }

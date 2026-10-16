@@ -45,7 +45,7 @@ export function SignIn({ product, onSession, api }: { product: string; onSession
 
 /** Declarative operator action: path params (`:id`) + typed body fields → one API call with an Idempotency-Key. */
 export type ActionField = { name: string; label?: string; type?: 'text' | 'number' | 'checkbox' | 'json' | 'date' | 'datetime' | 'select' | 'textarea'; options?: string[]; required?: boolean; placeholder?: string; defaultValue?: string };
-export type Action = { label: string; method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE'; path: string; fields?: ActionField[]; query?: ActionField[]; describe?: string; danger?: boolean };
+export type Action = { label: string; method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE'; path: string; fields?: ActionField[]; query?: ActionField[]; describe?: string; danger?: boolean; stepUp?: boolean; navigate?: boolean };
 
 function convert(field: ActionField, raw: FormDataEntryValue | null, checked: boolean) {
   if (field.type === 'checkbox') return checked;
@@ -57,7 +57,7 @@ function convert(field: ActionField, raw: FormDataEntryValue | null, checked: bo
   return value;
 }
 
-export function ActionRunner({ action, api, context, onDone }: { action: Action; api: (path: string, method?: string, body?: unknown) => Promise<Envelope>; context: Row; onDone?: (result: Envelope) => void }) {
+export function ActionRunner({ action, api, context, onDone }: { action: Action; api: (path: string, method?: string, body?: unknown, headers?: Record<string, string>) => Promise<Envelope>; context: Row; onDone?: (result: Envelope) => void }) {
   const params = useMemo(() => [...action.path.matchAll(/:(\w+)/g)].map(m => m[1]), [action.path]);
   const [result, setResult] = useState<Envelope | null>(null), [error, setError] = useState(''), [busy, setBusy] = useState(false);
   async function submit(e: FormEvent<HTMLFormElement>) {
@@ -65,11 +65,17 @@ export function ActionRunner({ action, api, context, onDone }: { action: Action;
     try {
       let path = action.path;
       for (const p of params) { const v = String(form.get('param:' + p) ?? '').trim(); if (!v) throw new Error(`${p} is required.`); path = path.replace(':' + p, encodeURIComponent(v)); }
+      if (action.navigate) { window.location.assign(path); return; }
       const query = new URLSearchParams();
       for (const q of action.query ?? []) { const v = convert(q, form.get('query:' + q.name), form.get('query:' + q.name) === 'on'); if (v !== undefined) query.set(q.name, String(v)); }
       const body: Row = {};
       for (const f of action.fields ?? []) { const v = convert(f, form.get('body:' + f.name), form.get('body:' + f.name) === 'on'); if (v !== undefined) body[f.name] = v; }
-      const res = await api(path + (query.size ? '?' + query.toString() : ''), action.method, action.method === 'GET' || action.method === 'DELETE' && !action.fields?.length ? undefined : body);
+      const assertion = String(form.get('step-up-assertion') ?? '').trim();
+      if (action.stepUp && !assertion) throw new Error('A recent MFA assertion is required.');
+      if (action.danger && !window.confirm('Confirm: ' + action.label + '?')) return;
+      const assertionInput = e.currentTarget.elements.namedItem('step-up-assertion');
+      if (assertionInput instanceof HTMLInputElement) assertionInput.value = '';
+      const res = await api(path + (query.size ? '?' + query.toString() : ''), action.method, action.method === 'GET' || action.method === 'DELETE' && !action.fields?.length ? undefined : body, assertion ? { 'x-mfa-assertion': assertion } : undefined);
       setResult(res); onDone?.(res);
     } catch (err) { setError(err instanceof ApiError ? `${err.message}${err.code ? ' (' + err.code + ')' : ''}` : err instanceof Error ? err.message : 'The action failed.'); }
     finally { setBusy(false); }
@@ -87,8 +93,9 @@ export function ActionRunner({ action, api, context, onDone }: { action: Action;
       {params.map(p => <Field key={p} name={p}><input name={'param:' + p} required defaultValue={context[p] ?? ''} /></Field>)}
       {(action.query ?? []).map(q => <Field key={'q' + q.name} name={q.label ?? q.name}>{input('query:', q)}</Field>)}
       {(action.fields ?? []).map(f => <Field key={f.name} name={(f.label ?? f.name) + (f.required ? ' *' : '')}>{input('body:', f)}</Field>)}
+      {action.stepUp && <Field name="MFA assertion" hint="Use a recent assertion from your MFA service. It is used only for this request."><input name="step-up-assertion" type="password" autoComplete="off" required /></Field>}
     </div>
-    <button disabled={busy} className={action.danger ? 'spa-danger' : undefined}>{action.method === 'GET' ? 'Load' : 'Submit'}</button>
+    <button disabled={busy} className={action.danger ? 'spa-danger' : undefined}>{action.navigate ? 'Open' : action.method === 'GET' ? 'Load' : 'Submit'}</button>
     {error && <p role="alert" className="spa-error">{error}</p>}
     {result && <Result data={result.data} />}
   </form>;

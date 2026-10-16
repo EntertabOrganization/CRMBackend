@@ -216,15 +216,16 @@ export class PartnerCommercialService {
     assertServiceIdentity(authorization);
     const input = z.strictObject({ code: z.string().min(8).max(64), visitorToken: z.string().min(8).max(200), consent: z.enum(['ATTRIBUTION', 'NONE']) }).parse(raw);
     if (input.consent !== 'ATTRIBUTION') return { recorded: false, reason: 'NO_CONSENT' };
-    const link = await this.db.partnerReferralLink.findUnique({ where: { codeHash: sha(input.code) } });
-    const partner = link ? await this.db.partner.findUnique({ where: { id: link.partnerId } }) : null;
+    return this.db.$transaction(tx => PartnerCommercialService.recordConsentedTouch(tx, input.code, input.visitorToken));
+  }
+  /** Called only after the owning public consent handler validates an affirmative choice. */
+  static async recordConsentedTouch(tx: Tx, code: string, visitorToken: string) {
+    const link = await tx.partnerReferralLink.findUnique({ where: { codeHash: sha(code) } });
+    const partner = link ? await tx.partner.findUnique({ where: { id: link.partnerId } }) : null;
     if (!link || link.status !== 'ACTIVE' || !partner || !isActivePartner(partner)) return { recorded: false, reason: 'INACTIVE_CODE' };
-    const touch = await this.db.$transaction(async tx => {
-      const row = await tx.partnerReferralTouch.create({ data: { partnerId: link.partnerId, codeId: link.id, visitorRef: sha('visitor:' + input.visitorToken), consentScope: input.consent } });
+    const row = await tx.partnerReferralTouch.create({ data: { partnerId: link.partnerId, codeId: link.id, visitorRef: sha('visitor:' + visitorToken), consentScope: 'ATTRIBUTION' } });
       await emitEvent(tx, { workspaceId: null, eventType: 'PARTNER.REFERRAL_RECORDED', aggregateType: 'PartnerReferralLink', aggregateId: link.id, actorType: 'SERVICE', payload: { partnerId: link.partnerId } });
-      return row;
-    });
-    return { recorded: true, touchId: touch.id };
+    return { recorded: true, touchId: row.id };
   }
   /**
    * Proposes an attribution when a Workspace is created by a visitor with a consented, in-window touch. Fraud checks: a Partner
@@ -232,13 +233,21 @@ export class PartnerCommercialService {
    * Attribution never grants Workspace access (06 AC01).
    */
   static async attributeWorkspace(tx: Tx, workspaceId: string, ownerUserId: string, visitorToken: string) {
-    const visitorRef = sha('visitor:' + visitorToken);
+    return this.attributeWorkspaceFromRef(tx, workspaceId, ownerUserId, sha('visitor:' + visitorToken));
+  }
+  static async attributeWorkspaceFromRef(tx: Tx, workspaceId: string, ownerUserId: string, visitorRef: string) {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'partner-attribution:' + workspaceId}))`;
+    if (await tx.partnerReferralAttribution.findFirst({ where: { workspaceId } })) return null;
     const touch = await tx.partnerReferralTouch.findFirst({ where: { visitorRef }, orderBy: { observedAt: 'desc' } }); if (!touch) return null;
     const link = await tx.partnerReferralLink.findUniqueOrThrow({ where: { id: touch.codeId } });
-    if (link.status !== 'ACTIVE' || touch.observedAt.getTime() + link.attributionWindowDays * 86400000 < Date.now()) return null;
+    const partner = await tx.partner.findUnique({ where: { id: link.partnerId } });
+    if (touch.consentScope !== 'ATTRIBUTION' || !partner || !isActivePartner(partner) || link.status !== 'ACTIVE' || touch.observedAt.getTime() + link.attributionWindowDays * 86400000 < Date.now()) return null;
     if (await tx.partnerMembership.count({ where: { partnerId: link.partnerId, userId: ownerUserId, isDeleted: false } })) return null; // self-referral
     const active = await tx.partnerWorkspaceRelation.findFirst({ where: { workspaceId, status: 'ACTIVE', isDeleted: false } });
-    return tx.partnerReferralAttribution.create({ data: { workspaceId, partnerId: link.partnerId, sourceTouchId: touch.id, modelVersion: link.modelVersion, effectiveAt: new Date(), status: active && active.partnerId !== link.partnerId ? 'DISPUTED' : 'PROPOSED' } });
+    const claim = await tx.partnerReferralAttribution.create({ data: { workspaceId, partnerId: link.partnerId, sourceTouchId: touch.id, modelVersion: link.modelVersion, effectiveAt: new Date(), status: active && active.partnerId !== link.partnerId ? 'DISPUTED' : 'PROPOSED' } });
+    await audit(tx, { workspaceId, partnerId: link.partnerId, actorId: ownerUserId, action: 'PARTNER.ATTRIBUTION_PROPOSED', resourceType: 'PartnerReferralAttribution', resourceId: claim.id, after: { status: claim.status }, requestId: claim.id });
+    await emitEvent(tx, { workspaceId, actorId: ownerUserId, eventType: 'PARTNER.ATTRIBUTION_PROPOSED', aggregateType: 'PartnerReferralAttribution', aggregateId: claim.id, payload: { partnerId: link.partnerId, status: claim.status } });
+    return claim;
   }
   async disputeAttribution(actor: PlatformPrincipal, raw: unknown, requestId: string) {
     requirePlatform(actor, 'platform.partner.attribution.review');

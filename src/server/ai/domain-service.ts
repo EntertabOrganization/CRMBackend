@@ -69,15 +69,16 @@ registerJob({ type: 'ai.transcribe', ownerModule: 'ai', maxAttempts: 2, async ru
   const { prisma } = await import('../prisma-client');
   const claimed = await prisma.aiRun.updateMany({ where: { id: String(ctx.payload.runId), status: 'QUEUED' }, data: { status: 'RUNNING', startedAt: new Date() } });
   if (!claimed.count) return { skipped: true };
-  const { run, conn, adapter } = await mediaConnection(prisma, String(ctx.payload.runId));
+  const { run, conn, model, adapter } = await mediaConnection(prisma, String(ctx.payload.runId));
   const input = JSON.parse(decrypt(run.inputSealed)!) as { fileId: string; language?: string; diarization?: boolean };
   try {
     const actor = await resolvePrincipal(prisma, run.workspaceId, run.requesterId);
     const { version, bytes } = await prisma.$transaction(tx => readCleanFile(tx, actor, input.fileId, MAX_AUDIO_BYTES));
     if (!/^(audio|video)\//.test(version.mimeType)) throw new AppError('VALIDATION_FAILED', 'Only audio/video files can be transcribed.', 400);
     if (!adapter.transcribe) throw new AppError('DEPENDENCY_UNAVAILABLE', 'The routed provider does not support transcription.', 503);
-    const result = await adapter.transcribe(connectionSecret(conn), conn.endpoint, bytes, version.mimeType, input.language ?? null);
-    await prisma.aiTranscript.create({ data: { workspaceId: run.workspaceId, sourceFileId: input.fileId, runId: run.id, scenarioCode: run.scenarioCode, language: input.language ?? null, diarizationMeta: input.diarization ? { requested: true, supported: false } : Prisma.DbNull, textSealed: encrypt(result.text), createdBy: run.requesterId } });
+    const result = await adapter.transcribe(connectionSecret(conn), conn.endpoint, bytes, version.mimeType, input.language ?? null, { model: model.modelKey, diarization: !!input.diarization });
+    if (input.diarization && !result.segments) throw new AppError('DEPENDENCY_UNAVAILABLE', 'The approved provider route did not return speaker segments.', 503);
+    await prisma.aiTranscript.create({ data: { workspaceId: run.workspaceId, sourceFileId: input.fileId, runId: run.id, scenarioCode: run.scenarioCode, language: input.language ?? null, diarizationMeta: input.diarization ? { requested: true, supported: true, segmentsSealed: encrypt(JSON.stringify(result.segments)) } : Prisma.DbNull, textSealed: encrypt(result.text), createdBy: run.requesterId } });
     await settleMedia(prisma, run.id, 'SUCCEEDED', { tokensIn: Math.max(1, Math.ceil(result.durationSeconds * 25)), tokensOut: Math.ceil(result.text.length / 4), estimated: true });
   } catch (error) { await settleMedia(prisma, run.id, 'FAILED', null, error instanceof AppError ? error.code : 'TRANSCRIPTION_FAILED'); }
   return { done: true };
@@ -121,7 +122,8 @@ export class AiDomainService {
     const t = await this.db.aiTranscript.findFirst({ where: { runId: z.uuid().parse(runId), workspaceId: actor.workspaceId } });
     if (!t || t.createdBy !== actor.userId && !actor.grants.has('ai.run.readScoped')) throw notFound('Transcript');
     await this.db.$transaction(tx => readCleanFile(tx, actor, t.sourceFileId, MAX_AUDIO_BYTES)); // source access re-checked
-    return { id: t.id, sourceFileId: t.sourceFileId, language: t.language, reviewStatus: t.reviewStatus, text: decrypt(t.textSealed) };
+    const meta = t.diarizationMeta as { segmentsSealed?: string } | null;
+    return { id: t.id, sourceFileId: t.sourceFileId, language: t.language, reviewStatus: t.reviewStatus, text: decrypt(t.textSealed), segments: meta?.segmentsSealed ? JSON.parse(decrypt(meta.segmentsSealed)!) : null };
   }
   /** Extraction proposes target fields from an authorized source; nothing is written until apply (10 AC01). */
   async extractFields(actor: Principal, raw: unknown) {

@@ -648,4 +648,15 @@ export async function persistStateInTransaction(tx: Prisma.TransactionClient,bef
         const removed=(before[key] as unknown as Array<{id:string}>).filter(row=>!afterIds.has(row.id)).map(row=>row.id);
         if(removed.length)await packDelegate.deleteMany({where:{id:{in:removed}}});
       }
+      // The verified-signup Workspace and referral attribution share this persistence transaction.
+      const oldWorkspaces = new Set(before.workspaces.map(w => w.id));
+      for (const workspace of after.workspaces) {
+        if (oldWorkspaces.has(workspace.id)) continue;
+        const owner = after.users.find(u => u.id === workspace.ownerUserId && u.status === 'ACTIVE' && u.emailVerifiedAt && !u.isDeleted);
+        const visitorRef = (owner?.meta as { partnerReferralVisitorRef?: unknown } | null)?.partnerReferralVisitorRef;
+        if (typeof visitorRef !== 'string' || !/^[a-f0-9]{64}$/.test(visitorRef)) continue;
+        const { PartnerCommercialService } = await import('./partners/commercial-service');
+        await PartnerCommercialService.attributeWorkspaceFromRef(tx, workspace.id, workspace.ownerUserId, visitorRef);
+      }
+
 }

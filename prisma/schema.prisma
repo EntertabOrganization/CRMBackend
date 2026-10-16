@@ -9011,11 +9011,26 @@ model BillingEntitlementHistory {
   @@map("billing_entitlement_history")
 }
 
+model PlatformExternalEmail {
+  id                String   @id @db.Uuid
+  workspaceId       String   @map("workspace_id") @db.Uuid
+  resourceType      String   @map("resource_type")
+  resourceId        String   @map("resource_id") @db.Uuid
+  messageSealed     String?  @map("message_sealed")
+  state             String   @default("QUEUED")
+  providerMessageId String?  @map("provider_message_id")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, resourceType, resourceId], map: "platform_external_emails_workspace_resource")
+  @@map("platform_external_emails")
+}
+
 model BillingAccount {
   id               String   @id @default(uuid()) @db.Uuid
   workspaceId      String   @map("workspace_id") @db.Uuid
   payerType        String   @map("payer_type")
   payerCustomerRef String?  @map("payer_customer_ref")
+  providerCustomers Json   @default("{}") @map("provider_customers")
   partnerId        String?  @map("partner_id") @db.Uuid
   legalIdentity    Json     @map("legal_identity_snapshot")
   billingCurrency  String   @map("billing_currency")
@@ -10637,6 +10652,7 @@ model AiToolCall {
   @@map("ai_tool_calls")
 }
 model AiRun {
+  streamSealed       String?   @map("stream_sealed")
   id                 String    @id @default(uuid()) @db.Uuid
   workspaceId        String    @map("workspace_id") @db.Uuid
   requesterId        String    @map("requester_id") @db.Uuid

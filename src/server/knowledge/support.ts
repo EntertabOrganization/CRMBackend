@@ -1,5 +1,5 @@
 import type { Prisma } from '@prisma/client';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { AppError } from '../errors';
 import { requirePermission, type Principal } from '../process-platform/context';
@@ -21,15 +21,15 @@ const safeUrl = z.string().max(2000).refine(u => /^https:\/\//i.test(u) || /^\/[
 const anchor = z.string().regex(/^[a-z0-9][a-z0-9-]{0,79}$/);
 const link = z.strictObject({ text: text(300), href: safeUrl });
 export const BLOCK = z.discriminatedUnion('type', [
-  z.strictObject({ type: z.literal('heading'), level: z.number().int().min(1).max(4), text: text(300).pipe(z.string().min(1)), anchor: anchor.optional() }),
-  z.strictObject({ type: z.literal('paragraph'), text: text(20000), links: z.array(link).max(50).default([]) }),
-  z.strictObject({ type: z.literal('list'), ordered: z.boolean().default(false), items: z.array(text(2000)).min(1).max(500) }),
-  z.strictObject({ type: z.literal('checklist'), items: z.array(z.strictObject({ text: text(2000), checked: z.boolean().default(false) })).min(1).max(500) }),
-  z.strictObject({ type: z.literal('quote'), text: text(5000) }),
-  z.strictObject({ type: z.literal('table'), header: z.array(text(300)).max(30).default([]), rows: z.array(z.array(text(2000)).max(30)).max(500) }),
-  z.strictObject({ type: z.literal('code'), language: z.string().regex(/^[a-z0-9+#-]{0,30}$/).default(''), text: text(50000) }),
-  z.strictObject({ type: z.enum(['image', 'video', 'file']), fileId: z.uuid(), caption: text(500).default('') }),
-  z.strictObject({ type: z.literal('callout'), tone: z.enum(['info', 'warning', 'success', 'danger']).default('info'), text: text(5000) }),
+  z.strictObject({ blockId: z.string().min(1).max(100).optional(), type: z.literal('heading'), level: z.number().int().min(1).max(4), text: text(300).pipe(z.string().min(1)), anchor: anchor.optional() }),
+  z.strictObject({ blockId: z.string().min(1).max(100).optional(), type: z.literal('paragraph'), text: text(20000), links: z.array(link).max(50).default([]) }),
+  z.strictObject({ blockId: z.string().min(1).max(100).optional(), type: z.literal('list'), ordered: z.boolean().default(false), items: z.array(text(2000)).min(1).max(500) }),
+  z.strictObject({ blockId: z.string().min(1).max(100).optional(), type: z.literal('checklist'), items: z.array(z.strictObject({ text: text(2000), checked: z.boolean().default(false) })).min(1).max(500) }),
+  z.strictObject({ blockId: z.string().min(1).max(100).optional(), type: z.literal('quote'), text: text(5000) }),
+  z.strictObject({ blockId: z.string().min(1).max(100).optional(), type: z.literal('table'), header: z.array(text(300)).max(30).default([]), rows: z.array(z.array(text(2000)).max(30)).max(500) }),
+  z.strictObject({ blockId: z.string().min(1).max(100).optional(), type: z.literal('code'), language: z.string().regex(/^[a-z0-9+#-]{0,30}$/).default(''), text: text(50000) }),
+  z.strictObject({ blockId: z.string().min(1).max(100).optional(), type: z.enum(['image', 'video', 'file']), fileId: z.uuid(), caption: text(500).default('') }),
+  z.strictObject({ blockId: z.string().min(1).max(100).optional(), type: z.literal('callout'), tone: z.enum(['info', 'warning', 'success', 'danger']).default('info'), text: text(5000) }),
 ]);
 export type Block = z.infer<typeof BLOCK>;
 export const CONTENT = z.strictObject({ blocks: z.array(BLOCK).max(5000) });
@@ -38,6 +38,8 @@ const SCRIPTISH = /<\s*\/?\s*(script|iframe|object|embed|style)\b|javascript:|on
 /** Structural sanitization: content is plain text blocks; markup-looking text is kept inert but flagged for the safety scan. */
 export function normalizeContent(raw: unknown, maxBytes: number): { content: Content; hash: string; safety: 'PASSED' | 'FLAGGED'; size: number } {
   const content = CONTENT.parse(raw);
+  for (const block of content.blocks) block.blockId ??= randomUUID();
+  if (new Set(content.blocks.map(b => b.blockId)).size !== content.blocks.length) throw new AppError('VALIDATION_FAILED', 'Duplicate content block identifiers.', 400);
   const json = JSON.stringify(content);
   if (Buffer.byteLength(json) > maxBytes) throw new AppError('INSUFFICIENT_QUOTA', 'Article content exceeds the plan size limit.', 422, { maxBytes });
   return { content, hash: sha(json), safety: SCRIPTISH.test(json) ? 'FLAGGED' : 'PASSED', size: Buffer.byteLength(json) };

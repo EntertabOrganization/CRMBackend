@@ -9,7 +9,7 @@
     "dev": "next dev -p 3001",
     "start": "next start -p 3001",
     "build": "next build",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "node --max-old-space-size=8192 node_modules/typescript/bin/tsc --noEmit --project tsconfig.build.json",
     "pretest": "npm run db:start",
     "test": "jest --config jest.config.ts --runInBand",
     "test:endpoints": "npm run db:start && jest --config jest.config.ts --runInBand tests/api-endpoints.spec.ts",
