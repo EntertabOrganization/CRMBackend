@@ -46,7 +46,10 @@ export async function resolvePrincipal(db: PrismaClient | Tx, workspaceId: strin
     ? configured as Record<string, unknown> : undefined;
   const { spaEntitlements } = await import('../spa/entitlements');
   const spa = await spaEntitlements(db, workspaceId, false);
-  return { workspaceId, userId, roleId: membership.roleId, grants, entitlements: { ...entitlements, ...spa } };
+  // Subscription Billing projection (31/01): when a Workspace is billing-managed, its effective plan values win over legacy settings.
+  const billing = await db.billingEffectiveEntitlement.findUnique({ where: { workspaceId }, select: { values: true } });
+  const billed = billing?.values && typeof billing.values === 'object' && !Array.isArray(billing.values) ? billing.values as Record<string, unknown> : {};
+  return { workspaceId, userId, roleId: membership.roleId, grants, entitlements: { ...entitlements, ...spa, ...billed } };
 }
 
 export function requirePermission(actor: Principal, permission: string, workspaceWide = false): string {
