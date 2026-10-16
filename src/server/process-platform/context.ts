@@ -35,7 +35,13 @@ export async function resolvePrincipal(db: PrismaClient | Tx, workspaceId: strin
       user: { isDeleted: false, status: 'ACTIVE' }, workspace: { isDeleted: false }, role: { isDeleted: false, workspaceId } },
     include: { workspace: true, role: { include: { rolePermissions: { where: { isDeleted: false }, include: { permission: true } } } } },
   });
-  if (!membership) throw new AppError('PERMISSION_DENIED', 'Active Workspace membership is required.', 403);
+  if (!membership) {
+    // Partner delegated access (32/05): customer-granted, time-limited authority that is never a Workspace membership.
+    const { delegatedPrincipal } = await import('../partners/access-service');
+    const delegated = await delegatedPrincipal(db, workspaceId, userId);
+    if (delegated) return delegated;
+    throw new AppError('PERMISSION_DENIED', 'Active Workspace membership is required.', 403);
+  }
   const grants = new Map<string, string>();
   for (const grant of membership.role.rolePermissions) {
     if (!grant.permission.isDeleted) grants.set(grant.permission.key, grant.scope);
