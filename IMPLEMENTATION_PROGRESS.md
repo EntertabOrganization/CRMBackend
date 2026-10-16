@@ -91,13 +91,13 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 - [!] Not implemented by design/blocked: real-time collaborative co-editing (spec marks it advanced phase; Core V1 optimistic concurrency done); vector embeddings provider (FTS only, `embeddingRef` reserved); guest invitation email delivery uses the returned one-time token (no mail provider wired to Knowledge)
 
 ### 29-AI-CoPilot
-- [ ] 01 Provider connections, model catalog, routing
-- [ ] 02 Scenarios, prompt versions, assistants
+- [x] 01 Provider connections, model catalog, routing — `ai/providers.ts` (fixed-host adapters, sealed BYOK/vault refs, failure classes), `ai/config-service.ts` (versioned catalog, validated routes), `run-service.ts#eligibleCandidates` (classification/region/capability/status per candidate)
+- [x] 02 Scenarios, prompt versions, assistants — `ai/registry.ts` (server scenario registry, injection guard prompt), `config-service.ts` (sensitive opt-in needs module admin, immutable published prompts pinned per run, assistants + non-authorizing behavior roles)
 - [ ] 03 Conversations, messages, retention
-- [ ] 04 Context builder, permission-filtered retrieval, citations
-- [ ] 05 Tool registry, approvals, business actions
-- [ ] 06 Async runs, retries, fallback, cancellation
-- [ ] 07 Usage, costs, BYOK, credit consumption (via Billing)
+- [x] 04 Context builder, permission-filtered retrieval, citations — `run-service.ts#buildContext` (Knowledge via live-checked `retrieveKnowledge`, files via `readCleanFile`, CRM via access resolver; budget truncation keeps provenance; citations re-checked on read)
+- [x] 05 Tool registry, approvals, business actions — `registry.ts` tools → owning Knowledge services; `run-service.ts` (deny-by-default proposals + security findings, exact args-hash approvals, HIGH_WRITE never ALWAYS, claim-once execution re-checking live permission/grant)
+- [x] 06 Async runs, retries, fallback, cancellation — `run-service.ts` (idempotent submit, durable claim, transient retry w/ backoff, approved fallback, UNKNOWN outcome never resent, best-effort cancel, retry of transient failures only)
+- [x] 07 Usage, costs, BYOK, credit consumption (via Billing) — Billing `UsageService` reserve/settle/release on `ai.credits`, append-only `ai_usage_records` w/ pricing snapshot, BYOK tracked w/o credits, budget hard cap under lock, completion check for expired reservations
 - [ ] 08 External MCP & OAuth (advanced)
 - [ ] 09 Governance, evaluation, feedback
 - [ ] 10 Domain assistance & media
