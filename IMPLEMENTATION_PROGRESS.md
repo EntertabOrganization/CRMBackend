@@ -47,8 +47,8 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 - [x] 06 Credit ledger, top-ups, expiration — `usage-service.ts` (plan-first earliest-expiry allocation FOR UPDATE, append-only ledger, top-up invoices, expiry, reversals)
 - [x] 07 Dunning, 15-day grace, service continuity — `lifecycleTick` (PAST_DUE→GRACE, reminder-only dunning, non-destructive expiry + continuity rows, late payment restores)
 - [x] 08 Partner pricing integration, payer vs beneficiary — `partner-billing.ts` (resolver seam for Partner module, quote snapshots, partner transactions + refund adjustments, owner-approved payer transition)
-- [ ] 09 Finance reconciliation, MRR/ARR reporting
-- [ ] 10 Billing admin, finance permissions, operational safety
+- [x] 09 Finance reconciliation, MRR/ARR reporting — `finance-service.ts` (cursor-resumable reconciliation job, findings + verified repair, period MRR facts w/ FX snapshots, scoped revenue/usage reports)
+- [x] 10 Billing admin, finance permissions, operational safety — `finance-service.ts` (payload-hash approvals w/ separation of duties, step-up overrides, scoped billing audit, preferences; payment-method change fails closed: no hosted setup adapter)
 - [~] Migration `202610180001_subscription_billing` + models written (schema valid); permissions, routes, billing console screen next
 
 ### 32-Partner-Program
