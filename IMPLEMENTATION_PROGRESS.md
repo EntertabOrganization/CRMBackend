@@ -27,9 +27,9 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 - [x] 03 Notifications, preferences, mandatory notices, delivery — `src/server/platform/notifications-service.ts` + live-access registry `access.ts` (routes pending)
 - [x] 04 Realtime hints & presence — `realtime-service.ts` (signed token, SSE hints w/ live ACL + auth cache version, in-process presence; routes pending)
 - [x] 05 Global search, recents, favorites — `search-service.ts` + `search-sources.ts` (PostgreSQL FTS, projector consumer, reindex job; routes pending)
-- [ ] 06 Audit query, security events, support access grants
+- [x] 06 Audit query, security events, support access grants — `governance-service.ts` (customer-approved read-only grants, dual-approved break-glass w/ step-up + review; routes pending)
 - [ ] 07 Platform settings, feature flags, locale, numbering sequences
-- [ ] 08 Rate limits, idempotency records, safe caching
+- [x] 08 Rate limits, idempotency records, safe caching — `governance-service.ts` (`enforceRateLimit`, policy admin, idempotency metadata, cache invalidation; routes pending)
 - [ ] 09 Retention policies, portability exports, privacy requests, legal holds
 - [ ] 10 Health/readiness, observability, backup & restore records
 - [~] Migration `202610170001_platform_services` + Prisma models written (schema valid, typecheck OK); services/routes/screen next
@@ -98,3 +98,4 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 
 ## Verification log (non-test checks only)
 - 2026-10-16 `prisma validate` OK; `tsc --noEmit` exit 0 after Platform schema
+- 2026-10-16 `tsc --noEmit` exit 0 after access/notifications/realtime/search/governance services
