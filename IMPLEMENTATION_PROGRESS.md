@@ -22,8 +22,8 @@ Status legend: `[ ]` not started · `[~]` in progress · `[x]` code written (UNT
 - [x] Inventory existing platform pieces to reuse (outbox, audit, idempotency, rate limit, jobs, notifications, search, Partner from Auth pack)
 
 ### 30-Platform-Services
-- [ ] 01 Outbox & domain event contract (event envelope/versioning, dispatcher, consumer inbox dedupe)
-- [ ] 02 Jobs, schedules, retries, dead letter (durable job table, leasing, backoff, operator retry)
+- [x] 01 Outbox & domain event contract — `src/server/platform/events-service.ts` (dispatcher, receipts, DLQ, replay); kernel `src/server/platform/kernel.ts`; router `src/server/platform/http.ts` (routes pending)
+- [x] 02 Jobs, schedules, retries, dead letter — `PlatformJobService` in `events-service.ts` (routes pending)
 - [ ] 03 Notifications, preferences, mandatory notices, delivery
 - [ ] 04 Realtime hints & presence (SSE invalidation hints, ACL re-check)
 - [ ] 05 Global search, recents, favorites (ACL-filtered, rebuildable index)
